@@ -158,8 +158,9 @@ pub fn check_package(root: &Path) -> io::Result<Checked> {
     for path in &files {
         let rel = path.strip_prefix(&src_dir).unwrap_or(path).with_extension("");
         let segments: Vec<String> = rel.iter().map(|s| s.to_string_lossy().into_owned()).collect();
-        let display = Path::new("src").join(path.strip_prefix(&src_dir).unwrap_or(path));
-        let (src, mut diags) = crate::source_from_bytes(display.display().to_string(), fs::read(path)?);
+        // Always `/`, so diagnostics read the same on every OS.
+        let display = format!("src/{}.ante", segments.join("/"));
+        let (src, mut diags) = crate::source_from_bytes(display, fs::read(path)?);
         let file = sources.len();
         if let Some(bad) = segments.iter().find(|s| !is_module_name(s)) {
             diags.push(Diagnostic::error(
