@@ -1,0 +1,9 @@
+# category: run-pass
+# level: core
+# Generic `modhatidhi[T]` on `ankam` and `padham`.
+modhatidhi[T: XeroxTheeyochu](xs: &varusa[T] ni) -> T ante:
+    xs[0].xerox() icchey
+
+modhalu() -> khali ante:
+    [1, 2] ni modhatidhi() |> choopinchu()
+    ["a", "b"] ni modhatidhi() |> choopinchu()

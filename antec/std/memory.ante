@@ -1,0 +1,7 @@
+# `memory`: spec §21.3, `naa_risk` only. Signatures only; see prelude.ante.
+
+bayata "ante" ante:
+    allocate(n: aasajeevi ankam ni, a: aasajeevi ankam tho) -> *maare khali
+    release(p: *maare khali ni, n: aasajeevi ankam tho, a: aasajeevi ankam tho) -> khali
+    reallocate(p: *maare khali ni, n: aasajeevi ankam tho, a: aasajeevi ankam tho, m: aasajeevi ankam ki) -> *maare khali
+    copy(src: *khali ni, dst: *maare khali ki, n: aasajeevi ankam tho) -> khali

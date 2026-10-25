@@ -60,7 +60,8 @@ fn loop_closure_and_arm_scopes() {
 fn pattern_bindings() {
     assert_eq!(body("p ante (1, 1)\np batti:\n    (x, x) aithe:\n        icchey"), ["E0308 @ 4:13"]);
     assert_eq!(body("p ante (1, 1)\np batti:\n    (x, 0) | (0, y) aithe:\n        icchey"), ["E0706 @ 4:18"]);
-    assert!(body("p ante (1, 1)\np batti:\n    (x, 0) | (0, x) aithe:\n        x ni choopinchu()").is_empty());
+    assert!(body("p ante (1, 1)\np batti:\n    (x, 0) | (0, x) aithe:\n        x ni choopinchu()\n    _ aithe:\n        icchey")
+        .is_empty());
 }
 
 // ── module items (§7) ──────────────────────────────────────────────────────

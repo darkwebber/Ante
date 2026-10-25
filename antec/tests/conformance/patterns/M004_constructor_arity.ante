@@ -1,0 +1,12 @@
+# category: compile-fail
+# expect-error: E0704 @ 11:9
+# level: core
+# Variant with the wrong number of fields.
+edho_okati Aakaram ante:
+    Vruttham(amsam)
+
+modhalu() -> khali ante:
+    a ante Aakaram.Vruttham(1.0)
+    a batti:
+        Aakaram.Vruttham(r, s) aithe:
+            r ni choopinchu()

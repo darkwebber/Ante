@@ -1,0 +1,20 @@
+# category: run-pass
+# level: core
+# Method pro-drop `balance` → `naa.balance`.
+rakam Account ante:
+    balance: ankam64
+
+Account panulu ante:
+    kotthadhi() -> Account ante:
+        Account{balance: 0} icchey
+
+    jama(naa: &maare idhi, amount: ankam64 ni) -> khali ante:
+        naa.balance += amount
+
+    choopu(naa: &idhi) -> khali ante:
+        balance ni choopinchu()
+
+modhalu() -> khali ante:
+    maare acc ante Account.kotthadhi()
+    500 ni acc.jama()
+    acc.choopu()

@@ -1,0 +1,13 @@
+# category: compile-fail
+# expect-error: E0807 @ 9:7
+# level: core
+# `@automatic` with a field lacking the trait.
+rakam Lopala ante:
+    v: ankam
+
+@automatic Choopinchochu
+rakam Bayata ante:
+    l: Lopala
+
+modhalu() -> khali ante:
+    icchey

@@ -1,0 +1,8 @@
+# category: run-pass
+# level: core
+# Labels mixed with positions.
+kalupu_moodu(a: ankam ni, b: ankam ni, c: ankam ni) -> ankam ante:
+    (a + b + c) icchey
+
+modhalu() -> khali ante:
+    1 ni, 3 ni c ga, 2 ni kalupu_moodu() |> choopinchu()

@@ -1,0 +1,8 @@
+# category: run-pass
+# level: core
+# Labelled phrases in any order.
+kalupu_moodu(a: ankam ni, b: ankam ni, c: ankam ni) -> ankam ante:
+    (a + b + c) icchey
+
+modhalu() -> khali ante:
+    3 ni c ga, 1 ni a ga, 2 ni b ga kalupu_moodu() |> choopinchu()

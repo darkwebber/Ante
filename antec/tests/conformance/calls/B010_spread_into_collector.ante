@@ -1,0 +1,13 @@
+# category: run-pass
+# level: core
+# `...xs` into `migathavi`.
+motham(migathavi xs: ankam ni) -> ankam ante:
+    maare m ante 0
+    xs lo okko x ki:
+        m += x
+    m icchey
+
+modhalu() -> khali ante:
+    xs ante [1, 2, 3]
+    ...xs ni motham() |> choopinchu()
+    1 ni, 2 ni motham() |> choopinchu()

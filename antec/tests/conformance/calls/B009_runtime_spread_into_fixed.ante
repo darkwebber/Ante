@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E0506 @ 10:5
+# level: core
+# `...xs` (`varusa`) into fixed formals.
+kalupu(a: ankam ni, b: ankam tho) -> ankam ante:
+    (a + b) icchey
+
+modhalu() -> khali ante:
+    xs ante [1, 2]
+    ...xs ni kalupu() |> choopinchu()

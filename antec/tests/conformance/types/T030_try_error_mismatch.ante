@@ -1,0 +1,19 @@
+# category: compile-fail
+# expect-error: E0412 @ 15:12
+# level: core
+# `?` with an unconvertible error.
+rakam ModhatiThappu ante:
+    v: ankam
+
+rakam RendoThappu ante:
+    v: ankam
+
+modhati() -> sare_thappu[ankam, ModhatiThappu] ante:
+    sare(1) icchey
+
+rendo() -> sare_thappu[ankam, RendoThappu] ante:
+    x ante modhati()?
+    sare(x) icchey
+
+modhalu() -> khali ante:
+    icchey

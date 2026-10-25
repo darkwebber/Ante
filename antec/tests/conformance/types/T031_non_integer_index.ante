@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0414 @ 7:8
+# level: core
+# Index by a `padham`.
+modhalu() -> khali ante:
+    xs ante [1, 2, 3]
+    xs["a"] ni choopinchu()

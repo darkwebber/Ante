@@ -1,0 +1,202 @@
+# "Ante" prelude: the signatures `antec` type-checks against (spec §13.5, §21).
+#
+# Until the standard library is written in "Ante" itself (M10), these files
+# declare signatures only:
+#   - `bayata "ante"` blocks list intrinsic functions (bodies live in the compiler);
+#   - `gunam <type>_panulu` blocks list methods of built-in types. The type of
+#     `naa` says which receiver a method takes; `idhi` is the receiver's own type.
+
+# ── standard traits (§13.5) ─────────────────────────────────────────────────
+
+gunam XeroxTheeyochu ante:
+    xerox(naa: &idhi) -> idhi
+
+gunam Sardhukochu ante:
+    sardhu(naa: &maare idhi) -> khali
+
+gunam Polchochu ante:
+    okateyna(naa: &idhi, itharam: &idhi ni) -> ato_ito
+
+gunam VarusaPettochu ante:
+    polchu(naa: &idhi, itharam: &idhi ni) -> Kramam
+
+gunam HashCheyochu ante:
+    hash_cheyyi(naa: &idhi, h: &maare Hasher ni) -> khali
+
+gunam Choopinchochu ante:
+    padham_ga(naa: &idhi) -> padham
+
+gunam Okkokkati[I] ante:
+    tharvatha(naa: &maare idhi) -> undochu[I]
+
+gunam Kalupochu ante:
+    kalupu(naa: &idhi, itharam: &idhi ni) -> idhi
+
+gunam Theeseyochu ante:
+    theesey(naa: &idhi, itharam: &idhi ni) -> idhi
+
+gunam Guninchochu ante:
+    guninchu(naa: &idhi, itharam: &idhi ni) -> idhi
+
+gunam Panchochu ante:
+    panchu(naa: &idhi, itharam: &idhi ni) -> idhi
+
+gunam Sheshamochu ante:
+    shesham(naa: &idhi, itharam: &idhi ni) -> idhi
+
+gunam Thippochu ante:
+    thippu(naa: &idhi) -> idhi
+
+gunam MatmulCheyochu ante:
+    matmul(naa: &idhi, itharam: &idhi ni) -> idhi
+
+# ── prelude types ───────────────────────────────────────────────────────────
+
+edho_okati Kramam ante:
+    Thakkuva
+    Samaanam
+    Ekkuva
+
+rakam Hasher ante:
+    _sthithi: aasajeevi ankam64
+
+rakam Raatha ante:
+    _lopala: padham
+
+rakam ParseThappu ante:
+    _vivaram: padham
+
+rakam Utf8Thappu ante:
+    _vivaram: padham
+
+# ── prelude functions (§21.1, §21.4.2) ──────────────────────────────────────
+
+bayata "ante" ante:
+    choopinchu[T: Choopinchochu](vishayam: &T ni) -> khali
+    cheppu[T: Choopinchochu](vishayam: &T ni) -> khali
+    gola_pettu[T: Choopinchochu](vishayam: &T ni) -> khali
+    nijame(sharathu: ato_ito, sandesham: padham ni = "") -> khali
+    kompa_munigindhi(sandesham: padham ni = "") -> raadhu
+    maarchu[T, S](vishayam: S ni) -> T
+    kudhirithe_maarchu[T, S](vishayam: S ni) -> undochu[T]
+    kolpothu_maarchu[T, S](vishayam: S ni) -> T
+    size_of[T]() -> ankam
+    align_of[T]() -> ankam
+    kalipi[A, B](a: Pravaham[A], b: Pravaham[B]) -> Pravaham[jatha[A, B]]
+    modhati[I](xs: Pravaham[I], n: ankam ni) -> Pravaham[I]
+    dhaatu[I](xs: Pravaham[I], n: ankam ni) -> Pravaham[I]
+    prathi_dhaaniki[I, U](xs: Pravaham[I], f: pani[(I ni) -> U] ni) -> Pravaham[U]
+    jalleda_pattu[I](xs: Pravaham[I], f: pani[(&I ni) -> ato_ito] ni) -> Pravaham[I]
+    poguchey[I, A](xs: Pravaham[I], init: A ni, f: pani[(A ni, I tho) -> A] tho) -> A
+    number_vesi[I](xs: Pravaham[I]) -> Pravaham[jatha[ankam, I]]
+    varusa_ga[I](xs: Pravaham[I]) -> varusa[I]
+    anni_theesuko[T](xs: varusa[T]) -> Pravaham[T]
+
+# ── methods of built-in types (§21.2) ───────────────────────────────────────
+
+gunam padham_panulu ante:
+    enni(naa: &padham) -> ankam
+    byte_len(naa: &padham) -> ankam
+    aksharaalu(naa: &padham) -> Pravaham[aksharam]
+    vidagottu(naa: &padham, sep: &padham ni) -> varusa[padham]
+    kathirinchu(naa: &padham) -> padham
+    tho_modhalaindha(naa: &padham, p: &padham ni) -> ato_ito
+    lo_undha(naa: &padham, p: &padham ni) -> ato_ito
+    ankam_ga(naa: &padham, base: ankam32 ni = 10) -> sare_thappu[ankam, ParseThappu]
+    aasajeevi_ga(naa: &padham, base: ankam32 ni = 10) -> sare_thappu[aasajeevi ankam, ParseThappu]
+    amsam_ga(naa: &padham) -> sare_thappu[amsam, ParseThappu]
+    baitlu(naa: &padham) -> &mukka[aasajeevi ankam8]
+    baitlu_nunchi(b: &mukka[aasajeevi ankam8] ni) -> sare_thappu[padham, Utf8Thappu]
+    byte_bhaagam(naa: &padham, a: ankam ni, b: ankam tho) -> sare_thappu[padham, Utf8Thappu]
+
+gunam varusa_panulu ante:
+    kotthadhi[T]() -> varusa[T]
+    enni[T](naa: &varusa[T]) -> ankam
+    khaaliyaa[T](naa: &varusa[T]) -> ato_ito
+    cherchu[T](naa: &maare varusa[T], x: T ni) -> khali
+    theesey[T](naa: &maare varusa[T]) -> undochu[T]
+    thechu[T](naa: &varusa[T], i: ankam ni) -> undochu[&T]
+    maare_thechu[T](naa: &maare varusa[T], i: ankam ni) -> undochu[&maare T]
+    sort_cheyyi[T: VarusaPettochu](naa: &maare varusa[T]) -> khali
+    ila_sort_cheyyi[T](naa: &maare varusa[T], f: pani[(&T ni, &T tho) -> Kramam] ni) -> khali
+    anni_theesuko[T](naa: varusa[T]) -> Pravaham[T]
+
+gunam mukka_panulu ante:
+    enni[T](naa: &mukka[T]) -> ankam
+    khaaliyaa[T](naa: &mukka[T]) -> ato_ito
+    thechu[T](naa: &mukka[T], i: ankam ni) -> undochu[&T]
+    pointer[T](naa: &mukka[T]) -> *T
+
+gunam jodi_panulu ante:
+    kotthadhi[K: Polchochu + HashCheyochu, V]() -> jodi[K, V]
+    cherchu[K, V](naa: &maare jodi[K, V], k: K ni, v: V tho) -> undochu[V]
+    thechu[K, V](naa: &jodi[K, V], k: &K ni) -> undochu[&V]
+    maare_thechu[K, V](naa: &maare jodi[K, V], k: &K ni) -> undochu[&maare V]
+    lekapothe_cherchu[K, V](naa: &maare jodi[K, V], k: K ni, d: V tho) -> &maare V
+    theesey[K, V](naa: &maare jodi[K, V], k: &K ni) -> undochu[V]
+    undhaa[K, V](naa: &jodi[K, V], k: &K ni) -> ato_ito
+    enni[K, V](naa: &jodi[K, V]) -> ankam
+
+gunam gajibiji_jodi_panulu ante:
+    kotthadhi[K: Polchochu + HashCheyochu, V]() -> gajibiji_jodi[K, V]
+    cherchu[K, V](naa: &maare gajibiji_jodi[K, V], k: K ni, v: V tho) -> undochu[V]
+    thechu[K, V](naa: &gajibiji_jodi[K, V], k: &K ni) -> undochu[&V]
+    theesey[K, V](naa: &maare gajibiji_jodi[K, V], k: &K ni) -> undochu[V]
+    undhaa[K, V](naa: &gajibiji_jodi[K, V], k: &K ni) -> ato_ito
+    enni[K, V](naa: &gajibiji_jodi[K, V]) -> ankam
+
+gunam gumpu_panulu ante:
+    kotthadhi[T: Polchochu + HashCheyochu]() -> gumpu[T]
+    cherchu[T](naa: &maare gumpu[T], x: T ni) -> ato_ito
+    undhaa[T](naa: &gumpu[T], x: &T ni) -> ato_ito
+    theesey[T](naa: &maare gumpu[T], x: &T ni) -> ato_ito
+    enni[T](naa: &gumpu[T]) -> ankam
+
+gunam undochu_panulu ante:
+    undhaa[T](naa: &undochu[T]) -> ato_ito
+    ledhaa[T](naa: &undochu[T]) -> ato_ito
+    lekapothe[T](naa: undochu[T], d: T ni) -> T
+    kachithanga[T](naa: undochu[T]) -> T
+    prathi_dhaaniki[T, U](naa: undochu[T], f: pani[(T ni) -> U] ni) -> undochu[U]
+
+gunam sare_thappu_panulu ante:
+    sareyaa[T, E](naa: &sare_thappu[T, E]) -> ato_ito
+    kachithanga[T, E](naa: sare_thappu[T, E]) -> T
+    thappu_maarchu[T, E, F](naa: sare_thappu[T, E], f: pani[(E ni) -> F] ni) -> sare_thappu[T, F]
+    prathi_dhaaniki[T, E, U](naa: sare_thappu[T, E], f: pani[(T ni) -> U] ni) -> sare_thappu[U, E]
+
+gunam pette_panulu ante:
+    kotthadhi[T](x: T ni) -> pette[T]
+
+gunam aksharam_panulu ante:
+    digit_aa(naa: aksharam) -> ato_ito
+    letter_aa(naa: aksharam) -> ato_ito
+    space_aa(naa: aksharam) -> ato_ito
+    alnum_aa(naa: aksharam) -> ato_ito
+    ascii_aa(naa: aksharam) -> ato_ito
+
+# Every integer type; `idhi` is the receiver's own type.
+gunam ankamlu_panulu ante:
+    hex_ga(naa: idhi) -> padham
+
+gunam amsam64_panulu ante:
+    bits(naa: amsam64) -> aasajeevi ankam64
+    bits_nunchi(b: aasajeevi ankam64 ni) -> amsam64
+
+gunam amsam32_panulu ante:
+    bits(naa: amsam32) -> aasajeevi ankam32
+    bits_nunchi(b: aasajeevi ankam32 ni) -> amsam32
+
+gunam pointer_panulu ante:
+    jarugu[T](naa: *T, n: ankam ni) -> *T
+
+gunam Raatha_panulu ante:
+    kotthadhi() -> Raatha
+    raayi[T: Choopinchochu](naa: &maare Raatha, x: &T ni) -> khali
+    akshara_raayi(naa: &maare Raatha, c: aksharam ni) -> khali
+    enni(naa: &Raatha) -> ankam
+    padham_ga(naa: &maare Raatha) -> padham
+
+gunam Hasher_panulu ante:
+    kalupu[T](naa: &maare Hasher, x: T ni) -> khali
+    mugimpu(naa: &maare Hasher) -> aasajeevi ankam64

@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0401 @ 6:19
+# level: core
+# Annotation and value disagree.
+modhalu() -> khali ante:
+    x: ankam ante "padi"
+    x ni choopinchu()

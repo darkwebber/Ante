@@ -1,6 +1,6 @@
 //! `antec`, the stage-0 compiler for "Ante", written in Rust.
 //! Milestones: M1 lexer and layout (spec Part II), M2 parser (Part III),
-//! M3 names and modules (§7–8).
+//! M3 names and modules (§7–8), M4 types (§9–14).
 
 pub mod ast;
 pub mod diag;
@@ -13,6 +13,8 @@ pub mod resolve;
 pub mod source;
 pub mod stdlib;
 pub mod token;
+pub mod typeck;
+pub mod types;
 
 use std::path::Path;
 

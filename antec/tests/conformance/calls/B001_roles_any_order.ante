@@ -1,0 +1,8 @@
+# category: run-pass
+# level: core
+# `20 tho, 10 ni kalupu()`.
+kalupu(a: ankam ni, b: ankam tho) -> ankam ante:
+    (a + b) icchey
+
+modhalu() -> khali ante:
+    20 tho, 10 ni kalupu() |> choopinchu()

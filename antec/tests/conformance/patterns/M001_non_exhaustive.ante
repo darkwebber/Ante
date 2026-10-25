@@ -1,0 +1,9 @@
+# category: compile-fail
+# expect-error: E0701 @ 7:5
+# level: core
+# Non-exhaustive `sare_thappu` match.
+modhalu() -> khali ante:
+    r ante "12".ankam_ga()
+    r batti:
+        sare(n) aithe:
+            n ni choopinchu()

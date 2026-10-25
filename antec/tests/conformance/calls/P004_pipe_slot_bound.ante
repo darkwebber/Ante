@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E0507 @ 10:5
+# level: core
+# Pipe into an already-bound first slot.
+kalupu(a: ankam ni, b: ankam tho) -> ankam ante:
+    (a + b) icchey
+
+modhalu() -> khali ante:
+    x ante 10
+    x |> 1 ni, 5 tho kalupu() |> choopinchu()

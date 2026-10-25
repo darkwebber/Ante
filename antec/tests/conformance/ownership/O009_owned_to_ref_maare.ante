@@ -1,0 +1,11 @@
+# category: compile-fail
+# expect-error: E0610 @ 10:5
+# level: core
+# Owned value to a `&maare` formal.
+penchu(x: &maare ankam ni) -> khali ante:
+    *x += 1
+
+modhalu() -> khali ante:
+    maare n ante 1
+    n ni penchu()
+    n ni choopinchu()

@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0406 @ 7:7
+# level: core
+# Unknown method.
+modhalu() -> khali ante:
+    x ante 5
+    x.egiru() ni choopinchu()

@@ -1,0 +1,9 @@
+# category: compile-fail
+# expect-error: E0504 @ 9:22
+# level: core
+# Unknown label without a collector.
+kalupu_moodu(a: ankam ni, b: ankam ni, c: ankam ni) -> ankam ante:
+    (a + b + c) icchey
+
+modhalu() -> khali ante:
+    1 ni, 2 ni, 3 ni d ga kalupu_moodu() |> choopinchu()

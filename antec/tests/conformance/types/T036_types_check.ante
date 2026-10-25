@@ -1,0 +1,43 @@
+# category: build-pass
+# level: core
+# Literals, operators, records, enums, closures, adapters and conversions.
+@automatic Choopinchochu, Polchochu
+rakam Point ante:
+    x: ankam32
+    y: ankam32
+
+edho_okati Rangu ante:
+    Erupu
+    Pacha(aasajeevi ankam8)
+
+rendinthalu(x: ankam ni) -> ankam ante:
+    (x * 2) icchey
+
+modhalu() -> khali ante:
+    p ante Point{x: 1, y: -2}
+    p ni choopinchu()
+    (p == Point{x: 1, y: -2}) ni choopinchu()
+    rangu ante Rangu.Pacha(255)
+    rangu batti:
+        Rangu.Erupu aithe:
+            "erupu" ni choopinchu()
+        Rangu.Pacha(v) aithe:
+            v ni maarchu[ankam32]() |> choopinchu()
+    xs ante [1, 2, 3, 4]
+    xs |> ((x) => *x % 2 == 0) ni jalleda_pattu() |> varusa_ga() |> choopinchu()
+    xs |> rendinthalu ni prathi_dhaaniki() |> varusa_ga() |> choopinchu()
+    xs |> 0 ni, ((acc, x) => acc + x) tho poguchey() |> choopinchu()
+    xs.number_vesi() lo okko (i, x) ki:
+        f"{i}: {x}" ni choopinchu()
+    maare m: jodi[padham, ankam] ante {}
+    "a" ni, 1 tho m.cherchu()
+    o ante o_ledhu()
+    (0 ni o.lekapothe()) ni choopinchu()
+    t ante (1, "x", avunu)
+    t.1 ni choopinchu()
+    arr: [ankam32; 3] ante [1, 2, 3]
+    s ante &arr[0 nunchi 2 lopu]
+    s.enni() ni choopinchu()
+
+o_ledhu() -> undochu[ankam] ante:
+    ledhu icchey

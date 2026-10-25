@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0411 @ 6:12
+# level: core
+# `?` in a `khali` function.
+modhalu() -> khali ante:
+    n ante "12".ankam_ga()?
+    n ni choopinchu()

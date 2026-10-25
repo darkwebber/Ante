@@ -1,0 +1,11 @@
+# category: run-pass
+# level: core
+# Copy binding mode through `&`.
+modhati(p: &jatha[ankam, padham] ni) -> ankam ante:
+    p batti:
+        (n, _) aithe:
+            n icchey
+
+modhalu() -> khali ante:
+    t ante (1, "a")
+    &t ni modhati() |> choopinchu()

@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0408 @ 8:10
+# level: core
+# `ankam32` + `aasajeevi ankam32`.
+modhalu() -> khali ante:
+    a: ankam32 ante 1
+    b: aasajeevi ankam32 ante 2
+    (a + b) ni choopinchu()

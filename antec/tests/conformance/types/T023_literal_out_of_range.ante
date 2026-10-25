@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0402 @ 6:20
+# level: core
+# `300 : ankam8`.
+modhalu() -> khali ante:
+    x: ankam8 ante 300
+    x ni choopinchu()

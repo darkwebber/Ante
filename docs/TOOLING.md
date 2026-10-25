@@ -31,6 +31,7 @@ Grammar TextMate format lo undhi ([`ante.tmLanguage.json`](../editors/vscode/syn
 | W0001 | Define chesi vaadani binding | `x ante 5` (x ekkada vaadaledhu) |
 | W0002 | Eppudu maarani variable ki `maare` | `maare x ante 1` (x ki kottha value raaledhu) |
 | W0003 | Eppudu run avvani code | `icchey` tharvatha statements |
+| W0004 | Eppudu raani `batti` arm | `undhi(_)` tharvatha `undhi(2)` |
 | W0005 | Vaadani import | `lekkalu thechuko` (lekkalu vaadaledhu) |
 
 ```text
@@ -47,8 +48,8 @@ Lints errors lenappudu matrame run avthayi, kaabatti first errors fix cheyyandi,
 | Tool | Em chesthundhi | Eppudu | Depends on |
 |---|---|---|---|
 | **`antec fmt`** | Code ni official style lo format: indentation, spacing, D4 brackets (spec §6) | Next | M2 parser ✅ (comments preserve cheyyadaniki lexer lo trivia kavali) |
-| **Type-aware lints** | `?` misuse, unused results, unreachable `batti` arms (W0004), naming style | M4 tharvatha | Type checker |
-| **Language server (`antec lsp`)** | Type chesthunnappude errors, go to definition, find references, rename, hover lo types, completion | M4 tharvatha | Resolver ✅ (already prathi peru ki definition record chesthundhi), type checker |
+| **Type-aware lints** | Vaadani results, naming style, `xerox()` avasaram lenichota | Next | Type checker ✅ |
+| **Language server (`antec lsp`)** | Type chesthunnappude errors, go to definition, find references, rename, hover lo types, completion | Next | Resolver ✅, type checker ✅ (prathi expression type record chesthundhi) |
 | **tree-sitter grammar** | Neovim, Helix, Zed, Emacs lo fast incremental highlighting; GitHub code navigation | Fmt tharvatha | Parser grammar (spec §5) |
 | **GitHub highlighting** | github.com lo `.ante` files ki colors | Language popular ayyaaka | [Linguist](https://github.com/github-linguist/linguist) ki PR; daaniki kanisam 200 public repos `.ante` vaadali |
 | **VS Code Marketplace** | `ext install` tho direct install | Publisher account set ayyaaka | Extension ✅ |

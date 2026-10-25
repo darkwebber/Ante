@@ -1,0 +1,11 @@
+# category: compile-fail
+# expect-error: E0607 @ 10:12
+# level: core
+# `&maare` of a non-`maare` binding.
+penchu(x: &maare ankam ni) -> khali ante:
+    *x += 1
+
+modhalu() -> khali ante:
+    n ante 1
+    &maare n ni penchu()
+    n ni choopinchu()

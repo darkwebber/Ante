@@ -38,14 +38,31 @@ pub fn check_single(src: &SourceFile) -> Vec<Diagnostic> {
     }
     let module = SourceModule { name: module_name_for(&src.name), file: 0, ast: ast.as_ref() };
     let module = &module;
-    let resolution = resolve::resolve(std::slice::from_ref(module));
-    let clean = resolution.diagnostics.iter().all(|(_, d)| !d.is_error());
-    let warnings =
-        if clean { crate::lint::lint(std::slice::from_ref(module), &resolution) } else { Vec::new() };
-    diags.extend(resolution.diagnostics.into_iter().map(|(_, d)| d));
-    diags.extend(warnings.into_iter().map(|(_, d)| d));
+    let modules = std::slice::from_ref(module);
+    let resolution = resolve::resolve(modules);
+    let mut found: Vec<(FileId, Diagnostic)> = resolution.diagnostics.clone();
+    analyze(modules, &resolution, &mut found);
+    diags.extend(found.into_iter().map(|(_, d)| d));
     diags.sort_by_key(|d| d.span.start);
     diags
+}
+
+/// The stages after name resolution: types (when names are clean), then
+/// lints. Warnings are kept only when there are no errors at all.
+fn analyze(
+    modules: &[SourceModule],
+    resolution: &resolve::Resolution,
+    diags: &mut Vec<(FileId, Diagnostic)>,
+) {
+    if diags.iter().any(|(_, d)| d.is_error()) {
+        return;
+    }
+    diags.extend(crate::typeck::check(modules, resolution));
+    if diags.iter().any(|(_, d)| d.is_error()) {
+        diags.retain(|(_, d)| d.is_error());
+        return;
+    }
+    diags.extend(crate::lint::lint(modules, resolution));
 }
 
 /// The nearest directory at or above `path` that holds an `ante.toml`.
@@ -224,9 +241,7 @@ pub fn check_package(root: &Path) -> io::Result<Checked> {
         Some(_) => {}
     }
 
-    if diagnostics.iter().all(|(_, d)| !d.is_error()) {
-        diagnostics.extend(crate::lint::lint(&modules, &resolution));
-    }
+    analyze(&modules, &resolution, &mut diagnostics);
     diagnostics.sort_by_key(|(file, d)| (*file, d.span.start));
     Ok(Checked { sources, diagnostics })
 }

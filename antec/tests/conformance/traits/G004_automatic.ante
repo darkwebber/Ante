@@ -1,0 +1,13 @@
+# category: run-pass
+# level: core
+# `@automatic Polchochu, Choopinchochu` on a record.
+@automatic Polchochu, Choopinchochu
+rakam Manishi ante:
+    peru: padham
+    vayasu: ankam32
+
+modhalu() -> khali ante:
+    a ante Manishi{peru: "Ravi", vayasu: 30}
+    b ante Manishi{peru: "Ravi", vayasu: 30}
+    (a == b) ni choopinchu()
+    a ni choopinchu()

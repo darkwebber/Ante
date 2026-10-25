@@ -1,0 +1,11 @@
+# category: compile-fail
+# expect-error: E1101 @ 8:20
+# level: core
+# A function call in a constant.
+kalupu(a: ankam ni, b: ankam tho) -> ankam ante:
+    (a + b) icchey
+
+MOTHAM: ankam ante 1 ni, 2 tho kalupu()
+
+modhalu() -> khali ante:
+    MOTHAM ni choopinchu()
