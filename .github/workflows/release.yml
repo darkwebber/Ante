@@ -82,3 +82,30 @@ jobs:
           $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
           "$hash  $name.zip" | Out-File -Encoding ascii "$name.zip.sha256"
           gh release upload $env:TAG "$name.zip" "$name.zip.sha256" --clobber --repo $env:GITHUB_REPOSITORY
+
+  vscode-extension:
+    name: VS Code extension
+    needs: release-please
+    if: >-
+      always() &&
+      (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
+      - name: Package and upload
+        run: |
+          npx vsce package --out "ante-language-${TAG}.vsix"
+          gh release upload "$TAG" "ante-language-${TAG}.vsix" --clobber --repo "$GITHUB_REPOSITORY"

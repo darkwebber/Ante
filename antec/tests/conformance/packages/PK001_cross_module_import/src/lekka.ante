@@ -1,0 +1,6 @@
+andhariki rakam Point ante:
+    andhariki x: ankam
+    andhariki y: ankam
+
+andhariki kalupu(a: Point ni, b: Point tho) -> Point ante:
+    Point{x: a.x + b.x, y: a.y + b.y} icchey

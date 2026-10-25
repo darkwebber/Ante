@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0302 @ 6:1
+# level: core
+kalupu() -> khali ante:
+    icchey
+kalupu() -> khali ante:
+    icchey

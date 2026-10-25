@@ -1,0 +1,6 @@
+# category: build-pass
+# expect-warning: W0003 @ 6:5
+# level: core
+modhalu() -> khali ante:
+    icchey
+    "eppudu raadhu" ni choopinchu()

@@ -1,0 +1,6 @@
+# category: build-pass
+# expect-warning: W0005 @ 4:1
+# level: core
+lekkalu thechuko
+modhalu() -> khali ante:
+    icchey

@@ -1,0 +1,6 @@
+# category: compile-fail
+# expect-error: E0306 @ 5:5
+# level: core
+modhalu() -> khali ante:
+    peru ni choopinchu()
+    peru ante "Ravi"

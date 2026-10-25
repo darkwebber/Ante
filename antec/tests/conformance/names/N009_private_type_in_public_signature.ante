@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0303 @ 6:21
+# level: core
+rakam Rahasyam ante:
+    x: ankam
+andhariki choopu(r: Rahasyam) -> khali ante:
+    icchey

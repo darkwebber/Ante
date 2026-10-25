@@ -8,14 +8,14 @@ const USAGE: &str = "\
 antec: \"Ante\" compiler (stage 0) 🛠️
 
 usage:
-  antec check <file.ante>         ippati varaku ready ayina stages tho check cheyyi (M2: lexing + parsing)
+  antec check [path]              file leka package (ante.toml unna folder) ni check cheyyi
+                                  (M3: lexing + parsing + names); path lekapothe current folder
   antec emit tokens <file.ante>   token stream choopinchu
   antec emit ast <file.ante>      syntax tree (AST) choopinchu
   antec --version                 version choopinchu";
 
 #[derive(Clone, Copy, PartialEq)]
-enum Mode {
-    Check,
+enum Emit {
     Tokens,
     Ast,
 }
@@ -31,9 +31,10 @@ fn main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
-        ["check", path] => run(path, Mode::Check),
-        ["emit", "tokens", path] => run(path, Mode::Tokens),
-        ["emit", "ast", path] => run(path, Mode::Ast),
+        ["check"] => check("."),
+        ["check", path] => check(path),
+        ["emit", "tokens", path] => emit(path, Emit::Tokens),
+        ["emit", "ast", path] => emit(path, Emit::Ast),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
@@ -41,7 +42,29 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(path: &str, mode: Mode) -> ExitCode {
+fn check(path: &str) -> ExitCode {
+    let checked = match antec::package::check_path(Path::new(path)) {
+        Ok(checked) => checked,
+        Err(err) => {
+            eprintln!("error: `{path}` chadavalekapoyanu 😕 ({err})");
+            return ExitCode::from(2);
+        }
+    };
+    for (file, d) in &checked.diagnostics {
+        eprint!("{}", d.render(&checked.sources[*file]));
+    }
+    let code = summary(checked.error_count());
+    if code == ExitCode::SUCCESS {
+        match checked.warning_count() {
+            0 => println!("✅ {path}: anthaa ok! Errors emi levu."),
+            1 => println!("\n✅ {path}: errors levu, kaani 1 warning undhi 👀"),
+            n => println!("\n✅ {path}: errors levu, kaani {n} warnings unnayi 👀"),
+        }
+    }
+    code
+}
+
+fn emit(path: &str, what: Emit) -> ExitCode {
     let (src, mut diags) = match antec::load_source(Path::new(path)) {
         Ok(loaded) => loaded,
         Err(err) => {
@@ -50,7 +73,7 @@ fn run(path: &str, mode: Mode) -> ExitCode {
         }
     };
     if diags.is_empty() {
-        if mode == Mode::Tokens {
+        if what == Emit::Tokens {
             let result = antec::lexer::lex(&src);
             for tok in &result.tokens {
                 let (line, col) = src.line_col(tok.span.start);
@@ -59,24 +82,24 @@ fn run(path: &str, mode: Mode) -> ExitCode {
             diags = result.diagnostics;
         } else {
             let (module, parse_diags) = antec::parse_source(&src);
-            if let (Mode::Ast, Some(module)) = (mode, &module) {
+            if let Some(module) = &module {
                 print!("{}", antec::pretty::module(module));
             }
             diags = parse_diags;
         }
     }
-    let code = report(&src, &diags);
-    if mode == Mode::Check && code == ExitCode::SUCCESS {
-        println!("✅ {}: anthaa ok! Errors emi levu.", src.name);
-    }
-    code
+    report(&src, &diags)
 }
 
 fn report(src: &SourceFile, diags: &[Diagnostic]) -> ExitCode {
     for d in diags {
         eprint!("{}", d.render(src));
     }
-    match diags.iter().filter(|d| d.is_error()).count() {
+    summary(diags.iter().filter(|d| d.is_error()).count())
+}
+
+fn summary(errors: usize) -> ExitCode {
+    match errors {
         0 => ExitCode::SUCCESS,
         1 => {
             eprintln!("\n1 error vachindhi. Fix chesi malli try cheyyandi 💪");

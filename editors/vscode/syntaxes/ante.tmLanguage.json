@@ -1,0 +1,177 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Ante",
+  "scopeName": "source.ante",
+  "fileTypes": ["ante"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#annotations" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#function-declaration" },
+    { "include": "#constructors" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#calls" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.documentation.ante", "match": "##.*$" },
+        { "name": "comment.line.number-sign.ante", "match": "#.*$" }
+      ]
+    },
+    "annotations": {
+      "match": "^\\s*(@)([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": { "name": "punctuation.definition.annotation.ante" },
+        "2": { "name": "entity.name.function.decorator.ante" }
+      }
+    },
+    "escapes": {
+      "patterns": [
+        {
+          "name": "constant.character.escape.ante",
+          "match": "\\\\(?:[\\\\\"'ntr0]|u\\{[0-9A-Fa-f]{1,6}\\})"
+        },
+        { "name": "invalid.illegal.escape.ante", "match": "\\\\." }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.interpolated.ante",
+          "begin": "\\b(f)(\")",
+          "beginCaptures": {
+            "1": { "name": "storage.type.string.ante" },
+            "2": { "name": "punctuation.definition.string.begin.ante" }
+          },
+          "end": "\"",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.ante" } },
+          "patterns": [
+            { "include": "#escapes" },
+            { "name": "constant.character.escape.brace.ante", "match": "\\{\\{|\\}\\}" },
+            {
+              "name": "meta.interpolation.ante",
+              "begin": "\\{",
+              "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.ante" } },
+              "end": "\\}",
+              "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.ante" } },
+              "contentName": "source.ante.embedded",
+              "patterns": [{ "include": "$self" }]
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.ante",
+          "begin": "\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.ante" } },
+          "end": "\"",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.ante" } },
+          "patterns": [{ "include": "#escapes" }]
+        },
+        {
+          "name": "constant.character.ante",
+          "match": "'(?:[^'\\\\]|\\\\(?:[\\\\\"'ntr0]|u\\{[0-9A-Fa-f]{1,6}\\}))'"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        { "name": "constant.numeric.hex.ante", "match": "\\b0x[0-9A-Fa-f](?:_?[0-9A-Fa-f])*\\b" },
+        { "name": "constant.numeric.binary.ante", "match": "\\b0b[01](?:_?[01])*\\b" },
+        { "name": "constant.numeric.octal.ante", "match": "\\b0o[0-7](?:_?[0-7])*\\b" },
+        {
+          "name": "constant.numeric.float.ante",
+          "match": "\\b[0-9](?:_?[0-9])*(?:\\.[0-9](?:_?[0-9])*(?:[eE][+-]?[0-9](?:_?[0-9])*)?|[eE][+-]?[0-9](?:_?[0-9])*)\\b"
+        },
+        { "name": "constant.numeric.integer.ante", "match": "\\b[0-9](?:_?[0-9])*\\b" }
+      ]
+    },
+    "function-declaration": {
+      "comment": "A declaration header: `name(…) -> T ante:` on one line, optionally `andhariki`.",
+      "match": "^\\s*(?:(andhariki)\\s+)?([A-Za-z_][A-Za-z0-9_]*)(?=\\s*(?:\\[[^\\]]*\\])?\\s*\\(.*->)",
+      "captures": {
+        "1": { "name": "storage.modifier.ante" },
+        "2": { "name": "entity.name.function.ante" }
+      }
+    },
+    "constructors": {
+      "match": "\\b(undhi|sare|thappu)(?=\\s*\\()",
+      "captures": { "1": { "name": "support.function.constructor.ante" } }
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.ante",
+          "match": "\\b(aithe|ledhante|unnanthasepu|okko|batti|icchey|aapey|vadhiley|vellagane|naa_risk)\\b"
+        },
+        {
+          "name": "keyword.other.declaration.ante",
+          "match": "\\b(ante|rakam|edho_okati|gunam|panulu|undhi|bayata|thechuko)\\b"
+        },
+        {
+          "name": "storage.modifier.ante",
+          "match": "\\b(andhariki|maare|theesuko|migathavi|migatha_perlu|peru_thone)\\b"
+        },
+        { "name": "keyword.operator.assignment.ante", "match": "\\bpettu\\b" },
+        {
+          "comment": "Case markers and range words: the heart of the grammar.",
+          "name": "keyword.operator.case-marker.ante",
+          "match": "\\b(ni|ki|tho|lo|nunchi|kosam|ga|lopu|varaku)\\b"
+        },
+        { "name": "constant.language.ante", "match": "\\b(avunu|kaadhu|ledhu|sare|thappu)\\b" },
+        { "name": "variable.language.ante", "match": "\\b(naa|idhi)\\b" },
+        {
+          "name": "invalid.deprecated.reserved.ante",
+          "match": "\\b(edhaina|kitiki|panchukunna|gurinchi|async|await|yield)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.builtin.ante",
+          "match": "\\b(ankam(?:8|16|32|64)?|aasajeevi|amsam(?:32|64)?|ato_ito|padham|aksharam|jatha|jodi|undochu|varusa|mukka|sare_thappu|pani|pette|khali|raadhu|gumpu|gajibiji_jodi)\\b"
+        },
+        { "name": "entity.name.type.ante", "match": "\\b[A-Z][A-Za-z0-9_]*\\b" }
+      ]
+    },
+    "calls": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.ante",
+          "match": "\\b(choopinchu|cheppu|gola_pettu|nijame|kompa_munigindhi|maarchu|kudhirithe_maarchu|kolpothu_maarchu|size_of|align_of|kalipi|modhati|dhaatu|prathi_dhaaniki|jalleda_pattu|poguchey|number_vesi|varusa_ga|anni_theesuko)\\b(?=\\s*(?:\\[[^\\]]*\\])?\\s*\\()"
+        },
+        {
+          "comment": "The verb at the end of a clause: `name()` or `name[T]()`.",
+          "name": "entity.name.function.call.ante",
+          "match": "\\b[a-z_][A-Za-z0-9_]*(?=\\s*(?:\\[[^\\]]*\\])?\\s*\\(\\))"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        { "name": "keyword.operator.pipe.ante", "match": "\\|>" },
+        { "name": "keyword.operator.arrow.ante", "match": "->|=>" },
+        { "name": "keyword.operator.spread.ante", "match": "\\.\\.\\." },
+        { "name": "keyword.operator.assignment.compound.ante", "match": "\\+=|-=|\\*=|/=" },
+        { "name": "keyword.operator.comparison.ante", "match": "==|!=|<=|>=|<|>" },
+        { "name": "keyword.operator.logical.ante", "match": "&&|\\|\\||!" },
+        { "name": "keyword.operator.bitwise.ante", "match": "<<|>>|&|\\||\\^|~" },
+        { "name": "keyword.operator.arithmetic.ante", "match": "\\+|-|\\*|/|%|@" },
+        { "name": "keyword.operator.try.ante", "match": "\\?" },
+        { "name": "keyword.operator.default.ante", "match": "=" }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        { "name": "punctuation.separator.comma.ante", "match": "," },
+        { "name": "punctuation.separator.colon.ante", "match": ":" },
+        { "name": "punctuation.accessor.ante", "match": "\\." }
+      ]
+    }
+  }
+}

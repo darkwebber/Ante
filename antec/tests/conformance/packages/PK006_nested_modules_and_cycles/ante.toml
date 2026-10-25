@@ -1,0 +1,8 @@
+# category: build-pass
+# level: core
+# Nested modules (`geometry.point`) that import each other in a cycle (§7.6).
+[package]
+name = "p006"
+version = "0.1.0"
+edition = "1.0"
+kind = "bin"

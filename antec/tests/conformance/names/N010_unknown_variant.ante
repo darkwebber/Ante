@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0301 @ 8:18
+# level: core
+edho_okati Rangu ante:
+    Erupu
+    Neelam
+modhalu() -> khali ante:
+    r ante Rangu.Pachcha

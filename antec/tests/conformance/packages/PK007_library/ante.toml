@@ -1,0 +1,8 @@
+# category: build-pass
+# level: core
+# A library package: `src/lib.ante` is the entry, no `modhalu()` needed.
+[package]
+name = "p007"
+version = "0.1.0"
+edition = "1.0"
+kind = "lib"

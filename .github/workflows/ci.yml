@@ -64,11 +64,28 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
 
+  editor:
+    name: editor grammar
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run package
+
   # One required check for branch protection, so the job list can change freely.
   ci-ok:
     name: CI ok
     if: always()
-    needs: [fmt, clippy, test, msrv]
+    needs: [fmt, clippy, test, msrv, editor]
     runs-on: ubuntu-latest
     steps:
       - run: |

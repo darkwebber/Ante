@@ -1,12 +1,17 @@
 //! `antec`, the stage-0 compiler for "Ante", written in Rust.
-//! Milestones: M1 lexer and layout (spec Part II), M2 parser (Part III).
+//! Milestones: M1 lexer and layout (spec Part II), M2 parser (Part III),
+//! M3 names and modules (§7–8).
 
 pub mod ast;
 pub mod diag;
 pub mod lexer;
+pub mod lint;
+pub mod package;
 pub mod parser;
 pub mod pretty;
+pub mod resolve;
 pub mod source;
+pub mod stdlib;
 pub mod token;
 
 use std::path::Path;
@@ -52,7 +57,8 @@ pub fn parse_source(src: &SourceFile) -> (Option<ast::Module>, Vec<Diagnostic>) 
     (Some(parsed.module), diags)
 }
 
-/// Runs every compiler stage implemented so far and returns its diagnostics.
+/// Runs every compiler stage implemented so far on a lone file and returns
+/// its diagnostics. Use `package::check_path` for packages.
 pub fn check_source(src: &SourceFile) -> Vec<Diagnostic> {
-    parse_source(src).1
+    package::check_single(src)
 }

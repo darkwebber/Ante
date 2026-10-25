@@ -1,0 +1,8 @@
+geometry.shapes nunchi Circle thechuko
+
+andhariki rakam Point ante:
+    andhariki x: amsam
+    andhariki y: amsam
+
+andhariki radius(c: &Circle ni) -> amsam ante:
+    c.radius icchey

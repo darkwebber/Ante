@@ -9,7 +9,7 @@
 
 Simple ga cheppalante: amma ki explain chesinattu code raayochu, kaani adhi C laaga fast ga run avthundhi. 😎
 
-> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2) ready. Simple ga cheppalante: code ni chadivi, grammar correct ga undho ledho cheppagaladhu, kaani inka run cheyyaledhu. 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
+> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3) ready. Simple ga cheppalante: code ni chadivi, grammar correct aa, prathi peru ki meaning undha ani check cheyyagaladhu, kaani inka run cheyyaledhu. 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
 
 ## "Ante" Sundharaniki! 🎬
 
@@ -64,7 +64,7 @@ modhalu() -> khali ante:
     20 tho, 10 ni kalupu() |> choopinchu()    # order maarina problem ledhu: 30
 ```
 
-Manam maatlade laane: "10 ni 20 tho kalupu". Arguments mundhu, verb last lo. Case markers unnayi kaabatti, order maarchina compiler confuse avvadhu. Mana amma laage. 😌
+Manam maatlade laane: "10 ni 20 tho kalupu". Arguments mundhu, verb last lo. Case markers unnayi kaabatti, order maarchina compiler confuse avvadhu. 😌
 
 Konni favourite words:
 
@@ -99,8 +99,9 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 |---|---|---|
 | M1 | Lexer and layout | ✅ done |
 | M2 | Parser and AST (`antec emit ast`) | ✅ done (`antec fmt` inka raavali) |
-| M3 | Names and modules | ⏳ next |
-| M4–M11 | Types, borrow checker, LLVM codegen, stdlib, FFI | 🔜 |
+| M3 | Names, modules, imports, visibility | ✅ done |
+| M4 | Type checker | ⏳ next |
+| M5–M11 | Call binding, MIR, LLVM codegen, borrow checker, stdlib, FFI | 🔜 |
 | M12 | `@vegam` performance | 🔜 |
 | M13 | PyTorch binding | 🔜 |
 | M14 | Python bridge | 🔜 |
@@ -130,13 +131,18 @@ Oka file ni tokens ga choodalante:
 cargo run -p antec -- emit tokens antec/tests/conformance/lex/L003_line_joining.ante
 ```
 
+## Editor support 🎨
+
+VS Code extension (syntax highlighting, snippets, smart indentation) [`editors/vscode/`](editors/vscode) lo undhi. Prathi release tho `.vsix` file vasthundhi. `antec check` built-in linter laaga kuda pani chesthundhi: vaadani variables, avasaram leni `maare`, run avvani code, vaadani imports gurinchi warnings isthundhi. Full details, roadmap (formatter, language server, tree-sitter) [docs/TOOLING.md](docs/TOOLING.md) lo.
+
 ## Repo lo em undhi
 
 ```text
 spec/          Language spec (Edition 1.0)
 examples/      Example "Ante" programs ("Ante" Sundharaniki tho start cheyyandi 🎬)
 antec/         Rust lo raasina stage-0 compiler
-docs/          Versioning, release process
+editors/       Editor support (VS Code extension, TextMate grammar)
+docs/          Versioning, release process, developer tools
 rfcs/          Big changes kosam RFCs
 .github/       CI/CD workflows, issue and PR templates
 ```

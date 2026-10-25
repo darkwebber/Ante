@@ -1,0 +1,5 @@
+geometry.point nunchi Point thechuko
+
+andhariki rakam Circle ante:
+    andhariki center: Point
+    andhariki radius: amsam

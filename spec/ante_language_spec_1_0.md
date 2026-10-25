@@ -417,7 +417,16 @@ Anything else at module scope is E0209 (executable statement at module level). A
 
 8.4 **Namespaces.** Each module has one value namespace (functions, constants, local bindings) and one type namespace (records, enums, traits, imported modules). Defining the same name twice in one namespace is E0302. Variants live inside their enum (`Rangu.Erupu`). Methods live inside their type.
 
-8.5 **Prelude.** These are in scope in every module without importing: all built-in types, the traits of §13.5, `Kramam` and its variants, `undhi`/`ledhu`/`sare`/`thappu`, and the functions of §21.1.
+8.5 **Prelude.** These are in scope in every module without importing:
+- all built-in types (§9.1), plus `Hasher`, `Raatha`, `gumpu`, `gajibiji_jodi`, `Paridhi`, `ParseThappu` and `Utf8Thappu`;
+- the traits of §13.5;
+- `Kramam` and its variants `Thakkuva`, `Samaanam`, `Ekkuva`;
+- the constructors `undhi`, `ledhu`, `sare`, `thappu`;
+- the functions of §21.1 and the iteration adapters of §21.4.2.
+
+Module items shadow prelude names. Standard library modules (`lekkalu`, `file`, `system`, `samayam`, `memory`) and the generated bindings (`torch`, `python`) must be imported before use.
+
+8.6 **Lookup order.** An unqualified name in value position resolves to, in order: a local (binding, parameter or pattern variable, innermost scope first); an item or import of the current module; inside a method with a `naa` receiver, a field or method of `idhi` (§13.4.4); a prelude value; then a type, module or generic parameter, whose remaining path segments name a variant, a module member, or an associated function. A name that's bound later in an enclosing block is E0306; any other unknown name is E0301.
 
 ## 9. Types
 
@@ -1078,7 +1087,7 @@ The programmer guarantees alignment, validity, lifetime, aliasing and the callin
 | `antec run [-- args]` | build, then run |
 | `antec pariksha` | build and run tests ("exam") |
 | `antec fmt` | canonical formatting; must preserve the AST and evaluation order |
-| `antec check` | type and borrow checks only |
+| `antec check [path]` | check a file, or a package folder (default: the current folder), without generating code |
 | `antec migrate` | rewrite code for renamed words and new editions (§23.5) |
 | `antec emit (tokens\|ast\|mir\|llvm)` | debugging output |
 
@@ -1342,6 +1351,7 @@ Severity is error unless the code starts with W. The prose shown is the referenc
 | E0902 | constant cycle | |
 | E0903 | no `modhalu` | |
 | E0904 | multiple `modhalu` | |
+| E0905 | invalid `ante.toml` or package layout | |
 | **FFI** | | |
 | E1001 | unsafe operation outside `naa_risk` | |
 | E1002 | non-FFI-safe type | |
@@ -1356,7 +1366,10 @@ Severity is error unless the code starts with W. The prose shown is the referenc
 | W0001 | unused binding | |
 | W0002 | unnecessary `maare` | |
 | W0003 | unreachable code | |
+| W0005 | unused import | "`x` import chesaru kaani ekkada vaadaledhu" |
 | W0100 | deprecated word (§23.5) | "ee padham paathadhi, `kottha_padham` vaadandi" |
+
+Warnings are reported only when a program has no errors, and never stop a build. A binding whose name starts with `_` is exempt from W0001.
 
 ---
 
@@ -1370,12 +1383,15 @@ Tests live in `tests/<category>/<id>_<name>.ante`. Expectations are written in l
 # category: run-pass | compile-fail | runtime-trap | build-pass | integration
 # expect-stdout: 30
 # expect-error: E0601 @ 4:5
+# expect-warning: W0001 @ 5:5
 # expect-trap: T01 @ 3:9
 # expect-exit: 101
 # level: core | torch | python
 ```
 
-A test may have several `expect-stdout` lines, which are matched in order. A compile-fail test passes when the expected code is reported with the expected primary span. Other errors may also be reported.
+A test may have several `expect-stdout` lines, which are matched in order.
+
+A **package test** is a folder holding `ante.toml` and `src/`. Its expectations are the leading `#` comments of `ante.toml`, and error spans name the file: `# expect-error: E0303 @ src/modhalu.ante:1:14`. A compile-fail test passes when the expected code is reported with the expected primary span. Other errors may also be reported.
 
 ## C.2 Seed cases
 
@@ -1463,6 +1479,29 @@ A test may have several `expect-stdout` lines, which are matched in order. A com
 | G006 | Method pro-drop `balance` → `naa.balance` | run-pass |
 | G007 | Closure with a borrowed capture, returned | E0415 |
 | G008 | `theesuko` closure returned | run-pass |
+| N001 | Undefined name | E0301 |
+| N002 | Name used before its binding | E0306 |
+| N003 | Redefinition in the same scope | E0308 |
+| N004 | Duplicate item | E0302 |
+| N005 | Two `modhalu` | E0904 |
+| N006 | Unknown module | E0901 |
+| N007 | Unknown imported item | E0304 |
+| N008 | Constant cycle | E0902 |
+| N009 | Private type in a public signature | E0303 |
+| N010 | Unknown enum variant | E0301 |
+| N011 | OR-pattern alternatives bind different names | E0706 |
+| N012 | Imports, nested scopes, shadowing, `naa.` pro-drop | build-pass |
+| PK001 | Package: import a public function and type, by name and through the module | build-pass |
+| PK002 | Package: import a private item | E0303 |
+| PK003 | Package: `bin` without `src/modhalu.ante` | E0903 |
+| PK004 | Package: entry module without `modhalu()` | E0903 |
+| PK005 | Package: unknown local module | E0901 |
+| PK006 | Package: nested modules importing each other in a cycle | build-pass |
+| PK007 | Package: `lib` with `src/lib.ante` | build-pass |
+| W001 | Binding never read | W0001 |
+| W002 | `maare` binding never changed | W0002 |
+| W003 | Statement after `icchey` | W0003 |
+| W005 | Import never used | W0005 |
 | D001 | `jodi` iteration keeps insertion order | run-pass |
 | D002 | `jodi` replacement keeps the key's position | run-pass |
 | D003 | f-string interpolation | stdout matches |

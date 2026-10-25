@@ -3,6 +3,10 @@
 //! Until later milestones land, only the stages implemented so far run:
 //! compile-fail cases must report their expected code and span, and every
 //! other category must pass those stages without errors.
+//!
+//! A test is either one `.ante` file, or a package folder (`ante.toml` +
+//! `src/`) whose expectations live in `ante.toml`'s leading comments, with
+//! spans written as `CODE @ src/file.ante:line:col`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,7 +23,9 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
         if name.starts_with("._") {
             continue;
         }
-        if path.is_dir() {
+        if path.is_dir() && path.join("ante.toml").is_file() {
+            out.push(path);
+        } else if path.is_dir() {
             collect(&path, out);
         } else if path.extension().is_some_and(|ext| ext == "ante") {
             out.push(path);
@@ -30,21 +36,60 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
 struct Expectations {
     category: String,
     errors: Vec<String>,
+    warnings: Vec<String>,
 }
 
 fn parse_header(text: &str) -> Expectations {
     let mut category = String::new();
     let mut errors = Vec::new();
+    let mut warnings = Vec::new();
     for line in text.lines() {
         let Some(comment) = line.strip_prefix('#') else { break };
         let comment = comment.trim();
+        let normalize = |v: &str| v.split_whitespace().collect::<Vec<_>>().join(" ");
         if let Some(value) = comment.strip_prefix("category:") {
             category = value.trim().to_string();
         } else if let Some(value) = comment.strip_prefix("expect-error:") {
-            errors.push(value.split_whitespace().collect::<Vec<_>>().join(" "));
+            errors.push(normalize(value));
+        } else if let Some(value) = comment.strip_prefix("expect-warning:") {
+            warnings.push(normalize(value));
         }
     }
-    Expectations { category, errors }
+    Expectations { category, errors, warnings }
+}
+
+/// Runs one test (a file or a package folder) and returns its errors and
+/// warnings as `CODE @ [file:]line:col`, plus the text holding its header.
+fn run_test(path: &Path) -> (Vec<String>, Vec<String>, String) {
+    let (diags, header): (Vec<(bool, String)>, String) = if path.is_dir() {
+        let checked = antec::package::check_package(path).expect("readable package test");
+        let diags = checked
+            .diagnostics
+            .iter()
+            .map(|(file, d)| {
+                let src = &checked.sources[*file];
+                let (line, col) = src.line_col(d.span.start);
+                (d.is_error(), format!("{} @ {}:{line}:{col}", d.code, src.name))
+            })
+            .collect();
+        (diags, checked.sources[0].text.clone())
+    } else {
+        let (src, mut diags) = antec::load_source(path).expect("readable test file");
+        if diags.is_empty() {
+            diags = antec::check_source(&src);
+        }
+        let diags = diags
+            .iter()
+            .map(|d| {
+                let (line, col) = src.line_col(d.span.start);
+                (d.is_error(), format!("{} @ {line}:{col}", d.code))
+            })
+            .collect();
+        (diags, src.text.clone())
+    };
+    let errors = diags.iter().filter(|(e, _)| *e).map(|(_, s)| s.clone()).collect();
+    let warnings = diags.iter().filter(|(e, _)| !*e).map(|(_, s)| s.clone()).collect();
+    (errors, warnings, header)
 }
 
 #[test]
@@ -56,19 +101,8 @@ fn conformance_suite() {
 
     let mut failures = Vec::new();
     for path in &files {
-        let (src, mut diags) = antec::load_source(path).expect("readable test file");
-        if diags.is_empty() {
-            diags = antec::check_source(&src);
-        }
-        let found: Vec<String> = diags
-            .iter()
-            .filter(|d| d.is_error())
-            .map(|d| {
-                let (line, col) = src.line_col(d.span.start);
-                format!("{} @ {line}:{col}", d.code)
-            })
-            .collect();
-        let expect = parse_header(&src.text);
+        let (errors, warnings, header) = run_test(path);
+        let expect = parse_header(&header);
         let name = path.strip_prefix(&root).unwrap_or(path).display();
         match expect.category.as_str() {
             "compile-fail" => {
@@ -76,16 +110,21 @@ fn conformance_suite() {
                     failures.push(format!("{name}: compile-fail test has no expect-error line"));
                 }
                 for wanted in &expect.errors {
-                    if !found.contains(wanted) {
-                        failures.push(format!("{name}: expected {wanted}, found {found:?}"));
+                    if !errors.contains(wanted) {
+                        failures.push(format!("{name}: expected {wanted}, found {errors:?}"));
                     }
                 }
             }
             "" => failures.push(format!("{name}: missing `# category:` header")),
             _ => {
-                if !found.is_empty() {
-                    failures.push(format!("{name}: expected no errors, found {found:?}"));
+                if !errors.is_empty() {
+                    failures.push(format!("{name}: expected no errors, found {errors:?}"));
                 }
+            }
+        }
+        for wanted in &expect.warnings {
+            if !warnings.contains(wanted) {
+                failures.push(format!("{name}: expected warning {wanted}, found {warnings:?}"));
             }
         }
     }
@@ -142,11 +181,18 @@ fn doc_examples() -> Vec<(String, String)> {
     blocks
 }
 
+fn parse_text(name: &str, text: &str) -> Vec<antec::diag::Diagnostic> {
+    let src = antec::source::SourceFile::new(name, text);
+    antec::parse_source(&src).1
+}
+
 fn check_text(name: &str, text: &str) -> Vec<antec::diag::Diagnostic> {
     let src = antec::source::SourceFile::new(name, text);
     antec::check_source(&src)
 }
 
+/// Every example in the docs must parse. Many are fragments that mention
+/// names they don't declare, so only syntax is checked here.
 #[test]
 fn doc_examples_parse() {
     let mut failures = Vec::new();
@@ -157,14 +203,14 @@ fn doc_examples_parse() {
             continue;
         }
         checked += 1;
-        let mut diags = check_text(&name, &code);
+        let mut diags = parse_text(&name, &code);
         let mut text = code.clone();
         if diags.iter().any(|d| d.code == "E0209") {
             text = format!(
                 "wrapper() -> khali ante:\n{}",
                 code.lines().map(|l| format!("    {l}\n")).collect::<String>()
             );
-            diags = check_text(&name, &text);
+            diags = parse_text(&name, &text);
         }
         let src = antec::source::SourceFile::new(name.clone(), text);
         for d in diags.iter().filter(|d| d.is_error()) {
@@ -173,6 +219,38 @@ fn doc_examples_parse() {
     }
     assert!(checked >= 10, "expected the spec and README to have examples, found {checked}");
     assert!(failures.is_empty(), "doc examples don't parse:\n{}", failures.join("\n"));
+}
+
+/// Complete programs in the docs (spec Appendix D, README) must pass every
+/// implemented stage, names included.
+#[test]
+fn doc_programs_check() {
+    let spec =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../spec/ante_language_spec_1_0.md"))
+            .expect("readable spec");
+    let line_of =
+        |heading: &str| spec.lines().position(|l| l.starts_with(heading)).expect("heading exists") + 1;
+    let (start, end) = (line_of("# Appendix D"), line_of("# Appendix E"));
+    let mut failures = Vec::new();
+    let mut checked = 0;
+    for (name, code) in doc_examples() {
+        let (doc, line) = name.rsplit_once(':').expect("doc:line");
+        let line: usize = line.parse().expect("line number");
+        let is_program = match doc {
+            "README.md" => code.contains("modhalu()"),
+            _ => (start..end).contains(&line),
+        };
+        if !is_program {
+            continue;
+        }
+        checked += 1;
+        let src = antec::source::SourceFile::new(name.clone(), code.clone());
+        for d in check_text(&name, &code).iter().filter(|d| d.is_error()) {
+            failures.push(d.render(&src));
+        }
+    }
+    assert!(checked >= 8, "expected Appendix D and README programs, found {checked}");
+    assert!(failures.is_empty(), "doc programs have errors:\n{}", failures.join("\n"));
 }
 
 /// Parsing every line-prefix of every example must never panic.

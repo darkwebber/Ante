@@ -1,0 +1,97 @@
+{
+  "Ante Sundharaniki 🎬": {
+    "prefix": "sundharaniki",
+    "description": "\"Ante\" welcome program",
+    "body": [
+      "sundharaniki() -> khali ante:",
+      "\t\"Telugu lo code cheyyadam vachindhanta! 🎉\" ni choopinchu()",
+      "",
+      "modhalu() -> khali ante:",
+      "\tsundharaniki()$0"
+    ]
+  },
+  "modhalu (main)": {
+    "prefix": "modhalu",
+    "description": "Program start point",
+    "body": ["modhalu() -> khali ante:", "\t$0"]
+  },
+  "function": {
+    "prefix": "pani",
+    "description": "Function declaration",
+    "body": ["${1:peru}(${2:x}: ${3:ankam} ${4:ni}) -> ${5:khali} ante:", "\t$0"]
+  },
+  "aithe": {
+    "prefix": "aithe",
+    "description": "if",
+    "body": ["${1:sharathu} aithe:", "\t$0"]
+  },
+  "aithe / ledhante": {
+    "prefix": "ledhante",
+    "description": "if / else",
+    "body": ["${1:sharathu} aithe:", "\t${2:avunu_aithe}", "ledhante:", "\t$0"]
+  },
+  "okko (for each)": {
+    "prefix": "okko",
+    "description": "for item in collection",
+    "body": ["${1:items} lo okko ${2:item} ki:", "\t$0"]
+  },
+  "range loop": {
+    "prefix": "nunchi",
+    "description": "for i in 0..n",
+    "body": ["${1:0} nunchi ${2:n} lopu okko ${3:i} ki:", "\t$0"]
+  },
+  "unnanthasepu (while)": {
+    "prefix": "unnanthasepu",
+    "description": "while",
+    "body": ["${1:sharathu} unnanthasepu:", "\t$0"]
+  },
+  "batti (match)": {
+    "prefix": "batti",
+    "description": "match on sare / thappu",
+    "body": [
+      "${1:result} batti:",
+      "\tsare(${2:value}) aithe:",
+      "\t\t$0",
+      "\tthappu(${3:e}) aithe:",
+      "\t\t${3:e} ni gola_pettu()"
+    ]
+  },
+  "rakam (record)": {
+    "prefix": "rakam",
+    "description": "Record type",
+    "body": ["rakam ${1:Peru} ante:", "\t${2:field}: ${3:ankam}$0"]
+  },
+  "edho_okati (enum)": {
+    "prefix": "edho_okati",
+    "description": "Enum type",
+    "body": ["edho_okati ${1:Peru} ante:", "\t${2:Okati}", "\t${3:Rendu}$0"]
+  },
+  "panulu (methods)": {
+    "prefix": "panulu",
+    "description": "Methods block",
+    "body": [
+      "${1:Type} panulu ante:",
+      "\t${2:method}(naa: &idhi) -> ${3:khali} ante:",
+      "\t\t$0"
+    ]
+  },
+  "gunam undhi (trait impl)": {
+    "prefix": "gunam",
+    "description": "Implement a trait for a type",
+    "body": [
+      "${1:Type} ki ${2:Choopinchochu} gunam undhi:",
+      "\t${3:padham_ga}(naa: &idhi) -> ${4:padham} ante:",
+      "\t\t$0"
+    ]
+  },
+  "choopinchu (print)": {
+    "prefix": "choopinchu",
+    "description": "Print a value",
+    "body": ["${1:value} ni choopinchu()$0"]
+  },
+  "naa_risk (unsafe)": {
+    "prefix": "naa_risk",
+    "description": "Unsafe block: naa risk, nenu chusukunta",
+    "body": ["naa_risk:", "\t$0"]
+  }
+}

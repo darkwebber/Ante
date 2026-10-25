@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0706 @ 7:18
+# level: core
+modhalu() -> khali ante:
+    p ante (1, 2)
+    p batti:
+        (x, 0) | (0, y) aithe:
+            icchey

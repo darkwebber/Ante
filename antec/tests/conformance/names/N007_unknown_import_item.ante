@@ -1,0 +1,4 @@
+# category: compile-fail
+# expect-error: E0304 @ 4:13
+# level: core
+file nunchi chadhuv thechuko
