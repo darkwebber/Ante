@@ -1,0 +1,36 @@
+name: PR title
+
+# PRs are squash-merged, so the title becomes the commit message that
+# release-please reads. It must follow Conventional Commits (CONTRIBUTING.md).
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  conventional:
+    name: Conventional Commits title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            docs
+            refactor
+            test
+            ci
+            build
+            chore
+            revert
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The summary "{subject}" should start with a lowercase letter,
+            e.g. "feat(parser): parse else-if chains".

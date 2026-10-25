@@ -1,0 +1,14 @@
+# category: build-pass
+# level: core
+kalupu(a: padham ni, b: padham tho) -> padham ante:
+    (a + b) icchey
+
+modhalu() -> khali ante:
+    x ante ("Ravi" ni,
+        "Teja" tho kalupu())            # (a) inside brackets
+    y ante "Ravi" ni,
+    "Teja" tho kalupu()                 # (b) after a trailing comma
+    x |> "!" tho kalupu()
+    |> choopinchu()                     # (c) next line starts with |>
+    y ni
+        choopinchu()                    # (d) next line indented more

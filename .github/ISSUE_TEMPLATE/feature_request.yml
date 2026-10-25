@@ -1,0 +1,27 @@
+name: Feature request
+description: '"Ante" ki new feature idea'
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New word kosam aithe [vocabulary proposal](https://github.com/darkwebber/Ante/issues/new?template=vocabulary_proposal.yml) use cheyyandi.
+        Syntax / semantics change chese big idea aithe, discussion tharvatha idhi oka [RFC](https://github.com/darkwebber/Ante/tree/main/rfcs) avthundhi.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem enti?
+      description: Ippudu em cheyyalekapothunnaru, or edhi kashtam ga undhi?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Mee idea
+      description: '"Ante" code example tho cheppandi.'
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Vere options / vere languages lo ela undhi

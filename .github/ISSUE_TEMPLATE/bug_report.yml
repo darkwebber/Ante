@@ -1,0 +1,49 @@
+name: Bug report
+description: antec lo edho wrong ga jarigindhi
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bug report chesinanduku thanks! Security problem aithe ikkada pettakandi, [SECURITY.md](https://github.com/darkwebber/Ante/blob/main/SECURITY.md) choodandi.
+  - type: textarea
+    id: program
+    attributes:
+      label: Chinna "Ante" program (reproduce cheyyadaniki)
+      description: Problem ni choopinche smallest program.
+      render: ante
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Run chesina command
+      render: bash
+      placeholder: antec check bug.ante
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Em jaragali anukunnaru? (spec section unte cheppandi)
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual ga em jarigindhi? (full output paste cheyyandi)
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: antec version
+      description: "`antec --version` output"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / platform
+      placeholder: macOS 15 (Apple Silicon), Ubuntu 24.04 x86-64, Windows 11

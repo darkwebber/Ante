@@ -1,0 +1,10 @@
+* text=auto eol=lf
+
+*.ante text eol=lf
+*.rs   text eol=lf
+*.md   text eol=lf
+*.toml text eol=lf
+*.yml  text eol=lf
+
+# Lexer tests depend on exact bytes (tabs, BOM, CRLF built in code)
+antec/tests/conformance/**/*.ante -text

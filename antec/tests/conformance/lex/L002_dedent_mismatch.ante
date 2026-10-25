@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0103 @ 7:7
+# level: core
+modhalu() -> khali ante:
+    avunu aithe:
+        "a" ni choopinchu()
+      "b" ni choopinchu()

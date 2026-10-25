@@ -1,0 +1,74 @@
+name: Vocabulary proposal (new word)
+description: '"Ante" lo oka word add / rename / remove cheyyamani propose cheyyandi'
+title: "vocab: "
+labels: ["vocabulary"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! 🙏 "Ante" ki main strength dhaani words. First [CONTRIBUTING.md lo vocabulary section](https://github.com/darkwebber/Ante/blob/main/CONTRIBUTING.md#new-vocabulary-propose-cheyyadam) chadavandi.
+        Ee issue kanisam **7 days** discussion kosam open lo untundhi.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Proposal type
+      options:
+        - New word add cheyyadam (new keyword / stdlib name)
+        - Unna word rename cheyyadam
+        - Unna word remove cheyyadam
+        - Spelling / romanization fix
+    validations:
+      required: true
+  - type: input
+    id: current
+    attributes:
+      label: Ippudu unna word (unte)
+      placeholder: "ex: vadiley"
+  - type: input
+    id: proposed
+    attributes:
+      label: Mee new word
+      placeholder: "ex: vadhiley"
+    validations:
+      required: true
+  - type: textarea
+    id: meaning
+    attributes:
+      label: Meaning, inka programming lo em chesthundhi
+      placeholder: "vadhiley = 'vadhilesey'. Loop lo current iteration skip chesthundhi (continue)."
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Idhi enduku better?
+      description: Spec Appendix A rules (R1–R6) tho explain cheyyandi. Mee ooru / dialect lo ela antaaru?
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Example code (before / after)
+      render: ante
+      placeholder: |
+        # before
+        xs lo okko x ki:
+            x < 0 aithe:
+                vadiley
+        # after
+        xs lo okko x ki:
+            x < 0 aithe:
+                vadhiley
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: Romanization rule A.2 follow ayyanu (dental త/ద ki `th`/`dh`, retroflex ట/డ ki `t`/`d`)
+          required: true
+        - label: Ippudu unna keywords / prelude names tho clash avvadhu ani check chesanu
+          required: true
+        - label: Idhi breaking change aithe (rename / remove / new keyword), docs/VERSIONING.md lo deprecation rules chadivanu
+          required: true

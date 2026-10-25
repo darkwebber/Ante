@@ -1,0 +1,26 @@
+# "Ante" Sundharaniki! 🎬
+#
+# "Ante" ki welcome! Mana first program oka sentence laage chaduvuthundhi:
+#     "Ante, Sundharaniki Telugu lo code cheyyadam vachindhanta!"
+#
+# Run (compiler ready ayyaaka):  antec run examples/ante_sundharaniki.ante
+
+# Step 1: function peru `sundharaniki`. `ante:` ante "means", ikkada nunchi body start.
+# So idhi literally chaduvuthundhi: "sundharaniki ante: Telugu lo code cheyyadam vachindhanta!"
+sundharaniki() -> khali ante:
+    "Telugu lo code cheyyadam vachindhanta! 🎉" ni choopinchu()
+
+# Step 2: evariki, em vachindho arguments ga pampudham.
+# `evariki` ki marker ledhu, `emi` ki `ni` marker undhi. Verb (function) eppudu last lo.
+vachindhanta(evariki: padham, emi: padham ni) -> khali ante:
+    f"{evariki} {emi} vachindhanta! 🎉" ni choopinchu()
+
+modhalu() -> khali ante:
+    sundharaniki()
+    "Ammaki", "WhatsApp lo voice notes pampadam" ni vachindhanta()
+    "Meeku", "\"Ante\" lo code cheyyadam" ni vachindhanta()
+
+# Output:
+#   Telugu lo code cheyyadam vachindhanta! 🎉
+#   Ammaki WhatsApp lo voice notes pampadam vachindhanta! 🎉
+#   Meeku "Ante" lo code cheyyadam vachindhanta! 🎉

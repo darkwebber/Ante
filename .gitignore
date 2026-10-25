@@ -1,0 +1,11 @@
+# Rust build output
+target/
+
+# macOS metadata (exFAT volumes create ._* sidecar files)
+._*
+.DS_Store
+
+# Editors
+.idea/
+.vscode/
+*.swp
