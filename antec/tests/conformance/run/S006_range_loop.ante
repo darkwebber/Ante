@@ -1,0 +1,11 @@
+# category: run-pass
+# expect-stdout: 0
+# expect-stdout: 1
+# expect-stdout: 2
+# expect-stdout: 3
+# expect-stdout: 4
+# level: core
+# `0 nunchi 5 lopu okko i ki:` prints 0 to 4.
+modhalu() -> khali ante:
+    0 nunchi 5 lopu okko i ki:
+        i ni choopinchu()

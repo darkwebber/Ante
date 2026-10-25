@@ -1,4 +1,6 @@
 # category: run-pass
+# expect-stdout: avunu
+# expect-stdout: Manishi{peru: Ravi, vayasu: 30}
 # level: core
 # `@automatic Polchochu, Choopinchochu` on a record.
 @automatic Polchochu, Choopinchochu

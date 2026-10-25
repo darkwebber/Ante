@@ -1,0 +1,8 @@
+# category: run-pass
+# expect-stdout: Ravi ki 26 ellu {braces}
+# level: core
+# f-string interpolation.
+modhalu() -> khali ante:
+    peru ante "Ravi"
+    vayasu ante 25
+    f"{peru} ki {vayasu + 1} ellu {{braces}}" ni choopinchu()

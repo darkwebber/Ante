@@ -1,0 +1,16 @@
+# category: run-pass
+# expect-stdout: 6
+# expect-stdout: 18
+# expect-stdout: sare(12)
+# expect-stdout: kaadhu
+# expect-stdout: [a, b, c]
+# level: core
+# `padham` methods count characters, not bytes.
+modhalu() -> khali ante:
+    s ante "తెలుగు"
+    s.enni() ni choopinchu()
+    s.byte_len() ni choopinchu()
+    "12".ankam_ga() |> choopinchu()
+    "x".ankam_ga().sareyaa() ni choopinchu()
+    abc ante "a, b, c"
+    ", " ni abc.vidagottu() |> choopinchu()

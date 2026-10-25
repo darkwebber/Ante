@@ -1,4 +1,6 @@
 # category: run-pass
+# expect-stdout: Ravi from Hyderabad
+# expect-stdout: Sita from Vizag
 # level: core
 # Default parameter used.
 pilupu(peru: padham ni, ooru: padham kosam = "Hyderabad") -> padham ante:
@@ -6,3 +8,4 @@ pilupu(peru: padham ni, ooru: padham kosam = "Hyderabad") -> padham ante:
 
 modhalu() -> khali ante:
     "Ravi" ni pilupu() |> choopinchu()
+    "Sita" ni, "Vizag" kosam pilupu() |> choopinchu()

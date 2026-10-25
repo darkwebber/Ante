@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use super::lower::Lower;
+use super::results::{expr_id, AdtRef, FieldStep, PathRes, Results};
 use super::solve::{self, Solver};
 use super::{AdtKind, FnId, FnOrigin, Generic, Globals, RecvMode, TraitRef, TyEnv};
 use crate::ast::*;
@@ -19,8 +20,8 @@ pub(super) struct Local {
 }
 
 /// The three conversion functions of §18.4.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Conv {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Conv {
     Lossless,
     Checked,
     Lossy,
@@ -45,31 +46,38 @@ pub(super) struct BodyCx<'s, 'g> {
     /// One flag per enclosing loop: has it seen an `aapey`?
     pub loops: Vec<bool>,
     pub unsafe_depth: u32,
+    /// Decisions recorded for MIR lowering, resolved by `finish`.
+    pub out: Results,
 }
 
-pub fn check_module(g: &Globals, file: FileId, ast: &Module) -> Vec<(FileId, Diagnostic)> {
+pub fn check_module(g: &Globals, file: FileId, ast: &Module) -> (Vec<(FileId, Diagnostic)>, Results) {
     let mut out = Vec::new();
+    let mut results = Results::default();
+    let mut take = |(d, r): (Vec<(FileId, Diagnostic)>, Results)| {
+        out.extend(d);
+        results.merge(r);
+    };
     let module = g.module_of_file(file);
     for item in &ast.items {
         match &item.kind {
-            ItemKind::Fn(f) => out.extend(check_fn(g, file, module, &f.sig, &f.body, None)),
+            ItemKind::Fn(f) => take(check_fn(g, file, module, &f.sig, &f.body, None)),
             ItemKind::Methods(m) => {
                 for member in &m.items {
                     if let ItemKind::Fn(f) = &member.kind {
-                        out.extend(check_fn(g, file, module, &f.sig, &f.body, None));
+                        take(check_fn(g, file, module, &f.sig, &f.body, None));
                     }
                 }
             }
             ItemKind::Impl(i) => {
                 for f in &i.items {
-                    out.extend(check_fn(g, file, module, &f.sig, &f.body, None));
+                    take(check_fn(g, file, module, &f.sig, &f.body, None));
                 }
             }
             ItemKind::Trait(t) => {
                 let Some(&def) = g.res.modules[module].types.get(&t.name.name) else { continue };
                 for ti in &t.items {
                     if let Some(body) = &ti.default_body {
-                        out.extend(check_fn(g, file, module, &ti.sig, body, Some(def)));
+                        take(check_fn(g, file, module, &ti.sig, body, Some(def)));
                     }
                 }
             }
@@ -79,13 +87,13 @@ pub fn check_module(g: &Globals, file: FileId, ast: &Module) -> Vec<(FileId, Dia
                 let mut cx = BodyCx::new(g, file, module, Vec::new(), None, Ty::Unit);
                 cx.check_coerce(value, ty);
                 cx.check_const_expr(value);
-                cx.finish();
-                out.extend(cx.diags);
+                let r = cx.finish();
+                take((cx.diags, r));
             }
             _ => {}
         }
     }
-    out
+    (out, results)
 }
 
 fn check_fn(
@@ -95,8 +103,10 @@ fn check_fn(
     sig_ast: &FnSig,
     body: &Block,
     trait_def: Option<usize>,
-) -> Vec<(FileId, Diagnostic)> {
-    let Some(&fid) = g.fn_by_span.get(&(file, sig_ast.name.span.start)) else { return Vec::new() };
+) -> (Vec<(FileId, Diagnostic)>, Results) {
+    let Some(&fid) = g.fn_by_span.get(&(file, sig_ast.name.span.start)) else {
+        return (Vec::new(), Results::default());
+    };
     let sig = &g.fns[fid];
     let mut generics = sig.generics.clone();
     if let Some(def) = trait_def {
@@ -136,8 +146,8 @@ fn check_fn(
             ),
         );
     }
-    cx.finish();
-    cx.diags
+    let r = cx.finish();
+    (cx.diags, r)
 }
 
 impl<'s, 'g> BodyCx<'s, 'g> {
@@ -166,6 +176,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             expr_types: HashMap::new(),
             loops: Vec::new(),
             unsafe_depth: 0,
+            out: Results::default(),
         }
     }
 
@@ -436,6 +447,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             StmtKind::For { iter, pattern, body } => {
                 let it = self.check_expr(iter, None);
                 let item = self.iter_item(&it, is_place(iter), iter.span);
+                self.out.for_items.insert(expr_id(self.file, iter.span), item.clone());
                 self.check_pattern(pattern, &item, true);
                 self.loops.push(false);
                 self.check_block(body);
@@ -674,11 +686,16 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             ExprKind::Unary { op, operand } => self.check_unary(*op, operand, e.span, expected.as_ref()),
             ExprKind::Field { base, name } => {
                 let bt = self.check_expr(base, None);
-                self.field(&bt, name)
+                let (t, step) = self.field_step(&bt, name);
+                if let Some(step) = step {
+                    self.out.fields.insert(expr_id(self.file, e.span), step);
+                }
+                t
             }
             ExprKind::TupleIndex { base, index } => {
                 let bt = self.check_expr(base, None);
-                let t = self.autoderef(&bt);
+                let (t, derefs) = self.autoderef_n(&bt);
+                self.out.fields.insert(expr_id(self.file, e.span), FieldStep { derefs, index: *index });
                 match self.shallow(&t) {
                     Ty::Tuple(items) if (*index as usize) < items.len() => items[*index as usize].clone(),
                     Ty::Error => Ty::Error,
@@ -852,66 +869,80 @@ impl<'s, 'g> BodyCx<'s, 'g> {
     // ── paths ──────────────────────────────────────────────────────────────
 
     fn check_path(&mut self, path: &Path) -> Ty {
+        let (ty, res) = self.path_value(path);
+        self.out.paths.insert(expr_id(self.file, path.span), res);
+        ty
+    }
+
+    fn path_value(&mut self, path: &Path) -> (Ty, PathRes) {
         let first = &path.segments[0];
-        let (ty, rest) = match self.res_at(first.span) {
+        let (ty, rest, local) = match self.res_at(first.span) {
             Some(Res::Local(decl)) => match self.locals.get(&decl.start) {
-                Some(l) => (l.ty.clone(), &path.segments[1..]),
-                None => (Ty::Error, &path.segments[1..]),
+                Some(l) => (l.ty.clone(), &path.segments[1..], Some(decl.start)),
+                None => return (Ty::Error, PathRes::Opaque),
             },
-            Some(Res::SelfMember) if first.name == "naa" => (self.naa_ty(), &path.segments[1..]),
-            Some(Res::SelfMember) => (self.naa_ty(), &path.segments[..]),
+            Some(Res::SelfMember) if first.name == "naa" => (self.naa_ty(), &path.segments[1..], None),
+            Some(Res::SelfMember) => (self.naa_ty(), &path.segments[..], None),
             Some(Res::Def(d)) => return self.def_path(d, path, 1),
             Some(Res::Builtin) => {
                 if path.segments.len() > 1 {
                     let head = builtin_head(&first.name);
-                    return self.assoc_value(head, &path.segments[1], path.span);
+                    return self.assoc_value(head, &path.segments[1]);
                 }
                 self.error("E0401", first.span, format!("`{}` oka type, value kaadhu", first.name));
-                return Ty::Error;
+                return (Ty::Error, PathRes::Opaque);
             }
-            None => return Ty::Error,
+            None => return (Ty::Error, PathRes::Opaque),
         };
-        self.fields(ty, rest)
+        let (ty, steps) = self.fields(ty, rest);
+        let res = match local {
+            Some(decl) => PathRes::Local { decl, steps },
+            None => PathRes::Naa { steps },
+        };
+        (ty, res)
     }
 
-    fn fields(&mut self, mut ty: Ty, segs: &[Ident]) -> Ty {
+    fn fields(&mut self, mut ty: Ty, segs: &[Ident]) -> (Ty, Vec<FieldStep>) {
+        let mut steps = Vec::new();
         for seg in segs {
-            ty = self.field(&ty, seg);
+            let (t, step) = self.field_step(&ty, seg);
+            ty = t;
+            steps.push(step.unwrap_or(FieldStep { derefs: 0, index: 0 }));
         }
-        ty
+        (ty, steps)
     }
 
     /// The value a path starting at definition `d` names (segment `idx` onwards).
-    fn def_path(&mut self, d: usize, path: &Path, idx: usize) -> Ty {
+    fn def_path(&mut self, d: usize, path: &Path, idx: usize) -> (Ty, PathRes) {
         let g = self.g;
         let def = &g.res.defs[d];
         match def.kind {
             DefKind::Module(m) => {
                 if g.res.modules[m].open {
-                    return Ty::Error;
+                    return (Ty::Error, PathRes::Opaque);
                 }
                 match path.segments.get(idx).and_then(|s| self.res_at(s.span)) {
                     Some(Res::Def(member)) => self.def_path(member, path, idx + 1),
-                    _ => Ty::Error,
+                    _ => (Ty::Error, PathRes::Opaque),
                 }
             }
             DefKind::Fn | DefKind::StdValue | DefKind::Const => {
-                let ty = if let Some(&fid) = g.fn_of_def.get(&d) {
-                    self.fn_value(fid)
-                } else if let Some(t) = g.consts.get(&d) {
-                    t.clone()
-                } else {
-                    Ty::Error
-                };
-                self.fields(ty, &path.segments[idx..])
+                if let Some(&fid) = g.fn_of_def.get(&d) {
+                    let (ty, tys) = self.fn_value(fid);
+                    return (ty, PathRes::Fn { fid, tys });
+                }
+                let ty = g.consts.get(&d).cloned().unwrap_or(Ty::Error);
+                let (ty, steps) = self.fields(ty, &path.segments[idx..]);
+                (ty, PathRes::Const { def: d, steps })
             }
             DefKind::Enum | DefKind::Record | DefKind::StdType => {
                 let Some(seg) = path.segments.get(idx) else {
                     self.error("E0401", path.span, format!("`{}` oka type, value kaadhu", def.name));
-                    return Ty::Error;
+                    return (Ty::Error, PathRes::Opaque);
                 };
                 if let Some(super::Adt { kind: AdtKind::Enum(variants), generics, .. }) = g.adts.get(&d) {
-                    if let Some(v) = variants.iter().find(|v| v.name == seg.name) {
+                    if let Some(vi) = variants.iter().position(|v| v.name == seg.name) {
+                        let v = &variants[vi];
                         if !v.fields.is_empty() {
                             self.error(
                                 "E0704",
@@ -928,34 +959,36 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                         }
                         let args = generics.iter().map(|_| self.fresh()).collect();
                         let ty = Ty::App(Con::Adt(d), args);
-                        return self.fields(ty, &path.segments[idx + 1..]);
+                        return (ty, PathRes::Variant { adt: d, variant: vi as u32 });
                     }
                 }
                 let head = match g.std_cons.get(&d) {
                     Some(c) => super::Head::Con(*c),
                     None => super::Head::Con(Con::Adt(d)),
                 };
-                self.assoc_value(Some(head), seg, path.span)
+                self.assoc_value(Some(head), seg)
             }
-            _ => Ty::Error,
+            _ => (Ty::Error, PathRes::Opaque),
         }
     }
 
     /// `Type.f` used as a value.
-    fn assoc_value(&mut self, head: Option<super::Head>, seg: &Ident, span: Span) -> Ty {
+    fn assoc_value(&mut self, head: Option<super::Head>, seg: &Ident) -> (Ty, PathRes) {
         let found = head.and_then(|h| self.g.inherent.get(&h)).and_then(|m| m.get(&seg.name)).copied();
         match found {
-            Some(fid) => self.fn_value(fid),
+            Some(fid) => {
+                let (ty, tys) = self.fn_value(fid);
+                (ty, PathRes::Fn { fid, tys })
+            }
             None => {
                 self.error("E0406", seg.span, format!("`{}` ane function ee type lo ledhu", seg.name));
-                let _ = span;
-                Ty::Error
+                (Ty::Error, PathRes::Opaque)
             }
         }
     }
 
     /// A named function used as a value: `pani[(…) -> R]` (§10.7.3).
-    fn fn_value(&mut self, fid: FnId) -> Ty {
+    fn fn_value(&mut self, fid: FnId) -> (Ty, Vec<Ty>) {
         let sig = &self.g.fns[fid];
         let fresh: Vec<Ty> = sig.generics.iter().map(|_| self.infer.fresh(VarKind::General)).collect();
         let sig = &self.g.fns[fid];
@@ -972,30 +1005,38 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             ));
         }
         params.extend(sig.params.iter().map(|p| (p.ty.subst(&fresh), p.role)));
-        Ty::Fn(params, Box::new(sig.ret.subst(&fresh)))
+        (Ty::Fn(params, Box::new(sig.ret.subst(&fresh))), fresh)
     }
 
     pub fn autoderef(&mut self, ty: &Ty) -> Ty {
+        self.autoderef_n(ty).0
+    }
+
+    /// Dereferences `&` and `pette` until neither is left; returns the count.
+    pub fn autoderef_n(&mut self, ty: &Ty) -> (Ty, u8) {
         let mut t = self.shallow(ty);
+        let mut n = 0u8;
         loop {
             match t {
                 Ty::Ref(_, inner) => t = self.shallow(&inner),
                 Ty::App(Con::Pette, args) => t = self.shallow(&args[0]),
-                other => return other,
+                other => return (other, n),
             }
+            n = n.saturating_add(1);
         }
     }
 
     /// `e.f` with auto-dereference (§10.6).
-    pub fn field(&mut self, base: &Ty, name: &Ident) -> Ty {
-        let t = self.autoderef(base);
+    pub fn field_step(&mut self, base: &Ty, name: &Ident) -> (Ty, Option<FieldStep>) {
+        let (t, derefs) = self.autoderef_n(base);
         match &t {
-            Ty::Error => return Ty::Error,
-            Ty::Var(_) => return self.need_annotation(name.span),
+            Ty::Error => return (Ty::Error, None),
+            Ty::Var(_) => return (self.need_annotation(name.span), None),
             Ty::App(Con::Adt(d), args) => {
                 if let Some(adt) = self.g.adts.get(d) {
                     if let AdtKind::Record(fields) = &adt.kind {
-                        if let Some(f) = fields.iter().find(|f| f.name == name.name) {
+                        if let Some(index) = fields.iter().position(|f| f.name == name.name) {
+                            let f = &fields[index];
                             if !f.public && adt.module != self.module {
                                 self.error(
                                     "E0303",
@@ -1006,7 +1047,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                                     ),
                                 );
                             }
-                            return f.ty.subst(args);
+                            return (f.ty.subst(args), Some(FieldStep { derefs, index: index as u32 }));
                         }
                     }
                 }
@@ -1015,7 +1056,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
         }
         let shown = self.show(&t);
         self.error("E0405", name.span, format!("`{shown}` lo `{}` ane field ledhu", name.name));
-        Ty::Error
+        (Ty::Error, None)
     }
 
     // ── operators (§10.5) ──────────────────────────────────────────────────
@@ -1176,7 +1217,8 @@ impl<'s, 'g> BodyCx<'s, 'g> {
 
     fn check_index(&mut self, base: &Expr, indices: &[Expr], span: Span) -> Ty {
         let bt = self.check_expr(base, None);
-        let t = self.autoderef(&bt);
+        let (t, derefs) = self.autoderef_n(&bt);
+        self.out.index_derefs.insert(expr_id(self.file, span), derefs);
         if indices.len() != 1 || matches!(indices[0].kind, ExprKind::Hole) {
             for i in indices {
                 if !matches!(i.kind, ExprKind::Hole) {
@@ -1277,6 +1319,8 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             for a in args.iter().skip(1) {
                 self.check_expr(a, None);
             }
+            let adt = if con == Con::Undochu { AdtRef::Undochu } else { AdtRef::SareThappu };
+            self.out.ctors.insert(expr_id(self.file, span), (adt, slot as u32));
             return Ty::App(con, parts);
         }
         let Some((d, variant)) = self.variant_of(path) else {
@@ -1313,6 +1357,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
         for a in args.iter().skip(v.fields.len()) {
             self.check_expr(a, None);
         }
+        self.out.ctors.insert(expr_id(self.file, span), (AdtRef::Adt(d), variant as u32));
         Ty::App(Con::Adt(d), fresh)
     }
 
@@ -1351,6 +1396,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             return Ty::Error;
         };
         let (d, adt) = adt;
+        self.out.records.insert(expr_id(self.file, span), d);
         let AdtKind::Record(decl) = &adt.kind else {
             self.error("E0401", path.span, format!("`{}` rakam (record) kaadhu", adt.name));
             return Ty::Error;
@@ -1515,7 +1561,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
 
     // ── end of body ────────────────────────────────────────────────────────
 
-    pub fn finish(&mut self) {
+    pub fn finish(&mut self) -> Results {
         // §10.1: leftover literal variables take their default types.
         for v in 0..self.infer.len() as u32 {
             if self.infer.probe(v).is_none() {
@@ -1586,6 +1632,16 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                 }
             }
         }
+        let mut raw = std::mem::take(&mut self.out);
+        for ((start, end), ty) in std::mem::take(&mut self.expr_types) {
+            raw.expr_ty.insert((self.file, start, end), ty);
+        }
+        for (decl, l) in &self.locals {
+            raw.local_ty.insert((self.file, *decl), (l.ty.clone(), l.mutable));
+        }
+        let mut done = Results::default();
+        done.absorb(raw, &mut self.infer);
+        done
     }
 
     fn check_conversion(&mut self, kind: Conv, s: &Ty, d: &Ty, span: Span) {

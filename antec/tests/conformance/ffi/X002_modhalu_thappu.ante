@@ -1,0 +1,15 @@
+# category: run-pass
+# expect-stdout: start
+# expect-exit: 1
+# level: core
+# `modhalu` returns `thappu(e)`: exit 1.
+edho_okati Thappu ante:
+    Chedindhi
+
+Thappu ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        "chedindhi ra" icchey
+
+modhalu() -> sare_thappu[khali, Thappu] ante:
+    "start" ni choopinchu()
+    thappu(Thappu.Chedindhi) icchey

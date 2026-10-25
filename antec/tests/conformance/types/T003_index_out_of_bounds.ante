@@ -1,0 +1,7 @@
+# category: runtime-trap
+# expect-trap: T03 @ 7:5
+# level: core
+# `xs[5]` on length 3.
+modhalu() -> khali ante:
+    xs ante [1, 2, 3]
+    xs[5] ni choopinchu()

@@ -173,6 +173,18 @@ impl Solver<'_, '_> {
         tr: &TraitRef,
         depth: u32,
     ) -> Option<bool> {
+        // Standard library types (§21.3): every one can be shown, copied
+        // with `xerox` and compared; `Kramam` is also ordered, hashable and `CopyKottochu`.
+        if let Ty::App(Con::Adt(d), _) = ty {
+            if self.g.adts.get(d).is_some_and(|a| a.file.is_none()) {
+                let kramam = self.g.kramam == Some(*d);
+                return Some(match name {
+                    "Choopinchochu" | "XeroxTheeyochu" | "Polchochu" => true,
+                    "VarusaPettochu" | "HashCheyochu" | "CopyKottochu" => kramam,
+                    _ => return None,
+                });
+            }
+        }
         let all =
             |t: &mut InferTable, items: &[Ty]| items.iter().all(|x| self.implements(t, x, tr, depth + 1));
         let scalar = matches!(ty, Ty::Int(_) | Ty::Float(_) | Ty::Bool | Ty::Char | Ty::Unit);

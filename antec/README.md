@@ -9,8 +9,9 @@
 | M3 Names, modules, imports, visibility (§7–8) | ✅ done |
 | M4 Type checker (§9–14) | ✅ done |
 | M5 Call binding, pipes (§11–12) | ✅ M4 tho paatu done |
-| M6 MIR and interpreter | ⏳ next |
-| M7–M14 | inka start avvaledhu |
+| M6 MIR and interpreter (Part V) | ✅ done |
+| M7 LLVM code generation | ⏳ next |
+| M8–M14 | inka start avvaledhu |
 
 ## Build and test
 
@@ -22,6 +23,14 @@ cargo test -p antec
 
 ```bash
 cargo run -p antec -- check examples/ante_sundharaniki.ante
+```
+
+```bash
+cargo run -p antec -- run examples/ante_sundharaniki.ante
+```
+
+```bash
+cargo run -p antec -- emit mir examples/ante_sundharaniki.ante
 ```
 
 Package (`ante.toml` unna folder) motham check cheyyalante:
@@ -60,6 +69,12 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 | `src/typeck/solve.rs` | Unification, coercions (§9.4.2), trait solving |
 | `src/typeck/items.rs` | Implementations (orphan, overlap, missing methods), `@automatic`, infinite types, `bayata` signatures |
 | `src/typeck/std_lib.rs` | `std/*.ante` signatures load chesthundhi |
+| `src/typeck/results.rs` | Type checker nirnayalu (prathi call ae function ki, arguments ae order lo, auto borrows) MIR kosam |
+| `src/mir/mod.rs` | MIR: basic blocks, places, moves, drops; `antec emit mir` printer |
+| `src/mir/build.rs` | Body lowering: scopes, drops, `vellagane`, `?`, pattern matching, closures, calls |
+| `src/interp/mod.rs` | MIR interpreter: memory, frames, traps (T01–T10), drop order, constants (E1102) |
+| `src/interp/native.rs` | Runtime stdlib: prelude, `padham`, `varusa`, `jodi`, `lekkalu`, `file`, `system`, display, iterators |
+| `src/interp/value.rs` | Runtime values, addresses, insertion-order `jodi` |
 | `std/*.ante` | Standard library signatures, "Ante" lone raasinavi (prelude, `lekkalu`, `file`, `system`, `samayam`, `memory`) |
 | `src/lint.rs` | Warnings (W0001 unused binding, W0002 unnecessary `maare`, W0003 unreachable code, W0005 unused import); errors lenappudu matrame |
 | `src/package.rs` | `ante.toml` + `src/` packages, module discovery, entry point (`modhalu`) check |
@@ -92,6 +107,15 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 - **Calls:** phrases ni case marker tho formals ki bind chesthaam (§11.2), `&T` formal ki owned value isthe auto borrow, `&maare` ki isthe E0610.
 - **Speculation is cheap.** Trait implementations try chese appudu inference table snapshot teesukuntaam; fail aithe rollback. Full copy cheyyamu, kaabatti pedda functions kuda fast.
 - **Errors first, warnings later.** Name errors unte types check cheyyamu; type errors unte warnings choopinchamu. Okka mistake ki pedda error list raadhu.
+
+## Programs ela run avthayi (short ga)
+
+- **MIR.** Prathi function oka control-flow graph avthundhi: basic blocks, places (`_3.1`, `(*_2)`), moves, `drop` lu explicit ga. `antec emit mir file.ante` tho choodochu.
+- **Scopes and drops.** Block ki oka frame: aa block lo declare chesina locals reverse order lo drop avthayi, mundhu `vellagane` blocks LIFO lo run avthayi. `icchey`, `aapey`, `vadhiley`, `?` anni ade cleanup chesthayi (§19.3–19.4). Move ayyina value malli drop avvadhu.
+- **Interpreter.** Prathi local ki oka slot; reference ante slot + path. Overflow, bounds, sunna tho bhaagham anni spec laage trap avthayi (exit 101, `kompa munigindhi! … (file:line:col)`).
+- **Constants** kuda interpreter tho ne lekkisthaam (check time lo); trap aithe E1102.
+- **Implementation-defined choices** (§20.6): `lekkalu.motham`/`dot` floats ni 8 lanes lo kalipi, chivarlo lanes ni order lo kaluputhayi. `size_of` ints/floats ki bytes, migathavi ki 8. Hash seed fixed.
+- **Ippatiki levu:** `torch`/`python` calls, raw pointers, `memory`, `bayata "C"` calls (T05 tho aagipothayi; M11, M13–M14 lo vasthayi). Partial move tharvatha migilina fields ki `sardhu` run avvadhu (M8 borrow checker vachaaka).
 
 ## Gurthu pettukovalsinavi
 

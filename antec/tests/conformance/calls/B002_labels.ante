@@ -1,7 +1,10 @@
 # category: run-pass
+# expect-stdout: a=1, b=2, c=3
+# expect-stdout: 6
 # level: core
 # Labelled phrases in any order.
 kalupu_moodu(a: ankam ni, b: ankam ni, c: ankam ni) -> ankam ante:
+    f"a={a}, b={b}, c={c}" ni choopinchu()
     (a + b + c) icchey
 
 modhalu() -> khali ante:

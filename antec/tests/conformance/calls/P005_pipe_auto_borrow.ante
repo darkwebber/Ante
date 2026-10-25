@@ -1,4 +1,6 @@
 # category: run-pass
+# expect-stdout: maa illu
+# expect-stdout: maa illu
 # level: core
 # Owned value piped into `choopinchu`, then reused.
 modhalu() -> khali ante:

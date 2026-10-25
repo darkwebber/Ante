@@ -1,0 +1,23 @@
+# category: run-pass
+# expect-stdout: sunna
+# expect-stdout: chinna
+# expect-stdout: madhyama
+# expect-stdout: pedda
+# level: core
+# Arms are tried in order; literals, ranges, OR-patterns.
+varnana(n: ankam ni) -> padham ante:
+    n batti:
+        0 aithe:
+            "sunna" icchey
+        1 | 2 | 3 aithe:
+            "chinna" icchey
+        4 nunchi 9 varaku aithe:
+            "madhyama" icchey
+        _ aithe:
+            "pedda" icchey
+
+modhalu() -> khali ante:
+    0 ni varnana() |> choopinchu()
+    2 ni varnana() |> choopinchu()
+    9 ni varnana() |> choopinchu()
+    10 ni varnana() |> choopinchu()

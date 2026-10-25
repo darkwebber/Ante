@@ -1,0 +1,24 @@
+# category: run-pass
+# expect-stdout: sagam ayyindhi
+# expect-stdout: avunu
+# expect-stdout: kaadhu
+# level: core
+# `x ni f()?` propagates the call's result.
+edho_okati Thappu ante:
+    Chedindhi
+
+sagam(x: ankam ni) -> sare_thappu[ankam, Thappu] ante:
+    x % 2 == 0 aithe:
+        sare(x / 2) icchey
+    thappu(Thappu.Chedindhi) icchey
+
+pani_cheyyi(x: ankam ni) -> sare_thappu[ankam, Thappu] ante:
+    y ante x ni sagam()?
+    "sagam ayyindhi" ni choopinchu()
+    sare(y) icchey
+
+modhalu() -> khali ante:
+    r ante 10 ni pani_cheyyi()
+    r.sareyaa() ni choopinchu()
+    s ante 7 ni pani_cheyyi()
+    s.sareyaa() ni choopinchu()

@@ -1,0 +1,17 @@
+# category: run-pass
+# expect-stdout: [5, 3, 8]
+# expect-stdout: [50, 30, 80, 10]
+# expect-stdout: 17
+# expect-stdout: [5, 3]
+# expect-stdout: [8, 1]
+# expect-stdout: [(5, a), (3, b), (8, c), (1, d)]
+# level: core
+# Iteration adapters.
+modhalu() -> khali ante:
+    xs ante [5, 3, 8, 1]
+    xs |> ((x) => *x > 2) ni jalleda_pattu() |> varusa_ga() |> choopinchu()
+    xs |> ((x) => x * 10) ni prathi_dhaaniki() |> varusa_ga() |> choopinchu()
+    xs |> 0 ni, ((a, x) => a + x) tho poguchey() |> choopinchu()
+    xs |> 2 ni modhati() |> varusa_ga() |> choopinchu()
+    xs |> 2 ni dhaatu() |> varusa_ga() |> choopinchu()
+    xs, "abcd".aksharaalu() kalipi() |> varusa_ga() |> choopinchu()

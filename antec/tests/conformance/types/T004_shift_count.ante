@@ -1,0 +1,7 @@
+# category: runtime-trap
+# expect-trap: T04 @ 7:5
+# level: core
+# `1 << 64` with a runtime count.
+modhalu() -> khali ante:
+    n ante 64
+    (1 << n) ni choopinchu()

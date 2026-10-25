@@ -1,0 +1,14 @@
+# category: run-pass
+# expect-stdout: (3, 4)
+# expect-stdout: 12
+# level: core
+# `(a, b)` is a tuple; `(a, b f())` is a call.
+f(x: ankam, y: ankam) -> ankam ante:
+    (x * y) icchey
+
+modhalu() -> khali ante:
+    a ante 3
+    b ante 4
+    t ante (a, b)
+    t ni choopinchu()
+    (a, b f()) ni choopinchu()

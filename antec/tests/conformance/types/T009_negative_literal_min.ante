@@ -1,6 +1,7 @@
-# category: build-pass
+# category: run-pass
+# expect-stdout: -128
 # level: core
-# `-128` fits `ankam8`.
+# `-128 : ankam8` literal.
 modhalu() -> khali ante:
     x: ankam8 ante -128
     x ni choopinchu()
