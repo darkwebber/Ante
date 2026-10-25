@@ -1,0 +1,19 @@
+# `file`: spec §21.3. Signatures only; see prelude.ante.
+
+rakam FileThappu ante:
+    _vivaram: padham
+
+bayata "ante" ante:
+    chadhuvu(p: &padham ni) -> sare_thappu[padham, FileThappu]
+    raayi(p: &padham ki, text: &padham ni) -> sare_thappu[khali, FileThappu]
+    baitlu_chadhuvu(p: &padham ni) -> sare_thappu[varusa[aasajeevi ankam8], FileThappu]
+    baitlu_raayi(p: &padham ki, b: &mukka[aasajeevi ankam8] ni) -> sare_thappu[khali, FileThappu]
+    undhaa(p: &padham ni) -> ato_ito
+    folderaa(p: &padham ni) -> ato_ito
+    list_cheyyi(p: &padham ni) -> sare_thappu[varusa[padham], FileThappu]
+    folder_cheyyi(p: &padham ni) -> sare_thappu[khali, FileThappu]
+    theesey(p: &padham ni) -> sare_thappu[khali, FileThappu]
+    path_kalupu(a: &padham ni, b: &padham tho) -> padham
+    path_peru(p: &padham ni) -> padham
+    path_folder(p: &padham ni) -> padham
+    path_extension(p: &padham ni) -> undochu[padham]

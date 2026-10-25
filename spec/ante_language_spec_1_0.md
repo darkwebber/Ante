@@ -541,6 +541,7 @@ A tuple binding `(a, b) ante e` requires `e : jatha[A, B]`. Bindings are never u
 - Comparisons require the same numeric type (or `ato_ito`/`aksharam` for `==`/`!=`) and produce `ato_ito`.
 - `&& || !` require `ato_ito`.
 - Mixing signed and unsigned is E0408. Any other mismatch is E0401.
+- An operand of type `&T` or `&maare T`, where `T` is a built-in numeric type, `ato_ito` or `aksharam`, is dereferenced automatically. For `x: &ankam`, `x > 2` means `*x > 2`.
 
 10.5.2 For other types, operators resolve to trait methods (§13.5): `+` → `Kalupochu.kalupu`, `-` → `Theeseyochu.theesey`, `*` → `Guninchochu.guninchu`, `/` → `Panchochu.panchu`, `%` → `Sheshamochu.shesham`, unary `-` → `Thippochu.thippu`, `@` → `MatmulCheyochu.matmul`, `==`/`!=` → `Polchochu.okateyna`, `< <= > >=` → `VarusaPettochu.polchu`. Operands are passed by automatic shared borrow. An operator with no implementation is E0407. `padham + padham` is provided and allocates.
 
@@ -665,7 +666,7 @@ Manishi ki Choopinchochu gunam undhi:
 13.4.1 A function in a `panulu` block or implementation whose first parameter is `naa` is a **method**. The type of `naa` must be `idhi`, `&idhi` or `&maare idhi`. A function without `naa` is an **associated function**, called as `Type.f()`.
 
 13.4.2 **Method lookup** for `recv.m`:
-1. Auto-dereference `recv` (as for fields) to the candidate types.
+1. Auto-dereference `recv` (as for fields) to the candidate types. A reference is never a candidate itself: lookup moves straight to the type it points to, so `a.xerox()` with `a: &T` duplicates the `T`.
 2. For each candidate in order, look first for an inherent method `m`, then for `m` among the visible traits implemented for that type.
 3. The first candidate that has the method wins. Two traits supplying `m` at the same candidate is E0305.
 
@@ -702,6 +703,7 @@ The receiver borrow is taken **after** the argument phrases are evaluated, so `v
 **Built-in implementations:**
 - Numeric types, `ato_ito`, `aksharam` and `khali` implement `CopyKottochu`, `XeroxTheeyochu`, `Polchochu` and `Choopinchochu`.
 - Integers, `ato_ito`, `aksharam` and `khali` also implement `VarusaPettochu` and `HashCheyochu`.
+- Integers and floats implement `Kalupochu`, `Theeseyochu`, `Guninchochu`, `Panchochu` and `Sheshamochu`; signed integers and floats also implement `Thippochu`, and `padham` implements `Kalupochu`. Generic code bounded by these traits can therefore use the operators on numbers.
 - **Floats implement neither `VarusaPettochu` nor `HashCheyochu`.** Their `<` and `==` are built-in IEEE operations (§18.3).
 - `padham` implements everything except `CopyKottochu`.
 - `jatha`, `[T;N]`, `varusa`, `undochu`, `sare_thappu`, `jodi` and `pette` implement each trait whenever their components do. The exceptions: `jodi` has no `VarusaPettochu`/`HashCheyochu`, and only the types marked in §9.1 have `CopyKottochu`.
@@ -1029,7 +1031,7 @@ A `for` over a place of collection type borrows it shared.
 | `xs, n ni modhati()` | the first `n` |
 | `xs, n ni dhaatu()` | skip `n` ("jump over") |
 | `xs, f ni prathi_dhaaniki()` | map ("to each one") |
-| `xs, f ni jalleda_pattu()` | filter ("put it through a sieve") |
+| `xs, f ni jalleda_pattu()` | filter ("put it through a sieve"); `f` receives `&I` |
 | `xs, init ni, f tho poguchey()` | fold ("gather up") |
 | `xs.number_vesi()` | enumerate, yielding `jatha[ankam, I]` |
 | `xs.varusa_ga()` | collect into `varusa[I]` |
@@ -1433,6 +1435,7 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | P003 | Two holes | E0213 |
 | P004 | Pipe into an already-bound first slot | E0507 |
 | P005 | `owned \|> choopinchu()` then reuse `owned` | automatic borrow; run-pass |
+| P006 | Pipe hole whose role no formal has | E0508 |
 | T001 | `ankam8` 127 + 1 | T01, exit 101 |
 | T002 | Integer division by zero | T02 |
 | T003 | `xs[5]` on length 3 | T03 |
@@ -1454,6 +1457,21 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | T019 | `a < b < c` | E0417 |
 | T020 | Non-boolean `aithe` condition | E0403 |
 | T021 | `padham[0]` | E0413 |
+| T022 | Annotation and value disagree | E0401 |
+| T023 | `300 : ankam8` | E0402 |
+| T024 | `xs ante []` with no element type | E0404 |
+| T025 | Unknown record field | E0405 |
+| T026 | Unknown method | E0406 |
+| T027 | `+` on a record without `Kalupochu` | E0407 |
+| T028 | A path that ends without `icchey` | E0410 |
+| T029 | `?` in a `khali` function | E0411 |
+| T030 | `?` with an unconvertible error type | E0412 |
+| T031 | Index by a `padham` | E0414 |
+| T032 | Field missing from a record literal | E0416 |
+| T033 | Record containing itself | E0418 |
+| T034 | Duplicate constant map key | E0419 |
+| T035 | Function call in a constant | E1101 |
+| T036 | Literals, operators, records, enums, closures, adapters, conversions | build-pass |
 | O001 | Use after move | E0601 |
 | O002 | Assign to a non-`maare` binding | E0602 |
 | O003 | Move out of `xs[0]` (non-Copy element) | E0603 |
@@ -1468,9 +1486,14 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | O012 | Drop order: reverse initialization; `sardhu` before fields | expected stdout |
 | O013 | `vellagane` runs LIFO, including on `?` | expected stdout |
 | O014 | Temporary lifetime extension `r ante &f()` | run-pass |
+| O015 | `&maare` of a non-`maare` binding | E0607 |
+| O016 | `&maare idhi` method on a non-`maare` binding | E0607 |
 | M001 | Non-exhaustive `sare_thappu` match | E0701 |
 | M002 | Refutable pattern in a binding | E0703 |
 | M003 | Copy binding mode through `&` | run-pass |
+| M004 | Variant pattern with the wrong number of fields | E0704 |
+| M005 | Nested exhaustive match over tuples and `undochu` | build-pass |
+| W004 | Arm covered by earlier arms | W0004 |
 | G001 | Generic `modhatidhi[T]` on `ankam` and `padham` | run-pass |
 | G002 | Missing bound used in a generic body | E0801 |
 | G003 | Orphan implementation | E0803 |
@@ -1479,6 +1502,10 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | G006 | Method pro-drop `balance` → `naa.balance` | run-pass |
 | G007 | Closure with a borrowed capture, returned | E0415 |
 | G008 | `theesuko` closure returned | run-pass |
+| G009 | Implementation missing a required method | E0802 |
+| G010 | Same trait implemented twice for a type | E0804 |
+| G011 | `@automatic` with a field lacking the trait | E0807 |
+| G012 | User trait with a default method, called generically | run-pass |
 | N001 | Undefined name | E0301 |
 | N002 | Name used before its binding | E0306 |
 | N003 | Redefinition in the same scope | E0308 |
@@ -1666,6 +1693,9 @@ Model panulu ante:
     forward(naa: &idhi, x: &torch.Tensor ni) -> torch.Tensor ante:
         x ni l1.forward() |> torch.relu() |> l2.forward() icchey
 
+    parameters(naa: &idhi) -> varusa[torch.Tensor] ante:
+        [l1.weight.xerox(), l1.bias.xerox(), l2.weight.xerox(), l2.bias.xerox()] icchey
+
 train_step(model: &maare Model ni, opt: &maare torch.optim.SGD tho,
            x: &torch.Tensor kosam, y: &torch.Tensor ki) -> amsam32 ante:
     pred ante x ni model.forward()
@@ -1741,6 +1771,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r2 | `antec` 0.2.0 | Clarifications from the type checker (M4): automatic dereference of scalar references in operators (§10.5.1); method lookup skips reference candidates (§13.4.2); numbers implement the arithmetic traits (§13.5); `jalleda_pattu`'s predicate receives `&I` (§21.4.2); Appendix D.7 defines `Model.parameters`; new seed cases T022–T036, P006, O015–O016, M004–M005, W004, G009–G012. |
 | r1 | `antec` 0.1.0 | First public draft of Edition 1.0. |
 
 ---
@@ -1819,6 +1850,7 @@ Ast panulu ante:
 | No match guards | a nested `aithe` inside the arm | guards (`pattern, cond aithe:`) |
 | No labelled `aapey` | a flag variable | labelled loops |
 | No references in records | IDs (I.2) | lifetime parameters, if ever needed |
+| `NunchiRavochu.nunchi` can't be called by name: `nunchi` is a role word | `?` converts errors automatically; write a named conversion function for explicit calls | a new method name, by vocabulary RFC |
 
 None of these block self-hosting.
 

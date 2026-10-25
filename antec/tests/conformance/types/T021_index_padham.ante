@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0413 @ 7:5
+# level: core
+# `padham[0]`.
+modhalu() -> khali ante:
+    s ante "telugu"
+    s[0] ni choopinchu()

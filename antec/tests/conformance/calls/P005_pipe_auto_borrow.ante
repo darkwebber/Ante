@@ -1,0 +1,7 @@
+# category: run-pass
+# level: core
+# Owned value piped into `choopinchu`, then reused.
+modhalu() -> khali ante:
+    owned ante "maa illu"
+    owned |> choopinchu()
+    owned ni choopinchu()

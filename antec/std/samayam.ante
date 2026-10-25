@@ -1,0 +1,17 @@
+# `samayam` (time): spec §21.3. Signatures only; see prelude.ante.
+
+rakam Kshanam ante:
+    _nanosec: aasajeevi ankam64
+
+rakam Kaalam ante:
+    _nanosec: aasajeevi ankam64
+
+bayata "ante" ante:
+    ippudu() -> Kshanam
+
+gunam Kshanam_panulu ante:
+    gadichindhi(naa: &Kshanam) -> Kaalam
+
+gunam Kaalam_panulu ante:
+    millisec(naa: &Kaalam) -> ankam64
+    nanosec(naa: &Kaalam) -> ankam64

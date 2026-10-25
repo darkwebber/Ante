@@ -5,7 +5,7 @@ file nunchi chadhuvu, FileThappu thechuko
 lekkalu ni l ga thechuko
 
 modhalu() -> sare_thappu[khali, FileThappu] ante:
-    acc ante Account.kotthadhi()
+    maare acc ante Account.kotthadhi()
     500 ni acc.jama()
     text ante "marks.txt" ni chadhuvu()?
     x ante 2.0 ni l.sqrt()

@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E0508 @ 10:10
+# level: core
+# A hole whose role no formal has.
+kalupu(a: ankam ni, b: ankam tho) -> ankam ante:
+    (a + b) icchey
+
+modhalu() -> khali ante:
+    x ante 10
+    x |> _ ki, 5 ni, 6 tho kalupu() |> choopinchu()

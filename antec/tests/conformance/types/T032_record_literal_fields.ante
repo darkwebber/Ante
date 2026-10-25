@@ -1,0 +1,11 @@
+# category: compile-fail
+# expect-error: E0416 @ 10:12
+# level: core
+# A field missing from a record literal.
+rakam Point ante:
+    x: ankam
+    y: ankam
+
+modhalu() -> khali ante:
+    p ante Point{x: 1}
+    p.x ni choopinchu()

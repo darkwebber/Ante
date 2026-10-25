@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0602 @ 7:5
+# level: core
+# Assign to a non-`maare` binding.
+modhalu() -> khali ante:
+    x ante 5
+    x lo 6 pettu
+    x ni choopinchu()

@@ -1,0 +1,8 @@
+# category: run-pass
+# level: core
+# Default parameter used.
+pilupu(peru: padham ni, ooru: padham kosam = "Hyderabad") -> padham ante:
+    f"{peru} from {ooru}" icchey
+
+modhalu() -> khali ante:
+    "Ravi" ni pilupu() |> choopinchu()

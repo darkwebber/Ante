@@ -1,0 +1,9 @@
+# category: compile-fail
+# expect-error: E0505 @ 9:11
+# level: core
+# `peru_thone` formal passed positionally.
+gunaakaram(a: ankam ni, b: ankam ni peru_thone) -> ankam ante:
+    (a * b) icchey
+
+modhalu() -> khali ante:
+    2 ni, 3 ni gunaakaram() |> choopinchu()

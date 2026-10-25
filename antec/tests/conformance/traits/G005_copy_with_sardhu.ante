@@ -1,0 +1,15 @@
+# category: compile-fail
+# expect-error: E0806 @ 12:1
+# level: core
+# `CopyKottochu` together with `Sardhukochu`.
+rakam Handle ante:
+    id: ankam
+
+Handle ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        icchey
+
+Handle ki CopyKottochu gunam undhi
+
+modhalu() -> khali ante:
+    icchey

@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E0405 @ 10:7
+# level: core
+# Unknown record field.
+rakam Point ante:
+    x: ankam
+
+modhalu() -> khali ante:
+    p ante Point{x: 1}
+    p.y ni choopinchu()

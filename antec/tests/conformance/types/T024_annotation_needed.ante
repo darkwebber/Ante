@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0404 @ 6:5
+# level: core
+# Empty list with no element type.
+modhalu() -> khali ante:
+    xs ante []
+    xs ni choopinchu()

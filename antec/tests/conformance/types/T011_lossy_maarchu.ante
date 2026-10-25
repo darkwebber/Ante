@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0409 @ 7:12
+# level: core
+# `maarchu` that can lose information.
+modhalu() -> khali ante:
+    x: ankam32 ante 300
+    y ante x ni maarchu[ankam8]()
+    y ni choopinchu()

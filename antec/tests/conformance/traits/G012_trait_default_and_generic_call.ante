@@ -1,0 +1,25 @@
+# category: run-pass
+# level: core
+# User trait with a default method, called generically.
+gunam Aakaram ante:
+    vaishalyam(naa: &idhi) -> amsam
+    peru(naa: &idhi) -> padham ante:
+        "aakaram" icchey
+
+rakam Chadharam ante:
+    vaipu: amsam
+
+Chadharam ki Aakaram gunam undhi:
+    vaishalyam(naa: &idhi) -> amsam ante:
+        (vaipu * vaipu) icchey
+
+motham[T: Aakaram](xs: &varusa[T] ni) -> amsam ante:
+    maare m ante 0.0
+    xs lo okko x ki:
+        m += x.vaishalyam()
+    m icchey
+
+modhalu() -> khali ante:
+    c ante Chadharam{vaipu: 2.0}
+    c.peru() ni choopinchu()
+    [c] ni motham() |> choopinchu()

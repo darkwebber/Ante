@@ -1,0 +1,10 @@
+# category: build-pass
+# level: core
+# Nested exhaustive match over tuples and enums.
+modhalu() -> khali ante:
+    t ante (avunu, undhi(1))
+    t batti:
+        (avunu, undhi(n)) aithe:
+            n ni choopinchu()
+        (kaadhu, undhi(_)) | (_, ledhu) aithe:
+            "migathavi" ni choopinchu()

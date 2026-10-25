@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E0803 @ 5:1
+# level: core
+# Standard trait on a built-in type.
+ankam ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        "ankam" icchey
+
+modhalu() -> khali ante:
+    icchey

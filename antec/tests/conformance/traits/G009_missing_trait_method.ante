@@ -1,0 +1,14 @@
+# category: compile-fail
+# expect-error: E0802 @ 11:1
+# level: core
+# Implementation without a required method.
+gunam Aakaram ante:
+    vaishalyam(naa: &idhi) -> amsam
+
+rakam Chadharam ante:
+    vaipu: amsam
+
+Chadharam ki Aakaram gunam undhi
+
+modhalu() -> khali ante:
+    icchey

@@ -1,0 +1,9 @@
+# category: compile-fail
+# expect-error: E0418 @ 5:7
+# level: core
+# A record containing itself.
+rakam Node ante:
+    next: Node
+
+modhalu() -> khali ante:
+    icchey

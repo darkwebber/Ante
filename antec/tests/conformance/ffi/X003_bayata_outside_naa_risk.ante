@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E1001 @ 9:15
+# level: core
+# `bayata` call outside `naa_risk`.
+bayata "C" ante:
+    abs(x: ankam32) -> ankam32
+
+modhalu() -> khali ante:
+    y ante -5 abs()
+    y ni choopinchu()

@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0419 @ 6:21
+# level: core
+# The same constant key twice.
+modhalu() -> khali ante:
+    m ante {"a": 1, "a": 2}
+    m ni choopinchu()

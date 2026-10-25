@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E0410 @ 5:1
+# level: core
+# A path without `icchey`.
+lekka(x: ankam ni) -> ankam ante:
+    x > 0 aithe:
+        x icchey
+
+modhalu() -> khali ante:
+    5 ni lekka() |> choopinchu()

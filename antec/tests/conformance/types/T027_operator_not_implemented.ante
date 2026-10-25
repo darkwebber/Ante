@@ -1,0 +1,11 @@
+# category: compile-fail
+# expect-error: E0407 @ 10:12
+# level: core
+# `+` on a record without `Kalupochu`.
+rakam Point ante:
+    x: ankam
+
+modhalu() -> khali ante:
+    p ante Point{x: 1}
+    q ante p + p
+    q.x ni choopinchu()

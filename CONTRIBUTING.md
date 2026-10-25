@@ -122,7 +122,11 @@ modhalu() -> khali ante:
     x ante 1__0
 ```
 
-ID prefixes: `L` lexer, `S` syntax, `N` names, `PK` packages, `B` binding, `P` pipes, `T` types/arithmetic, `O` ownership, `M` match, `G` generics, `D` data, `X` interop.
+ID prefixes: `L` lexer, `S` syntax, `N` names, `PK` packages, `B` binding, `P` pipes, `T` types/arithmetic, `O` ownership, `M` match, `G` generics, `D` data, `W` warnings, `X` interop.
+
+Error position eppudu aa mistake unna chotu ni point cheyyali: tappu value, tappu phrase, leka function peru (E0410 laantivi). Test raase mundhu `cargo run -p antec -- check <file>` tho message chadavandi, adhi friendly ga undha ani kuda choodandi. 😊
+
+**Stdlib function add cheyyadam:** peru `antec/src/stdlib.rs` lo, signature `antec/std/<module>.ante` lo (built-in type methods `gunam <type>_panulu` block lo). Rendu sync lo lekapothe `cargo test` fail avthundhi.
 
 **Package tests** (rendu or ekkuva modules kavalsinappudu): `antec/tests/conformance/packages/PK<number>_<name>/` lo `ante.toml` + `src/` pettandi. Expectations `ante.toml` modhatlo comments ga, file peru tho:
 

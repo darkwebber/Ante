@@ -1,0 +1,13 @@
+# category: compile-fail
+# expect-error: E0801 @ 13:10
+# level: core
+# Bound missing at the call site.
+chupinchu[T: Choopinchochu](x: &T ni) -> khali ante:
+    x ni choopinchu()
+
+rakam Rahasyam ante:
+    v: ankam
+
+modhalu() -> khali ante:
+    r ante Rahasyam{v: 1}
+    r ni chupinchu()

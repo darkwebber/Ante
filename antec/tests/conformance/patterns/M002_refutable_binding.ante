@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0703 @ 7:16
+# level: core
+# Refutable pattern in a `for` loop.
+modhalu() -> khali ante:
+    xs ante [undhi(1), ledhu]
+    xs lo okko undhi(x) ki:
+        x ni choopinchu()

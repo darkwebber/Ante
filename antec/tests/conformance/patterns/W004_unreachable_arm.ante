@@ -1,0 +1,13 @@
+# category: build-pass
+# expect-warning: W0004 @ 10:9
+# level: core
+# Arm covered by earlier arms.
+modhalu() -> khali ante:
+    o ante undhi(1)
+    o batti:
+        undhi(_) aithe:
+            icchey
+        undhi(2) aithe:
+            icchey
+        ledhu aithe:
+            icchey

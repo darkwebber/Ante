@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0607 @ 7:10
+# level: core
+# `&maare idhi` method on a non-`maare` binding.
+modhalu() -> khali ante:
+    xs ante [1]
+    2 ni xs.cherchu()
+    xs ni choopinchu()

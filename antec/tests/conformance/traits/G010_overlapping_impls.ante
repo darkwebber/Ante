@@ -1,0 +1,20 @@
+# category: compile-fail
+# expect-error: E0804 @ 15:1
+# level: core
+# The same trait implemented twice.
+gunam Peru ante:
+    peru(naa: &idhi) -> padham
+
+rakam Pilli ante:
+    v: ankam
+
+Pilli ki Peru gunam undhi:
+    peru(naa: &idhi) -> padham ante:
+        "pilli" icchey
+
+Pilli ki Peru gunam undhi:
+    peru(naa: &idhi) -> padham ante:
+        "pilli" icchey
+
+modhalu() -> khali ante:
+    icchey

@@ -1,0 +1,19 @@
+# `system`: spec §21.3. Signatures only; see prelude.ante.
+
+rakam Phalitham ante:
+    andhariki status: ankam32
+    andhariki stdout: padham
+    andhariki stderr: padham
+
+rakam SystemThappu ante:
+    _vivaram: padham
+
+bayata "ante" ante:
+    args() -> varusa[padham]
+    env(k: &padham ni) -> undochu[padham]
+    line_chadhuvu() -> undochu[padham]
+    flush() -> khali
+    vellipo(n: ankam32 ni) -> raadhu
+    nadupu(prog: &padham ni, args: &mukka[padham] tho) -> sare_thappu[Phalitham, SystemThappu]
+    os() -> padham
+    arch() -> padham

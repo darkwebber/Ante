@@ -1,0 +1,6 @@
+# category: build-pass
+# level: core
+# `-128` fits `ankam8`.
+modhalu() -> khali ante:
+    x: ankam8 ante -128
+    x ni choopinchu()

@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0403 @ 7:5
+# level: core
+# Non-boolean `aithe` condition.
+modhalu() -> khali ante:
+    x ante 10
+    x aithe:
+        x ni choopinchu()
