@@ -5,22 +5,66 @@
   "bump-patch-for-minor-pre-major": true,
   "include-component-in-tag": false,
   "changelog-sections": [
-    { "type": "feat", "section": "✨ Kottha features" },
-    { "type": "fix", "section": "🐛 Bugs ki tata bye bye" },
-    { "type": "perf", "section": "⚡ Speed penchaam" },
-    { "type": "revert", "section": "⏪ Venakki theesukunnavi" },
-    { "type": "docs", "section": "📚 Docs" },
-    { "type": "refactor", "section": "Refactoring", "hidden": true },
-    { "type": "test", "section": "Tests", "hidden": true },
-    { "type": "ci", "section": "CI", "hidden": true },
-    { "type": "build", "section": "Build", "hidden": true },
-    { "type": "chore", "section": "Chores", "hidden": true }
+    {
+      "type": "feat",
+      "section": "✨ Kottha features"
+    },
+    {
+      "type": "fix",
+      "section": "🐛 Bugs ki tata bye bye"
+    },
+    {
+      "type": "perf",
+      "section": "⚡ Speed penchaam"
+    },
+    {
+      "type": "revert",
+      "section": "⏪ Venakki theesukunnavi"
+    },
+    {
+      "type": "docs",
+      "section": "📚 Docs"
+    },
+    {
+      "type": "refactor",
+      "section": "Refactoring",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "section": "CI",
+      "hidden": true
+    },
+    {
+      "type": "build",
+      "section": "Build",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "Chores",
+      "hidden": true
+    }
   ],
   "packages": {
     ".": {
       "package-name": "ante",
       "extra-files": [
-        { "type": "toml", "path": "antec/Cargo.toml", "jsonpath": "$.package.version" }
+        {
+          "type": "toml",
+          "path": "antec/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "json",
+          "path": "editors/vscode/package.json",
+          "jsonpath": "$.version"
+        }
       ]
     }
   }

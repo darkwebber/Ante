@@ -22,6 +22,10 @@ impl Diagnostic {
         Diagnostic { code, severity: Severity::Error, span, message: message.into() }
     }
 
+    pub fn warning(code: &'static str, span: Span, message: impl Into<String>) -> Self {
+        Diagnostic { code, severity: Severity::Warning, span, message: message.into() }
+    }
+
     pub fn is_error(&self) -> bool {
         self.severity == Severity::Error
     }

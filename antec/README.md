@@ -6,8 +6,9 @@
 |---|---|
 | M1 Lexer and layout (§4) | ✅ done |
 | M2 Parser and AST (§5–6) | ✅ done (`antec fmt` inka raavali) |
-| M3 Names and modules (§7–8) | ⏳ next |
-| M4–M14 | inka start avvaledhu |
+| M3 Names, modules, imports, visibility (§7–8) | ✅ done |
+| M4 Type checker (§9–10) | ⏳ next |
+| M5–M14 | inka start avvaledhu |
 
 ## Build and test
 
@@ -15,6 +16,16 @@ Repo root nunchi:
 
 ```bash
 cargo test -p antec
+```
+
+```bash
+cargo run -p antec -- check examples/ante_sundharaniki.ante
+```
+
+Package (`ante.toml` unna folder) motham check cheyyalante:
+
+```bash
+cargo run -p antec -- check antec/tests/conformance/packages/PK006_nested_modules_and_cycles
 ```
 
 ```bash
@@ -36,9 +47,15 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 | `src/ast.rs` | Syntax tree (§5) |
 | `src/parser.rs` | Recursive-descent parser, §6 disambiguation rules (D1–D12) |
 | `src/pretty.rs` | `antec emit ast` kosam S-expression printer |
+| `src/resolve.rs` | Name resolution (§7–8): namespaces, imports, scopes, privacy, `naa.` pro-drop, constant cycles |
+| `src/stdlib.rs` | Prelude, standard library modules lo unna names (stdlib "Ante" source ga vachhe varaku) |
+| `src/lint.rs` | Warnings (W0001 unused binding, W0002 unnecessary `maare`, W0003 unreachable code, W0005 unused import); errors lenappudu matrame |
+| `src/package.rs` | `ante.toml` + `src/` packages, module discovery, entry point (`modhalu`) check |
 | `src/main.rs` | `antec` CLI |
 | `tests/lexer.rs` | Lexer unit tests |
 | `tests/parser.rs` | Parser golden tests: prathi D-rule, prathi parser error code |
+| `tests/resolve.rs` | Resolver tests: scopes, imports, variants, receivers, privacy |
+| `tests/lint.rs` | Lint (warning) tests |
 | `tests/conformance.rs` | `tests/conformance/` cases (spec Appendix C format), `examples/`, inka spec/README lo unna prathi `ante` example parse avvali; truncated inputs tho parser panic avvakoodadhu |
 
 ## Parser ela pani chesthundhi (short ga)
@@ -47,6 +64,13 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 - **Phrases + verb.** `clause` = phrases (`expr role? label?`, commas tho) + callee `path()`. Okka plain expression unte adhi normal expression (D3).
 - **Backtracking rendu chotla matrame:** brackets lopala commas (D4: phrase list callee tho end aithe call, lekapothe list elements) inka `nunchi … lopu` ranges (D5).
 - **Errors tharvatha continue:** oka statement lo error vasthe, aa logical line (inka dhaani block) skip chesi next line nunchi parse chesthundhi. Okka run lo chaala errors choopisthundhi.
+
+## Names ela resolve avthayi (short ga)
+
+- **Passes:** (1) prathi module lo declarations collect, (2) imports, (3) `panulu` methods (pro-drop kosam), (4) prathi function body scopes tho, (5) constant cycles.
+- **Lookup order** (spec §8.6): local → module item / import → `naa` field or method (method lopala) → prelude → type / module / generic.
+- **Result:** prathi peru deniki point chesthundho `Resolution::resolutions` lo save avthundhi (file + offset key tho). M4 type checker idhe vaadukuntundhi.
+- **Stdlib:** inka "Ante" lo raayaledhu, kaabatti `stdlib.rs` lo names list undhi. `torch`, `python` "open" modules: deentlo e peru aina accept chesthaam.
 
 ## Gurthu pettukovalsinavi
 

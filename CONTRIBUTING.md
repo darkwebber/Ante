@@ -122,9 +122,30 @@ modhalu() -> khali ante:
     x ante 1__0
 ```
 
-ID prefixes: `L` lexer, `S` syntax, `B` binding, `P` pipes, `T` types/arithmetic, `O` ownership, `M` match, `G` generics, `D` data, `X` interop. New ID theeskune mundhu, aa folder lo already unna numbers check cheyyandi.
+ID prefixes: `L` lexer, `S` syntax, `N` names, `PK` packages, `B` binding, `P` pipes, `T` types/arithmetic, `O` ownership, `M` match, `G` generics, `D` data, `X` interop.
+
+**Package tests** (rendu or ekkuva modules kavalsinappudu): `antec/tests/conformance/packages/PK<number>_<name>/` lo `ante.toml` + `src/` pettandi. Expectations `ante.toml` modhatlo comments ga, file peru tho:
+
+```toml
+# category: compile-fail
+# expect-error: E0303 @ src/modhalu.ante:1:14
+# level: core
+[package]
+name = "pk002"
+kind = "bin"
+``` New ID theeskune mundhu, aa folder lo already unna numbers check cheyyandi.
 
 > **Note:** compiler inka complete avvaledhu. Conformance runner ippatiki ready ayina stages matrame run chesthundhi. `compile-fail` cases lo expected error code, line:col match avvali. Migatha categories lo, ippudu unna stages lo errors raakudadhu.
+
+### Editor grammar
+
+Kottha keyword add chesthe, [`editors/vscode/syntaxes/ante.tmLanguage.json`](editors/vscode/syntaxes/ante.tmLanguage.json) lo kuda add cheyyandi. Test:
+
+```bash
+cd editors/vscode && npm ci && npm test
+```
+
+Ee test compiler keyword table chadivi, prathi keyword highlight avthondho check chesthundhi. Grammar update marchipothe CI gurthu chesthundhi. 😉
 
 ## Spec changes
 

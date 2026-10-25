@@ -1,0 +1,6 @@
+# category: build-pass
+# expect-warning: W0002 @ 5:11
+# level: core
+modhalu() -> khali ante:
+    maare x ante 1
+    x ni choopinchu()

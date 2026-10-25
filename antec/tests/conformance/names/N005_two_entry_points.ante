@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0904 @ 6:1
+# level: core
+modhalu() -> khali ante:
+    icchey
+modhalu() -> khali ante:
+    icchey

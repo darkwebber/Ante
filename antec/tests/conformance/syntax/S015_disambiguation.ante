@@ -1,7 +1,18 @@
 # category: build-pass
 # level: core
-# Every §6 disambiguation rule in one file; must parse without errors.
-modhalu() -> khali ante:
+# Every §6 disambiguation rule in one file; must parse and resolve without errors.
+file nunchi chadhuvu thechuko
+
+kalupu(a: ankam ni, b: ankam tho) -> ankam ante:
+    (a + b) icchey
+
+parse() -> sare_thappu[ankam, padham] ante:
+    sare(1) icchey
+
+disambiguation(a: ankam, b: ankam, v: ankam32, x: ankam,
+               handlers: varusa[pani[() -> khali]],
+               items: varusa[ankam],
+               result: sare_thappu[ankam, padham]) -> sare_thappu[khali, padham] ante:
     t ante (a, b)                                   # D4: tuple
     c ante (a, b kalipi())                          # D4: call with two phrases
     r ante 0 nunchi 5 lopu                          # D5: range
@@ -9,12 +20,12 @@ modhalu() -> khali ante:
     y ante v ni maarchu[ankam64]()                  # D7: generic call
     z ante (handlers[0])()                          # D7: index, then call
     o ante undhi(5)                                 # D10: constructor
-    n ante "12" ni parse()?                         # D11: `?` on the whole call
+    n ante parse()?                                 # D11: `?` on the whole call
     x |> _ ni a ga, 5 tho kalupu()                  # pipe hole
     items lo okko item ki:                          # `lo okko` is a loop, not a role
         item ni choopinchu()
     result batti:                                   # `batti :` is a match, not a role
-        sare(v) aithe:
-            v ni choopinchu()
+        sare(w) aithe:
+            w ni choopinchu()
         thappu(e) aithe:
             e ni gola_pettu()

@@ -1,0 +1,36 @@
+# category: build-pass
+# level: core
+# Names resolve across items in any order, through imports, nested scopes and `naa.` pro-drop.
+file nunchi chadhuvu, FileThappu thechuko
+lekkalu ni l ga thechuko
+
+modhalu() -> sare_thappu[khali, FileThappu] ante:
+    acc ante Account.kotthadhi()
+    500 ni acc.jama()
+    text ante "marks.txt" ni chadhuvu()?
+    x ante 2.0 ni l.sqrt()
+    avunu aithe:
+        x ante 3                    # shadowing in a nested block is fine
+        x ni choopinchu()
+    rangu ante Rangu.Erupu
+    rangu batti:
+        Rangu.Erupu | Rangu.Neelam aithe:
+            "rangu!" ni choopinchu()
+
+andhariki rakam Account ante:
+    andhariki balance: ankam
+
+Account panulu ante:
+    kotthadhi() -> Account ante:
+        Account{balance: 0} icchey
+
+    jama(naa: &maare idhi, amount: ankam ni) -> khali ante:
+        naa.balance += amount
+        choopu()                    # pro-drop: naa.choopu()
+
+    choopu(naa: &idhi) -> khali ante:
+        balance ni choopinchu()     # pro-drop: naa.balance
+
+edho_okati Rangu ante:
+    Erupu
+    Neelam

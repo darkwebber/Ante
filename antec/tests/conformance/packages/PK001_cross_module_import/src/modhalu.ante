@@ -1,0 +1,9 @@
+lekka nunchi kalupu, Point thechuko
+lekka thechuko
+
+modhalu() -> khali ante:
+    p ante Point{x: 1, y: 2}
+    q ante Point{x: 3, y: 4}
+    s ante p ni, q tho kalupu()
+    t ante lekka.Point{x: 0, y: 0}
+    s.x ni choopinchu()

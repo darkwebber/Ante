@@ -1,0 +1,6 @@
+geometry.point thechuko
+geometry.shapes nunchi Circle thechuko
+
+modhalu() -> khali ante:
+    c ante Circle{center: point.Point{x: 0.0, y: 0.0}, radius: 2.0}
+    c ni point.radius() |> choopinchu()
