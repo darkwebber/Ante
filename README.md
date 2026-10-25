@@ -13,8 +13,6 @@ Simple ga cheppalante: amma ki explain chesinattu code raayochu, kaani adhi C la
 
 ## "Ante" Sundharaniki! 🎬
 
-"Ante" ki first welcome program. Idhi oka sentence laage chaduvuthundhi: *"Ante, Sundharaniki Telugu lo code cheyyadam vachindhanta!"* (Nani fans ki ardham ayyindhi kada 😉)
-
 ```ante
 sundharaniki() -> khali ante:
     "Telugu lo code cheyyadam vachindhanta! 🎉" ni choopinchu()
