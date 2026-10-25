@@ -122,6 +122,21 @@ modhalu() -> khali ante:
     x ante 1__0
 ```
 
+Programs run chese tests kuda raayochu (`run-pass`, `runtime-trap`):
+
+```ante
+# category: run-pass
+# expect-stdout: 30
+# level: core
+kalupu(a: ankam ni, b: ankam tho) -> ankam ante:
+    (a + b) icchey
+
+modhalu() -> khali ante:
+    10 ni, 20 tho kalupu() |> choopinchu()
+```
+
+Prathi `# expect-stdout:` oka output line. `runtime-trap` ki `# expect-trap: T01 @ 7:12` (trap code + position), `# expect-exit:` default ga run-pass ki 0, runtime-trap ki 101.
+
 ID prefixes: `L` lexer, `S` syntax, `N` names, `PK` packages, `B` binding, `P` pipes, `T` types/arithmetic, `O` ownership, `M` match, `G` generics, `D` data, `W` warnings, `X` interop.
 
 Error position eppudu aa mistake unna chotu ni point cheyyali: tappu value, tappu phrase, leka function peru (E0410 laantivi). Test raase mundhu `cargo run -p antec -- check <file>` tho message chadavandi, adhi friendly ga undha ani kuda choodandi. 😊

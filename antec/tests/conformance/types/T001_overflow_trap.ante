@@ -1,0 +1,8 @@
+# category: runtime-trap
+# expect-trap: T01 @ 7:12
+# level: core
+# `ankam8` 127 + 1 traps.
+modhalu() -> khali ante:
+    x: ankam8 ante 127
+    y ante x + 1
+    y ni choopinchu()

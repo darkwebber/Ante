@@ -1,0 +1,16 @@
+# category: run-pass
+# expect-stdout: -3
+# expect-stdout: -1
+# expect-stdout: 1024
+# expect-stdout: -4
+# expect-stdout: 0.30000000000000004
+# expect-stdout: 1.5
+# level: core
+# Integer division, remainder, shifts and floats.
+modhalu() -> khali ante:
+    (-7 / 2) ni choopinchu()
+    (-7 % 2) ni choopinchu()
+    (1 << 10) ni choopinchu()
+    (-16 >> 2) ni choopinchu()
+    (0.1 + 0.2) ni choopinchu()
+    (7.5 % 2.0) ni choopinchu()

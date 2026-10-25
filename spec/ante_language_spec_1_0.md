@@ -708,6 +708,8 @@ The receiver borrow is taken **after** the argument phrases are evaluated, so `v
 - `padham` implements everything except `CopyKottochu`.
 - `jatha`, `[T;N]`, `varusa`, `undochu`, `sare_thappu`, `jodi` and `pette` implement each trait whenever their components do. The exceptions: `jodi` has no `VarusaPettochu`/`HashCheyochu`, and only the types marked in §9.1 have `CopyKottochu`.
 
+**Built-in display.** The built-in `padham_ga` shows integers in decimal; floats in the shortest form that reads back exactly, with `.0` on whole numbers (`1.0`, `0.30000000000000004`), and `NaN`, `inf`, `-inf`; `ato_ito` as `avunu`/`kaadhu`; text and characters as themselves, also inside collections; tuples as `(a, b)` (a one-element tuple as `(a,)`); arrays, `varusa` and `mukka` as `[a, b]`; `jodi` as `{k: v, …}` and `gumpu` as `{a, …}` in insertion order; `undochu` as `undhi(x)`/`ledhu`; `sare_thappu` as `sare(x)`/`thappu(e)`; `khali` as `()`; `pette` and references as their contents.
+
 ### 13.6 `@automatic`
 
 `@automatic Polchochu, XeroxTheeyochu, …` before a `rakam` or `edho_okati` derives the listed traits field by field, in declaration order. Derivable traits: `CopyKottochu`, `XeroxTheeyochu`, `Polchochu`, `VarusaPettochu`, `HashCheyochu` and `Choopinchochu`. The derived `Choopinchochu` prints `Name{f: v, …}` / `Enum.Variant(v, …)`. A component lacking the trait is E0807.
@@ -1007,7 +1009,7 @@ Signatures are normative; the descriptions are summaries. Functions marked †in
 | `memory` | †intrinsic, **`naa_risk` only**: `n ni, a tho memory.allocate() -> *maare khali`, `p ni, n tho, a tho memory.release()`, `p ni, n tho, a tho, m ki memory.reallocate()`, `src ni, dst ki, n tho memory.copy()`. Used to write runtime and collection code in "Ante" itself |
 | `samayam` (time) | `samayam.ippudu() -> Kshanam` (monotonic "now"); `k.gadichindhi() -> Kaalam` ("elapsed"); `Kaalam.millisec()`, `.nanosec()` |
 
-`FileThappu` and `ParseThappu` are enums that implement `Choopinchochu`.
+`FileThappu` and `ParseThappu` are enums that implement `Choopinchochu`. Every standard library record and enum implements `Choopinchochu`, `XeroxTheeyochu` and `Polchochu`; `Kramam` also implements `VarusaPettochu`, `HashCheyochu` and `CopyKottochu`.
 
 ### 21.4 Iteration
 
@@ -1472,6 +1474,8 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | T034 | Duplicate constant map key | E0419 |
 | T035 | Function call in a constant | E1101 |
 | T036 | Literals, operators, records, enums, closures, adapters, conversions | build-pass |
+| T037 | `MIN / -1` | T01 |
+| T038 | Division, remainder, shifts and float arithmetic | stdout matches |
 | O001 | Use after move | E0601 |
 | O002 | Assign to a non-`maare` binding | E0602 |
 | O003 | Move out of `xs[0]` (non-Copy element) | E0603 |
@@ -1488,12 +1492,14 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | O014 | Temporary lifetime extension `r ante &f()` | run-pass |
 | O015 | `&maare` of a non-`maare` binding | E0607 |
 | O016 | `&maare idhi` method on a non-`maare` binding | E0607 |
+| O017 | Each loop iteration drops its locals, also on `aapey` | expected stdout |
 | M001 | Non-exhaustive `sare_thappu` match | E0701 |
 | M002 | Refutable pattern in a binding | E0703 |
 | M003 | Copy binding mode through `&` | run-pass |
 | M004 | Variant pattern with the wrong number of fields | E0704 |
 | M005 | Nested exhaustive match over tuples and `undochu` | build-pass |
 | W004 | Arm covered by earlier arms | W0004 |
+| M006 | Arms tried in order: literals, ranges, OR-patterns | stdout matches |
 | G001 | Generic `modhatidhi[T]` on `ankam` and `padham` | run-pass |
 | G002 | Missing bound used in a generic body | E0801 |
 | G003 | Orphan implementation | E0803 |
@@ -1532,6 +1538,8 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | D001 | `jodi` iteration keeps insertion order | run-pass |
 | D002 | `jodi` replacement keeps the key's position | run-pass |
 | D003 | f-string interpolation | stdout matches |
+| D004 | Iteration adapters (`jalleda_pattu`, `prathi_dhaaniki`, `poguchey`, `modhati`, `dhaatu`, `kalipi`) | stdout matches |
+| D005 | `padham` counts characters, not bytes; parsing and splitting | stdout matches |
 | X001 | Program without `python`/`torch` imports | no CPython or LibTorch linkage |
 | X002 | `modhalu` returns `thappu(e)` | exit 1, stderr `thappu: …` |
 | X003 | `bayata` call outside `naa_risk` | E1001 |
@@ -1771,6 +1779,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r3 | `antec` 0.3.0 | Programs run (M6): built-in display format (§13.5); standard library types implement the basic traits (§21.3); runtime seed cases S001–S008, B001–B011, P001–P005, T001–T016, T037–T038, O010–O017, M003, M006, G001–G012, D001–D005, X002. |
 | r2 | `antec` 0.2.0 | Clarifications from the type checker (M4): automatic dereference of scalar references in operators (§10.5.1); method lookup skips reference candidates (§13.4.2); numbers implement the arithmetic traits (§13.5); `jalleda_pattu`'s predicate receives `&I` (§21.4.2); Appendix D.7 defines `Model.parameters`; new seed cases T022–T036, P006, O015–O016, M004–M005, W004, G009–G012. |
 | r1 | `antec` 0.1.0 | First public draft of Edition 1.0. |
 

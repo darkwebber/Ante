@@ -1,0 +1,8 @@
+# category: run-pass
+# expect-stdout: [1, 2, 2]
+# level: core
+# `v.enni() ni v.cherchu()`.
+modhalu() -> khali ante:
+    maare v ante [1, 2]
+    v.enni() ni v.cherchu()
+    v ni choopinchu()

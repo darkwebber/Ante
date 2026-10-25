@@ -1,0 +1,13 @@
+# category: run-pass
+# expect-stdout: z=1
+# expect-stdout: a=2
+# expect-stdout: m=3
+# level: core
+# `jodi` iteration keeps insertion order.
+modhalu() -> khali ante:
+    maare m: jodi[padham, ankam] ante {}
+    "z" ni, 1 tho m.cherchu()
+    "a" ni, 2 tho m.cherchu()
+    "m" ni, 3 tho m.cherchu()
+    &m lo okko (k, v) ki:
+        f"{k}={v}" ni choopinchu()

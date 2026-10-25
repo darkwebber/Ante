@@ -1,0 +1,7 @@
+# category: runtime-trap
+# expect-trap: T06 @ 7:5
+# level: core
+# `ledhu.kachithanga()`.
+modhalu() -> khali ante:
+    o: undochu[ankam] ante ledhu
+    o.kachithanga() ni choopinchu()

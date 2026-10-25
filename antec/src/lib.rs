@@ -4,8 +4,10 @@
 
 pub mod ast;
 pub mod diag;
+pub mod interp;
 pub mod lexer;
 pub mod lint;
+pub mod mir;
 pub mod package;
 pub mod parser;
 pub mod pretty;

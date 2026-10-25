@@ -167,6 +167,8 @@ impl Collector<'_> {
                                 true,
                                 module,
                             );
+                            let mut sig = sig;
+                            sig.owner = Some(name.to_string());
                             let id = self.add_fn(sig);
                             self.add_inherent(head, &ti.sig.name.name, id);
                         }

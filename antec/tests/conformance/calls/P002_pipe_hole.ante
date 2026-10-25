@@ -1,9 +1,12 @@
 # category: run-pass
+# expect-stdout: 5
+# expect-stdout: -7
 # level: core
-# `x |> _ ni a ga, 5 tho kalupu()`.
-kalupu(a: ankam ni, b: ankam tho) -> ankam ante:
-    (a + b) icchey
+# `x |> _ ni a ga, 5 tho f()` binds `a`.
+theesey_(a: ankam ni, b: ankam tho) -> ankam ante:
+    (a - b) icchey
 
 modhalu() -> khali ante:
     x ante 10
-    x |> _ ni a ga, 5 tho kalupu() |> choopinchu()
+    x |> _ ni a ga, 5 tho theesey_() |> choopinchu()
+    x |> _ tho, 3 ni theesey_() |> choopinchu()

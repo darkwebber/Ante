@@ -1,4 +1,6 @@
 # category: run-pass
+# expect-stdout: 1
+# expect-stdout: a
 # level: core
 # Generic `modhatidhi[T]` on `ankam` and `padham`.
 modhatidhi[T: XeroxTheeyochu](xs: &varusa[T] ni) -> T ante:

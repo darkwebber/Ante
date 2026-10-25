@@ -1,4 +1,7 @@
 # category: run-pass
+# expect-stdout: 6
+# expect-stdout: 3
+# expect-stdout: 0
 # level: core
 # `...xs` into `migathavi`.
 motham(migathavi xs: ankam ni) -> ankam ante:
@@ -11,3 +14,4 @@ modhalu() -> khali ante:
     xs ante [1, 2, 3]
     ...xs ni motham() |> choopinchu()
     1 ni, 2 ni motham() |> choopinchu()
+    motham() |> choopinchu()

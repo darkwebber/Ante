@@ -1,0 +1,19 @@
+# category: run-pass
+# expect-stdout: g0 sardhu
+# expect-stdout: g1 sardhu
+# expect-stdout: end
+# level: core
+# Each iteration drops its locals, also on `aapey`.
+rakam Gadi ante:
+    peru: padham
+
+Gadi ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"{peru} sardhu" ni choopinchu()
+
+modhalu() -> khali ante:
+    0 nunchi 3 lopu okko i ki:
+        g ante Gadi{peru: f"g{i}"}
+        i == 1 aithe:
+            aapey
+    "end" ni choopinchu()

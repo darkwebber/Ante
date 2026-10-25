@@ -9,7 +9,7 @@
 
 Simple ga cheppalante: amma ki explain chesinattu code raayochu, kaani adhi C laaga fast ga run avthundhi. 😎
 
-> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4) ready. Simple ga cheppalante: code ni chadivi, grammar correct aa, prathi peru ki meaning undha, types anni match avthunnaya ani check cheyyagaladhu, kaani inka run cheyyaledhu. 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
+> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6) ready. Ante: "Ante" programs ippudu **run avthayi**! 🎉 Interpreter tho run chesthaam; native speed (LLVM) next milestone lo. 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
 
 ## "Ante" Sundharaniki! 🎬
 
@@ -101,8 +101,9 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 | M2 | Parser and AST (`antec emit ast`) | ✅ done (`antec fmt` inka raavali) |
 | M3 | Names, modules, imports, visibility | ✅ done |
 | M4 | Type checker (call binding, pipes, patterns, traits kuda) | ✅ done |
-| M6 | MIR and interpreter: programs run avthayi! | ⏳ next |
-| M7–M11 | LLVM codegen, borrow checker, generics codegen, stdlib, FFI | 🔜 |
+| M6 | MIR and interpreter: programs run avthayi! (`antec run`) | ✅ done |
+| M7 | LLVM codegen: native speed | ⏳ next |
+| M8–M11 | Borrow checker, generics codegen, stdlib, FFI | 🔜 |
 | M12 | `@vegam` performance | 🔜 |
 | M13 | PyTorch binding | 🔜 |
 | M14 | Python bridge | 🔜 |
@@ -124,6 +125,12 @@ cd Ante
 
 ```bash
 cargo test
+```
+
+Mee modhati "Ante" program run cheyyandi:
+
+```bash
+cargo run -p antec -- run examples/ante_sundharaniki.ante
 ```
 
 Oka file ni tokens ga choodalante:

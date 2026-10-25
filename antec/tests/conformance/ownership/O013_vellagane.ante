@@ -1,0 +1,23 @@
+# category: run-pass
+# expect-stdout: pani ayyindhi
+# expect-stdout: rendo vellagane
+# expect-stdout: modhati vellagane
+# expect-stdout: rendo vellagane
+# expect-stdout: modhati vellagane
+# level: core
+# `vellagane` runs LIFO, also on `?`.
+edho_okati Thappu ante:
+    Chedindhi
+
+pani_cheyyi(x: ankam ni) -> sare_thappu[khali, Thappu] ante:
+    vellagane:
+        "modhati vellagane" ni choopinchu()
+    vellagane:
+        "rendo vellagane" ni choopinchu()
+    x > 1 aithe:
+        thappu(Thappu.Chedindhi)?
+    "pani ayyindhi" ni choopinchu()
+
+modhalu() -> khali ante:
+    1 ni pani_cheyyi()
+    2 ni pani_cheyyi()

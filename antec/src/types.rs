@@ -45,7 +45,7 @@ pub enum Con {
     Adt(DefId),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Ty {
     Int(IntTy),
     Float(u8),
@@ -305,6 +305,11 @@ impl InferTable {
     }
 
     pub fn find(&mut self, v: u32) -> u32 {
+        // A variable from another table (a type left undecided by inference)
+        // is unbound here.
+        if v as usize >= self.parent.len() {
+            return v;
+        }
         let mut root = v;
         while self.parent[root as usize] != root {
             root = self.parent[root as usize];
@@ -323,12 +328,12 @@ impl InferTable {
 
     pub fn kind(&mut self, v: u32) -> VarKind {
         let r = self.find(v);
-        self.kind[r as usize]
+        self.kind.get(r as usize).copied().unwrap_or(VarKind::General)
     }
 
     pub fn probe(&mut self, v: u32) -> Option<Ty> {
         let r = self.find(v);
-        self.value[r as usize].clone()
+        self.value.get(r as usize).cloned().flatten()
     }
 
     /// Follows bound variables at the top of `ty` only.
@@ -369,6 +374,9 @@ impl InferTable {
     /// Binds an unbound root variable. The caller has checked compatibility.
     pub fn bind(&mut self, v: u32, ty: Ty) {
         let r = self.find(v);
+        if r as usize >= self.value.len() {
+            return;
+        }
         if self.open_snapshots > 0 {
             self.undo.push(Undo::Value(r));
         }
@@ -380,6 +388,9 @@ impl InferTable {
         let (ra, rb) = (self.find(a), self.find(b));
         if ra == rb {
             return true;
+        }
+        if ra as usize >= self.parent.len() || rb as usize >= self.parent.len() {
+            return false;
         }
         let (ka, kb) = (self.kind[ra as usize], self.kind[rb as usize]);
         let kind = match (ka, kb) {

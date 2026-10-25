@@ -1,0 +1,8 @@
+# category: runtime-trap
+# expect-trap: T01 @ 8:5
+# level: core
+# `MIN / -1` traps.
+modhalu() -> khali ante:
+    a: ankam8 ante -128
+    b: ankam8 ante -1
+    (a / b) ni choopinchu()

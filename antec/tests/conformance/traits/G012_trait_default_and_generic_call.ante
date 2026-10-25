@@ -1,4 +1,6 @@
 # category: run-pass
+# expect-stdout: aakaram
+# expect-stdout: 4.0
 # level: core
 # User trait with a default method, called generically.
 gunam Aakaram ante:

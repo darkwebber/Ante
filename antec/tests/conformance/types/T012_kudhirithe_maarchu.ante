@@ -1,0 +1,8 @@
+# category: run-pass
+# expect-stdout: ledhu
+# expect-stdout: undhi(100)
+# level: core
+# `300 ni kudhirithe_maarchu[ankam8]()` is `ledhu`.
+modhalu() -> khali ante:
+    300 ni kudhirithe_maarchu[ankam8]() |> choopinchu()
+    100 ni kudhirithe_maarchu[ankam8]() |> choopinchu()

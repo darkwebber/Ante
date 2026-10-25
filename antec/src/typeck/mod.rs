@@ -14,7 +14,8 @@ mod call;
 mod items;
 mod lower;
 mod pattern;
-mod solve;
+pub mod results;
+pub mod solve;
 mod std_lib;
 
 use std::collections::{HashMap, HashSet};
@@ -50,6 +51,8 @@ pub struct Formal {
     pub kind: ParamKind,
     pub keyword_only: bool,
     pub has_default: bool,
+    /// The default value's expression, in the declaring function's file.
+    pub default: Option<Expr>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,6 +98,8 @@ pub struct FnSig {
     pub module: ModId,
     pub file: Option<FileId>,
     pub span: Span,
+    /// For standard methods, the `gunam <owner>_panulu` block they come from.
+    pub owner: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -222,7 +227,16 @@ pub(crate) struct TyEnv<'x> {
     pub self_ty: Option<Ty>,
 }
 
-pub fn check(modules: &[SourceModule], res: &Resolution) -> Vec<(FileId, Diagnostic)> {
+pub use body::is_place as is_place_expr;
+
+/// Everything the type checker produces.
+pub struct Typeck<'a> {
+    pub globals: Globals<'a>,
+    pub results: results::Results,
+    pub diagnostics: Vec<(FileId, Diagnostic)>,
+}
+
+pub fn check<'a>(modules: &[SourceModule], res: &'a Resolution) -> Typeck<'a> {
     let mut c = Collector::new(res);
     c.load_std();
     for m in modules {
@@ -238,14 +252,17 @@ pub fn check(modules: &[SourceModule], res: &Resolution) -> Vec<(FileId, Diagnos
     let mut diags = std::mem::take(&mut c.diags);
     let globals = c.globals;
     diags.extend(items::check_items(&globals, modules));
+    let mut all = results::Results::default();
     for m in modules {
         if let Some(ast) = m.ast {
-            diags.extend(body::check_module(&globals, m.file, ast));
+            let (d, r) = body::check_module(&globals, m.file, ast);
+            diags.extend(d);
+            all.merge(r);
         }
     }
     diags.sort_by_key(|(file, d)| (*file, d.span.start));
     diags.dedup_by(|a, b| a.0 == b.0 && a.1.code == b.1.code && a.1.span == b.1.span);
-    diags
+    Typeck { globals, results: all, diagnostics: diags }
 }
 
 // ── collection ─────────────────────────────────────────────────────────────
@@ -367,6 +384,7 @@ impl<'a> Collector<'a> {
                 kind: p.kind,
                 keyword_only: p.keyword_only,
                 has_default: p.default.is_some(),
+                default: p.default.clone(),
             });
         }
         let ret = self.lower_type(&env, &sig.ret);
@@ -386,6 +404,7 @@ impl<'a> Collector<'a> {
             module,
             file,
             span: sig.name.span,
+            owner: None,
         }
     }
 

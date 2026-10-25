@@ -1,0 +1,9 @@
+# category: run-pass
+# expect-stdout: 30
+# level: core
+# `10 ni, 20 tho kalupu()`.
+kalupu(a: ankam ni, b: ankam tho) -> ankam ante:
+    (a + b) icchey
+
+modhalu() -> khali ante:
+    10 ni, 20 tho kalupu() |> choopinchu()

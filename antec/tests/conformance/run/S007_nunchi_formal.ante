@@ -1,0 +1,9 @@
+# category: run-pass
+# expect-stdout: f.txt nunchi teesukunnam
+# level: core
+# A `nunchi` phrase binds a `nunchi` formal.
+teesko(p: padham nunchi) -> padham ante:
+    f"{p} nunchi teesukunnam" icchey
+
+modhalu() -> khali ante:
+    "f.txt" nunchi teesko() |> choopinchu()

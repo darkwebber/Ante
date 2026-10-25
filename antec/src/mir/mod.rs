@@ -1,0 +1,302 @@
+//! MIR: each function body as a control-flow graph of basic blocks over
+//! explicit places, with moves, borrows and drops spelled out (spec
+//! Appendix E). The interpreter (`crate::interp`) runs it; later milestones
+//! borrow-check it (M8) and generate LLVM IR from it (M7).
+
+mod build;
+
+use std::collections::HashMap;
+use std::fmt;
+use std::rc::Rc;
+
+pub use build::{build_program, op_ty as build_op_ty};
+
+use crate::ast::{BinOp, UnOp};
+use crate::resolve::{DefId, FileId};
+use crate::source::Span;
+use crate::typeck::results::AdtRef;
+use crate::typeck::FnId;
+use crate::types::{IntTy, Ty};
+
+pub type Local = u32;
+pub type BlockId = u32;
+pub type BodyId = u32;
+
+pub const RETURN: Local = 0;
+
+#[derive(Default)]
+pub struct Program {
+    pub bodies: Vec<Body>,
+    pub fn_bodies: HashMap<FnId, BodyId>,
+    pub const_bodies: HashMap<DefId, BodyId>,
+}
+
+#[derive(Clone, Debug)]
+pub enum BodyKind {
+    Fn(FnId),
+    Closure,
+    Const(DefId),
+}
+
+pub struct Body {
+    pub name: String,
+    pub kind: BodyKind,
+    pub file: Option<FileId>,
+    /// Local 0 is the return value; then the parameters (for a closure, its
+    /// captures first), then everything else.
+    pub locals: Vec<LocalDecl>,
+    pub params: u32,
+    pub blocks: Vec<Block>,
+}
+
+pub struct LocalDecl {
+    pub ty: Ty,
+    pub name: Option<String>,
+}
+
+pub struct Block {
+    pub stmts: Vec<Stmt>,
+    pub term: Term,
+}
+
+pub enum Stmt {
+    Assign(Place, Rvalue),
+    /// Writes a value whose old contents must be dropped first (§17.2).
+    Replace(Place, Rvalue, Ty),
+    /// Runs the destructor of the value at the place, if it is initialized
+    /// (§19.3), and leaves the place uninitialized.
+    Drop(Place, Ty),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Place {
+    pub local: Local,
+    pub proj: Vec<Proj>,
+}
+
+impl Place {
+    pub fn local(local: Local) -> Self {
+        Place { local, proj: Vec::new() }
+    }
+
+    pub fn project(&self, p: Proj) -> Self {
+        let mut proj = self.proj.clone();
+        proj.push(p);
+        Place { local: self.local, proj }
+    }
+
+    pub fn field(&self, i: u32) -> Self {
+        self.project(Proj::Field(i))
+    }
+
+    pub fn deref(&self) -> Self {
+        self.project(Proj::Deref)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Proj {
+    /// Through a reference or a `pette`.
+    Deref,
+    /// A record, tuple or variant field.
+    Field(u32),
+    /// An element of an array, `varusa` or `mukka`; traps T03 when out of bounds.
+    Index(Local, Span),
+}
+
+#[derive(Clone, Debug)]
+pub enum Operand {
+    Copy(Place),
+    Move(Place),
+    Const(Const),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Const {
+    Unit,
+    Bool(bool),
+    Int(i128),
+    F32(f32),
+    F64(f64),
+    Char(char),
+    Str(Rc<str>),
+    Fn(FnId, Vec<Ty>),
+}
+
+/// The operand type of a built-in operator.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OpTy {
+    Int(IntTy),
+    Float(u8),
+    Bool,
+    Char,
+    Str,
+    Unit,
+}
+
+#[derive(Clone, Debug)]
+pub enum Agg {
+    Tuple,
+    Array,
+    Varusa,
+    /// Operands alternate key, value.
+    Jodi,
+    Adt(AdtRef, u32),
+    Pette,
+    Closure(BodyId),
+}
+
+pub enum Rvalue {
+    Use(Operand),
+    Ref(bool, Place),
+    /// `&xs[a nunchi b lopu]`; traps T10 on bad bounds.
+    Slice {
+        place: Place,
+        lo: Operand,
+        hi: Operand,
+        inclusive: bool,
+        mutable: bool,
+        span: Span,
+    },
+    Binary(BinOp, OpTy, Operand, Operand, Span),
+    Unary(UnOp, OpTy, Operand, Span),
+    Aggregate(Agg, Vec<Operand>),
+    /// The variant index of an enum value.
+    Discriminant(Place),
+    /// `a nunchi b lopu/varaku` of an integer type.
+    Range(Operand, Operand, bool, IntTy),
+}
+
+#[derive(Clone, Debug)]
+pub enum Callee {
+    Fn(FnId, Vec<Ty>),
+    /// A trait method; the types are `[idhi, trait args…, own generics…]`.
+    Trait(FnId, Vec<Ty>),
+    Value(Operand),
+    Intrinsic(Intrinsic),
+}
+
+#[derive(Clone, Debug)]
+pub enum Intrinsic {
+    /// Turns an iterable into an iterator (§21.4). `copy`: items are values,
+    /// not references.
+    IntoIter { copy: bool, ty: Ty },
+    /// `&maare iterator` → `undochu[item]`.
+    IterNext,
+    /// An f-string: text pieces around the displayed arguments (references).
+    Format { texts: Vec<String>, tys: Vec<Ty> },
+    /// Builds a `mukka` for a `migathavi` collector; `true` marks an argument
+    /// whose elements are spliced in (`...xs`).
+    Collect(Vec<bool>),
+    /// The value of a module constant.
+    Const(DefId),
+    /// Something the interpreter can't run (`torch`, `python`).
+    Unsupported(String),
+}
+
+pub enum Term {
+    Goto(BlockId),
+    Switch { discr: Operand, targets: Vec<(i128, BlockId)>, otherwise: BlockId },
+    Call { callee: Callee, args: Vec<Operand>, dest: Place, next: BlockId, span: Span },
+    Return,
+    Unreachable,
+}
+
+// ── printing (`antec emit mir`) ────────────────────────────────────────────
+
+impl fmt::Display for Place {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut s = format!("_{}", self.local);
+        for p in &self.proj {
+            s = match p {
+                Proj::Deref => format!("(*{s})"),
+                Proj::Field(i) => format!("{s}.{i}"),
+                Proj::Index(l, _) => format!("{s}[_{l}]"),
+            };
+        }
+        write!(f, "{s}")
+    }
+}
+
+impl fmt::Display for Operand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Operand::Copy(p) => write!(f, "{p}"),
+            Operand::Move(p) => write!(f, "move {p}"),
+            Operand::Const(c) => match c {
+                Const::Unit => write!(f, "()"),
+                Const::Bool(b) => write!(f, "{}", if *b { "avunu" } else { "kaadhu" }),
+                Const::Int(i) => write!(f, "{i}"),
+                Const::F32(x) => write!(f, "{x:?}f32"),
+                Const::F64(x) => write!(f, "{x:?}"),
+                Const::Char(c) => write!(f, "{c:?}"),
+                Const::Str(s) => write!(f, "{s:?}"),
+                Const::Fn(id, _) => write!(f, "fn#{id}"),
+            },
+        }
+    }
+}
+
+fn list<T: fmt::Display>(items: &[T]) -> String {
+    items.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(", ")
+}
+
+impl fmt::Display for Rvalue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Rvalue::Use(o) => write!(f, "{o}"),
+            Rvalue::Ref(m, p) => write!(f, "&{}{p}", if *m { "maare " } else { "" }),
+            Rvalue::Slice { place, lo, hi, inclusive, .. } => {
+                write!(f, "&{place}[{lo} nunchi {hi} {}]", if *inclusive { "varaku" } else { "lopu" })
+            }
+            Rvalue::Binary(op, _, a, b, _) => write!(f, "{a} {} {b}", op.as_str()),
+            Rvalue::Unary(op, _, a, _) => write!(f, "{op:?}({a})"),
+            Rvalue::Aggregate(agg, ops) => write!(f, "{agg:?}({})", list(ops)),
+            Rvalue::Discriminant(p) => write!(f, "discriminant({p})"),
+            Rvalue::Range(a, b, inc, _) => {
+                write!(f, "{a} nunchi {b} {}", if *inc { "varaku" } else { "lopu" })
+            }
+        }
+    }
+}
+
+impl Body {
+    pub fn render(&self, fn_name: &dyn Fn(FnId) -> String) -> String {
+        let mut out = format!("{} ({} params):\n", self.name, self.params);
+        for (i, l) in self.locals.iter().enumerate() {
+            let name = l.name.as_deref().map(|n| format!("  // {n}")).unwrap_or_default();
+            out.push_str(&format!("    let _{i}: {:?};{name}\n", l.ty));
+        }
+        for (i, b) in self.blocks.iter().enumerate() {
+            out.push_str(&format!("  bb{i}:\n"));
+            for s in &b.stmts {
+                let line = match s {
+                    Stmt::Assign(p, r) => format!("{p} = {r}"),
+                    Stmt::Replace(p, r, _) => format!("replace {p} = {r}"),
+                    Stmt::Drop(p, _) => format!("drop({p})"),
+                };
+                out.push_str(&format!("    {line};\n"));
+            }
+            let term = match &b.term {
+                Term::Goto(t) => format!("goto bb{t}"),
+                Term::Switch { discr, targets, otherwise } => {
+                    let arms: Vec<String> = targets.iter().map(|(v, t)| format!("{v} => bb{t}")).collect();
+                    format!("switch {discr} [{}, _ => bb{otherwise}]", arms.join(", "))
+                }
+                Term::Call { callee, args, dest, next, .. } => {
+                    let c = match callee {
+                        Callee::Fn(id, _) => fn_name(*id),
+                        Callee::Trait(id, _) => format!("<trait>{}", fn_name(*id)),
+                        Callee::Value(o) => format!("({o})"),
+                        Callee::Intrinsic(i) => format!("{i:?}"),
+                    };
+                    format!("{dest} = {c}({}) -> bb{next}", list(args))
+                }
+                Term::Return => "return".into(),
+                Term::Unreachable => "unreachable".into(),
+            };
+            out.push_str(&format!("    {term};\n"));
+        }
+        out
+    }
+}

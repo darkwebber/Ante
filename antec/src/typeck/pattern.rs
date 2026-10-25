@@ -2,6 +2,7 @@
 //! exhaustiveness by the usefulness algorithm (E0701, W0004).
 
 use super::body::BodyCx;
+use super::results::{expr_id, AdtRef, BindMode};
 use super::AdtKind;
 use crate::ast::*;
 use crate::diag::Diagnostic;
@@ -26,6 +27,7 @@ impl BodyCx<'_, '_> {
     /// through a reference (§14.2).
     fn pat(&mut self, p: &Pattern, ty: &Ty, through: Option<bool>) {
         let t = self.shallow(ty);
+        self.out.pat_ty.entry(expr_id(self.file, p.span)).or_insert_with(|| t.clone());
         if !matches!(p.kind, PatternKind::Bind { .. } | PatternKind::Wild) {
             if let Ty::Ref(m, inner) = &t {
                 let mode = Some(through.map_or(*m, |o| o && *m));
@@ -35,16 +37,14 @@ impl BodyCx<'_, '_> {
         match &p.kind {
             PatternKind::Wild => {}
             PatternKind::Bind { mutable, name } => {
-                let bt = match through {
-                    None => t,
-                    Some(m) => {
-                        if self.is_copy(&t) {
-                            t
-                        } else {
-                            Ty::reference(m, t)
-                        }
-                    }
+                let copy = self.is_copy(&t);
+                let (bt, mode) = match through {
+                    None if copy => (t, BindMode::Copy),
+                    None => (t, BindMode::Move),
+                    Some(_) if copy => (t, BindMode::Copy),
+                    Some(m) => (Ty::reference(m, t), BindMode::Ref(m)),
                 };
+                self.out.binds.insert((self.file, name.span.start), mode);
                 self.declare(name, bt, *mutable);
             }
             PatternKind::Literal(e) => {
@@ -88,6 +88,13 @@ impl BodyCx<'_, '_> {
                 _ => (Con::SareThappu, 1, 1),
             };
             let n = if con == Con::Undochu { 1 } else { 2 };
+            let (adt, variant) = match name {
+                "undhi" => (AdtRef::Undochu, 0),
+                "ledhu" => (AdtRef::Undochu, 1),
+                "sare" => (AdtRef::SareThappu, 0),
+                _ => (AdtRef::SareThappu, 1),
+            };
+            self.out.pat_ctors.insert(expr_id(self.file, span), (adt, variant));
             let parts: Vec<Ty> = (0..n).map(|_| self.infer.fresh(VarKind::General)).collect();
             if !self.unify_or_report(span, t, &Ty::App(con, parts.clone())) {
                 return;
@@ -102,6 +109,7 @@ impl BodyCx<'_, '_> {
             return;
         }
         let Some((d, vi)) = self.variant_of(path) else { return };
+        self.out.pat_ctors.insert(expr_id(self.file, span), (AdtRef::Adt(d), vi as u32));
         let g = self.g;
         let adt = &g.adts[&d];
         let AdtKind::Enum(variants) = &adt.kind else { return };

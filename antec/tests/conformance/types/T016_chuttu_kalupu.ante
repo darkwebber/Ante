@@ -1,0 +1,10 @@
+# category: run-pass
+# expect-stdout: -128
+# level: core
+# `127 ni, 1 tho lekkalu.chuttu_kalupu()` on `ankam8` is -128.
+lekkalu thechuko
+
+modhalu() -> khali ante:
+    a: ankam8 ante 127
+    b: ankam8 ante 1
+    a ni, b tho lekkalu.chuttu_kalupu() |> choopinchu()

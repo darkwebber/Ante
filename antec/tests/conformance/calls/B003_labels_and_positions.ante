@@ -1,8 +1,18 @@
 # category: run-pass
+# expect-stdout: 1
+# expect-stdout: 3
+# expect-stdout: 2
+# expect-stdout: a=1, b=2, c=3
+# expect-stdout: 6
 # level: core
-# Labels mixed with positions.
+# Labels mixed with positions; operands run in source order.
+chupi(x: ankam ni) -> ankam ante:
+    x ni choopinchu()
+    x icchey
+
 kalupu_moodu(a: ankam ni, b: ankam ni, c: ankam ni) -> ankam ante:
+    f"a={a}, b={b}, c={c}" ni choopinchu()
     (a + b + c) icchey
 
 modhalu() -> khali ante:
-    1 ni, 3 ni c ga, 2 ni kalupu_moodu() |> choopinchu()
+    (1 ni chupi()) ni, (3 ni chupi()) ni c ga, (2 ni chupi()) ni kalupu_moodu() |> choopinchu()

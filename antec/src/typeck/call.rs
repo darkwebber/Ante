@@ -2,6 +2,7 @@
 //! binding algorithm (§11.2), automatic borrows (§11.3) and pipes (§12).
 
 use super::body::{builtin_head, is_place, BodyCx, Conv};
+use super::results::{expr_id, ArgPlan, ArgRef, ArgSrc, CallPlan, RecvPlan, Target};
 use super::solve::{self, Solver};
 use super::{FnId, FnOrigin, Formal, Head, RecvMode, TraitRef};
 use crate::ast::*;
@@ -24,11 +25,13 @@ struct Prepared {
     /// An adapter called with method syntax: the receiver fills formal 0.
     pre: Option<Injected>,
     conv: Option<(Conv, Ty, Ty)>,
+    target: Target,
+    recv: Option<RecvPlan>,
 }
 
 enum Pick {
-    Fn(FnId, Ty),
-    Trait { fid: FnId, self_ty: Ty, args: Vec<Ty> },
+    Fn(FnId, Ty, u8),
+    Trait { fid: FnId, self_ty: Ty, args: Vec<Ty>, derefs: u8 },
     Adapter(FnId),
 }
 
@@ -36,7 +39,16 @@ enum Pick {
 enum Src<'e> {
     Expr(&'e Expr),
     Injected,
-    Spread(Ty, Span),
+    /// A spread element: its type, the spread expression, and the element
+    /// index (`None` for a runtime-length spread).
+    Spread(Ty, &'e Expr, Option<u32>),
+}
+
+/// How an argument is adjusted on the way in.
+#[derive(Clone, Copy, Default)]
+struct Adj {
+    borrow: bool,
+    iter: bool,
 }
 
 struct Entry<'e> {
@@ -88,10 +100,18 @@ impl BodyCx<'_, '_> {
             }
         }
         let pre = prepared.pre.take();
-        self.bind_and_check(&prepared, phrases, injected, pre, span);
-        if let Some((kind, src, dst)) = prepared.conv.take() {
+        let args = self.bind_and_check(&prepared, phrases, injected, pre, span);
+        if let Some((kind, src, dst)) = prepared.conv.clone() {
             self.conversions.push((kind, src, dst, span));
         }
+        let plan = CallPlan {
+            target: prepared.target.clone(),
+            recv: prepared.recv.take(),
+            args,
+            ret: prepared.ret.clone(),
+            conv: prepared.conv.take(),
+        };
+        self.out.calls.insert(expr_id(self.file, span), plan);
         prepared.ret
     }
 
@@ -111,11 +131,14 @@ impl BodyCx<'_, '_> {
                         kind: ParamKind::Normal,
                         keyword_only: false,
                         has_default: false,
+                        default: None,
                     })
                     .collect(),
                 ret: *ret,
                 pre: None,
                 conv: None,
+                target: Target::Value,
+                recv: None,
             }),
             Ty::Error => None,
             Ty::Var(_) => {
@@ -135,23 +158,23 @@ impl BodyCx<'_, '_> {
         let first = &segs[0];
         let last = segs.last().expect("non-empty path");
         match self.res_at(first.span) {
-            Some(Res::Local(decl)) => {
-                let ty = self.locals.get(&decl.start).map_or(Ty::Error, |l| l.ty.clone());
+            Some(Res::Local(_)) => {
                 if segs.len() == 1 {
+                    let ty = self.check_path_expr(p);
                     return self.value_callee(ty, span);
                 }
-                let base = self.path_fields(ty, &segs[1..segs.len() - 1]);
                 let recv = prefix_expr(p);
+                let base = self.check_expr(&recv, None);
                 self.method(base, Some(&recv), last, type_args)
             }
             Some(Res::SelfMember) => {
-                let naa = self.naa_ty();
                 if first.name == "naa" {
                     if segs.len() == 1 {
-                        return self.value_callee(naa, span);
+                        let ty = self.check_path_expr(p);
+                        return self.value_callee(ty, span);
                     }
-                    let base = self.path_fields(naa, &segs[1..segs.len() - 1]);
                     let recv = prefix_expr(p);
+                    let base = self.check_expr(&recv, None);
                     return self.method(base, Some(&recv), last, type_args);
                 }
                 if segs.len() == 1 {
@@ -159,13 +182,14 @@ impl BodyCx<'_, '_> {
                     let self_ty = self.receiver.as_ref().map(|(_, t)| t.clone()).unwrap_or(Ty::Error);
                     if self.has_method(&self_ty, &first.name) {
                         let recv = naa_expr(first.span);
+                        let naa = self.check_expr(&recv, None);
                         return self.method(naa, Some(&recv), first, type_args);
                     }
-                    let t = self.field(&naa, first);
+                    let t = self.check_path_expr(p);
                     return self.value_callee(t, span);
                 }
-                let base = self.path_fields(naa, &segs[..segs.len() - 1]);
                 let recv = prefix_expr(p);
+                let base = self.check_expr(&recv, None);
                 self.method(base, Some(&recv), last, type_args)
             }
             Some(Res::Def(d)) => self.callee_def(d, p, 1, type_args, span),
@@ -181,11 +205,10 @@ impl BodyCx<'_, '_> {
         }
     }
 
-    fn path_fields(&mut self, mut ty: Ty, segs: &[Ident]) -> Ty {
-        for s in segs {
-            ty = self.field(&ty, s);
-        }
-        ty
+    /// Checks a callee path as a value expression, recording what it names.
+    fn check_path_expr(&mut self, p: &Path) -> Ty {
+        let e = Expr { kind: ExprKind::Path(p.clone()), span: p.span };
+        self.check_expr(&e, None)
     }
 
     fn callee_def(
@@ -215,12 +238,13 @@ impl BodyCx<'_, '_> {
                     }
                 }
                 // A constant (or function value) followed by fields and a method.
-                let ty = g.consts.get(&d).cloned().unwrap_or(Ty::Error);
                 if idx == segs.len() {
+                    let ty = self.check_path_expr(p);
                     return self.value_callee(ty, span);
                 }
-                let base = self.path_fields(ty, &segs[idx..segs.len() - 1]);
-                self.method(base, None, segs.last().expect("non-empty"), type_args)
+                let recv = prefix_expr(p);
+                let base = self.check_expr(&recv, None);
+                self.method(base, Some(&recv), segs.last().expect("non-empty"), type_args)
             }
             DefKind::Record | DefKind::Enum | DefKind::StdType => {
                 let Some(seg) = segs.get(idx) else {
@@ -316,6 +340,8 @@ impl BodyCx<'_, '_> {
             ret: sig.ret.subst(&fresh),
             pre: None,
             conv,
+            target: Target::Fn { fid, tys: fresh },
+            recv: None,
         })
     }
 
@@ -336,7 +362,7 @@ impl BodyCx<'_, '_> {
     ) -> Option<Prepared> {
         let pick = self.lookup_method(&recv_ty, name)?;
         match pick {
-            Pick::Fn(fid, self_ty) => {
+            Pick::Fn(fid, self_ty, derefs) => {
                 self.check_visible(fid, name.span);
                 let sig = &self.g.fns[fid];
                 let Some(r) = &sig.receiver else {
@@ -352,13 +378,16 @@ impl BodyCx<'_, '_> {
                 };
                 let mode = r.mode;
                 self.receiver_mode(mode, recv, &recv_ty, name.span);
-                self.prepare_fn(fid, Some(self_ty), type_args, name.span)
+                let mut p = self.prepare_fn(fid, Some(self_ty), type_args, name.span)?;
+                p.recv = recv.map(|e| RecvPlan { expr: e.clone(), derefs, mode });
+                Some(p)
             }
-            Pick::Trait { fid, self_ty, args } => {
+            Pick::Trait { fid, self_ty, args, derefs } => {
                 let g = self.g;
                 let sig = &g.fns[fid];
-                if let Some(r) = &sig.receiver {
-                    self.receiver_mode(r.mode, recv, &recv_ty, name.span);
+                let mode = sig.receiver.as_ref().map_or(RecvMode::Value, |r| r.mode);
+                if sig.receiver.is_some() {
+                    self.receiver_mode(mode, recv, &recv_ty, name.span);
                 }
                 let mut fresh: Vec<Ty> =
                     sig.generics.iter().map(|_| self.infer.fresh(VarKind::General)).collect();
@@ -381,12 +410,15 @@ impl BodyCx<'_, '_> {
                     ret: sig.ret.subst(&fresh),
                     pre: None,
                     conv: None,
+                    recv: recv.map(|e| RecvPlan { expr: e.clone(), derefs, mode }),
+                    target: Target::Trait { fid, tys: fresh },
                 })
             }
             Pick::Adapter(fid) => {
                 let mut p = self.prepare_fn(fid, None, type_args, name.span)?;
                 let place = recv.is_some_and(is_place);
                 p.pre = Some(Injected { ty: recv_ty, span: name.span, place });
+                p.recv = recv.map(|e| RecvPlan { expr: e.clone(), derefs: 0, mode: RecvMode::Value });
                 Some(p)
             }
         }
@@ -421,6 +453,7 @@ impl BodyCx<'_, '_> {
     fn lookup_method(&mut self, recv_ty: &Ty, name: &Ident) -> Option<Pick> {
         let g = self.g;
         let mut cand = self.shallow(recv_ty);
+        let mut derefs = 0u8;
         loop {
             cand = self.infer.resolve(&cand);
             // An undecided literal looks up methods as its default type.
@@ -441,13 +474,14 @@ impl BodyCx<'_, '_> {
                 // `a: &T` copies the `T`, not the reference.
                 Ty::Ref(_, inner) => {
                     cand = (**inner).clone();
+                    derefs += 1;
                     continue;
                 }
                 _ => {}
             }
             if let Some(h) = head_of_ty(&cand) {
                 if let Some(&fid) = g.inherent.get(&h).and_then(|m| m.get(&name.name)) {
-                    return Some(Pick::Fn(fid, cand));
+                    return Some(Pick::Fn(fid, cand, derefs));
                 }
             }
             // Vectors and arrays also have the slice methods.
@@ -458,10 +492,10 @@ impl BodyCx<'_, '_> {
             };
             if let Some(e) = elem {
                 if let Some(&fid) = g.inherent.get(&Head::Con(Con::Mukka)).and_then(|m| m.get(&name.name)) {
-                    return Some(Pick::Fn(fid, Ty::App(Con::Mukka, vec![e])));
+                    return Some(Pick::Fn(fid, Ty::App(Con::Mukka, vec![e]), derefs));
                 }
             }
-            if let Some(p) = self.trait_method(&cand, name) {
+            if let Some(p) = self.trait_method(&cand, name, derefs) {
                 return p;
             }
             cand = match cand {
@@ -469,6 +503,7 @@ impl BodyCx<'_, '_> {
                 Ty::App(Con::Pette, args) => args[0].clone(),
                 _ => break,
             };
+            derefs += 1;
         }
         if let Some(&fid) = g.adapters.get(&name.name) {
             return Some(Pick::Adapter(fid));
@@ -480,7 +515,7 @@ impl BodyCx<'_, '_> {
 
     /// A method from a trait the candidate implements. `Some(None)` means an
     /// error was reported.
-    fn trait_method(&mut self, cand: &Ty, name: &Ident) -> Option<Option<Pick>> {
+    fn trait_method(&mut self, cand: &Ty, name: &Ident, derefs: u8) -> Option<Option<Pick>> {
         let g = self.g;
         let mut defs: Vec<usize> = g.traits.keys().copied().collect();
         defs.sort_unstable();
@@ -507,7 +542,7 @@ impl BodyCx<'_, '_> {
                 args
             };
             names.push(tr.name.clone());
-            found.push(Pick::Trait { fid, self_ty: cand.clone(), args });
+            found.push(Pick::Trait { fid, self_ty: cand.clone(), args, derefs });
         }
         match found.len() {
             0 => None,
@@ -536,7 +571,7 @@ impl BodyCx<'_, '_> {
         injected: Option<Injected>,
         pre: Option<Injected>,
         span: Span,
-    ) {
+    ) -> Vec<ArgPlan> {
         let formals = &p.formals;
         let diags_before = self.diags.len();
         let mut entries: Vec<Entry> = Vec::new();
@@ -561,9 +596,9 @@ impl BodyCx<'_, '_> {
                     let t = self.check_expr(e, None);
                     match self.shallow(&t) {
                         Ty::Tuple(items) => {
-                            for it in items {
+                            for (i, it) in items.into_iter().enumerate() {
                                 entries.push(Entry {
-                                    src: Src::Spread(it, e.span),
+                                    src: Src::Spread(it, e, Some(i as u32)),
                                     role: ph.role,
                                     label: None,
                                     span: ph.span,
@@ -572,9 +607,9 @@ impl BodyCx<'_, '_> {
                             }
                         }
                         Ty::Array(elem, Some(n)) => {
-                            for _ in 0..n {
+                            for i in 0..n {
                                 entries.push(Entry {
-                                    src: Src::Spread((*elem).clone(), e.span),
+                                    src: Src::Spread((*elem).clone(), e, Some(i as u32)),
                                     role: ph.role,
                                     label: None,
                                     span: ph.span,
@@ -594,7 +629,7 @@ impl BodyCx<'_, '_> {
                                 _ => Ty::Error,
                             };
                             entries.push(Entry {
-                                src: Src::Spread(elem, e.span),
+                                src: Src::Spread(elem, e, None),
                                 role: ph.role,
                                 label: None,
                                 span: ph.span,
@@ -753,17 +788,20 @@ impl BodyCx<'_, '_> {
                 _ => f.ty.clone(),
             }
         };
+        let mut pre_adj = Adj::default();
+        let mut inj_adj = Adj::default();
         if let (Some(inj), Some(fi)) = (&pre, pre_slot) {
             let want = formal_ty(fi);
-            self.check_arg_ty(inj.ty.clone(), &want, inj.span, inj.place);
+            pre_adj = self.check_arg_ty(inj.ty.clone(), &want, inj.span, inj.place);
         }
         if let (Some(inj), Some(fi)) = (&injected, implicit_slot) {
             let want = formal_ty(fi);
-            self.check_arg_ty(inj.ty.clone(), &want, inj.span, inj.place);
+            inj_adj = self.check_arg_ty(inj.ty.clone(), &want, inj.span, inj.place);
         }
+        let mut adjs: Vec<Adj> = vec![Adj::default(); entries.len()];
         for (ei, en) in entries.iter().enumerate() {
             let want = target[ei].map(formal_ty);
-            match (&en.src, want) {
+            adjs[ei] = match (&en.src, want) {
                 (Src::Expr(e), Some(w)) => {
                     let hint = match self.shallow(&w) {
                         Ty::Ref(_, inner)
@@ -775,31 +813,95 @@ impl BodyCx<'_, '_> {
                         other => Some(other),
                     };
                     let t = self.check_expr(e, hint.as_ref());
-                    self.check_arg_ty(t, &w, e.span, is_place(e));
+                    self.check_arg_ty(t, &w, e.span, is_place(e))
                 }
                 (Src::Expr(e), None) => {
                     self.check_expr(e, None);
+                    Adj::default()
                 }
-                (Src::Injected, Some(w)) => {
-                    if let Some(inj) = &injected {
-                        self.check_arg_ty(inj.ty.clone(), &w, inj.span, inj.place);
-                    }
-                }
-                (Src::Spread(t, sp), Some(w)) => self.check_arg_ty(t.clone(), &w, *sp, false),
-                _ => {}
-            }
+                (Src::Injected, Some(w)) => match &injected {
+                    Some(inj) => self.check_arg_ty(inj.ty.clone(), &w, inj.span, inj.place),
+                    None => Adj::default(),
+                },
+                (Src::Spread(t, e, _), Some(w)) => self.check_arg_ty(t.clone(), &w, e.span, false),
+                _ => Adj::default(),
+            };
         }
+
+        // The plan lowering follows: one entry per formal.
+        let file = self.file;
+        let arg_ref = |cx: &mut Self, src: ArgSrc, adj: Adj, fi: usize| ArgRef {
+            src,
+            borrow: adj.borrow,
+            iter: if adj.iter {
+                match cx.shallow(&formals[fi].ty) {
+                    Ty::App(Con::Pravaham, a) => Some(a[0].clone()),
+                    _ => None,
+                }
+            } else {
+                None
+            },
+        };
+        let entry_src = |en: &Entry| match &en.src {
+            Src::Expr(e) => ArgSrc::Expr(expr_id(file, e.span)),
+            Src::Injected => ArgSrc::Injected,
+            Src::Spread(_, e, index) => ArgSrc::Spread { expr: expr_id(file, e.span), index: *index },
+        };
+        let mut plans = Vec::with_capacity(formals.len());
+        for (fi, f) in formals.iter().enumerate() {
+            let plan = match f.kind {
+                ParamKind::Normal | ParamKind::Receiver => match bound[fi] {
+                    Some(usize::MAX) => ArgPlan::One(arg_ref(self, ArgSrc::Pre, pre_adj, fi)),
+                    Some(x) if x == usize::MAX - 1 => {
+                        ArgPlan::One(arg_ref(self, ArgSrc::Injected, inj_adj, fi))
+                    }
+                    Some(ei) => {
+                        let src = entry_src(&entries[ei]);
+                        ArgPlan::One(arg_ref(self, src, adjs[ei], fi))
+                    }
+                    None if f.has_default => ArgPlan::Default,
+                    None => ArgPlan::Missing,
+                },
+                ParamKind::Variadic => {
+                    let mut many = Vec::new();
+                    if implicit_slot == Some(fi) {
+                        many.push(arg_ref(self, ArgSrc::Injected, inj_adj, fi));
+                    }
+                    for (ei, en) in entries.iter().enumerate() {
+                        if target[ei] == Some(fi) {
+                            let src = entry_src(en);
+                            many.push(arg_ref(self, src, adjs[ei], fi));
+                        }
+                    }
+                    ArgPlan::Many(many)
+                }
+                ParamKind::NamedCollector => {
+                    let mut named = Vec::new();
+                    for (ei, en) in entries.iter().enumerate() {
+                        if target[ei] == Some(fi) {
+                            if let Some(label) = en.label {
+                                let src = entry_src(en);
+                                named.push((label.name.clone(), arg_ref(self, src, adjs[ei], fi)));
+                            }
+                        }
+                    }
+                    ArgPlan::Named(named)
+                }
+            };
+            plans.push(plan);
+        }
+        plans
     }
 
     /// Checks one argument against its formal, with automatic borrows (§11.3).
-    fn check_arg_ty(&mut self, actual: Ty, formal: &Ty, span: Span, place: bool) {
+    fn check_arg_ty(&mut self, actual: Ty, formal: &Ty, span: Span, place: bool) -> Adj {
         let f = self.shallow(formal);
         let a = self.shallow(&actual);
         if let Ty::App(Con::Pravaham, args) = &f {
             if !matches!(a, Ty::App(Con::Pravaham, _)) {
                 let item = self.iter_item(&a, place, span);
                 self.unify_or_report(span, &args[0], &item);
-                return;
+                return Adj { borrow: false, iter: true };
             }
         }
         if let Ty::Ref(m, inner) = &f {
@@ -813,20 +915,21 @@ impl BodyCx<'_, '_> {
                         span,
                         format!("ee parameter `&maare` reference adugutondhi, `{shown}` value kaadhu. `&maare x` ani raayi"),
                     );
-                    return;
+                    return Adj::default();
                 }
                 _ => {
                     // Automatic shared borrow.
                     if !solve::coerce(&mut self.infer, &Ty::reference(false, a.clone()), &f) {
                         self.mismatch(span, inner, &a);
                     }
-                    return;
+                    return Adj { borrow: true, iter: false };
                 }
             }
         }
         if !solve::coerce(&mut self.infer, &a, &f) {
             self.mismatch(span, &f, &a);
         }
+        Adj::default()
     }
 }
 

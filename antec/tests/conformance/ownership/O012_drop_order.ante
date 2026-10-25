@@ -1,0 +1,30 @@
+# category: run-pass
+# expect-stdout: body
+# expect-stdout: a sardhu
+# expect-stdout: b sardhu
+# expect-stdout: jodu sardhu
+# expect-stdout: r sardhu
+# expect-stdout: m sardhu
+# level: core
+# Reverse initialization order; `sardhu` before fields.
+rakam Gadi ante:
+    peru: padham
+
+Gadi ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"{peru} sardhu" ni choopinchu()
+
+rakam Jodu ante:
+    modhati: Gadi
+    rendo: Gadi
+
+Jodu ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        "jodu sardhu" ni choopinchu()
+
+modhalu() -> khali ante:
+    a ante Gadi{peru: "a"}
+    j ante Jodu{modhati: Gadi{peru: "m"}, rendo: Gadi{peru: "r"}}
+    b ante Gadi{peru: "b"}
+    c ante a
+    "body" ni choopinchu()

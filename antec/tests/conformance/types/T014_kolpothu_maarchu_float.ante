@@ -1,0 +1,8 @@
+# category: run-pass
+# expect-stdout: -1
+# expect-stdout: 2147483647
+# level: core
+# `(-1.5) ni kolpothu_maarchu[ankam32]()` is -1.
+modhalu() -> khali ante:
+    (-1.5) ni kolpothu_maarchu[ankam32]() |> choopinchu()
+    1e20 ni kolpothu_maarchu[ankam32]() |> choopinchu()

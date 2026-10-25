@@ -1,0 +1,9 @@
+# category: run-pass
+# expect-stdout: kaadhu
+# expect-stdout: avunu
+# level: core
+# `0.0 / 0.0 == 0.0 / 0.0` is `kaadhu`.
+modhalu() -> khali ante:
+    x ante 0.0 / 0.0
+    (x == x) ni choopinchu()
+    (x != x) ni choopinchu()

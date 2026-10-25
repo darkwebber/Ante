@@ -1,0 +1,8 @@
+# category: runtime-trap
+# expect-trap: T10 @ 7:13
+# level: core
+# `xs[3 nunchi 1 lopu]`.
+modhalu() -> khali ante:
+    xs ante [1, 2, 3, 4]
+    s ante &xs[3 nunchi 1 lopu]
+    s ni choopinchu()

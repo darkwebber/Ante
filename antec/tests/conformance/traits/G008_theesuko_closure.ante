@@ -1,0 +1,10 @@
+# category: run-pass
+# expect-stdout: 15
+# level: core
+# A `theesuko` closure returned.
+kalipe(n: ankam ni) -> pani[(ankam ni) -> ankam] ante:
+    theesuko (x: ankam ni) => x + n icchey
+
+modhalu() -> khali ante:
+    plus5 ante 5 ni kalipe()
+    10 ni plus5() |> choopinchu()

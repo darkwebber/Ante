@@ -2,16 +2,19 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use antec::diag::Diagnostic;
+use antec::package::Action;
 use antec::source::SourceFile;
 
 const USAGE: &str = "\
 antec: \"Ante\" compiler (stage 0) 🛠️
 
 usage:
-  antec check [path]              file leka package (ante.toml unna folder) ni check cheyyi
-                                  (M3: lexing + parsing + names); path lekapothe current folder
+  antec run [path]                program ni run cheyyi (check chesi, `modhalu()` nunchi start)
+  antec check [path]              file leka package (ante.toml unna folder) ni check cheyyi;
+                                  path lekapothe current folder
   antec emit tokens <file.ante>   token stream choopinchu
   antec emit ast <file.ante>      syntax tree (AST) choopinchu
+  antec emit mir [path]           MIR (control-flow graph) choopinchu
   antec --version                 version choopinchu";
 
 #[derive(Clone, Copy, PartialEq)]
@@ -33,6 +36,10 @@ fn main() -> ExitCode {
         }
         ["check"] => check("."),
         ["check", path] => check(path),
+        ["run"] => run("."),
+        ["run", path] => run(path),
+        ["emit", "mir"] => emit_mir("."),
+        ["emit", "mir", path] => emit_mir(path),
         ["emit", "tokens", path] => emit(path, Emit::Tokens),
         ["emit", "ast", path] => emit(path, Emit::Ast),
         _ => {
@@ -62,6 +69,44 @@ fn check(path: &str) -> ExitCode {
         }
     }
     code
+}
+
+fn run(path: &str) -> ExitCode {
+    let checked = match antec::package::process(Path::new(path), Action::Run { stream: true }) {
+        Ok(checked) => checked,
+        Err(err) => {
+            eprintln!("error: `{path}` chadavalekapoyanu 😕 ({err})");
+            return ExitCode::from(2);
+        }
+    };
+    for (file, d) in checked.diagnostics.iter().filter(|(_, d)| d.is_error()) {
+        eprint!("{}", d.render(&checked.sources[*file]));
+    }
+    match checked.run {
+        Some(out) => {
+            print!("{}", out.stdout);
+            eprint!("{}", out.stderr);
+            ExitCode::from(out.exit_code.clamp(0, 255) as u8)
+        }
+        None => summary(checked.error_count().max(1)),
+    }
+}
+
+fn emit_mir(path: &str) -> ExitCode {
+    let checked = match antec::package::process(Path::new(path), Action::EmitMir) {
+        Ok(checked) => checked,
+        Err(err) => {
+            eprintln!("error: `{path}` chadavalekapoyanu 😕 ({err})");
+            return ExitCode::from(2);
+        }
+    };
+    for (file, d) in checked.diagnostics.iter().filter(|(_, d)| d.is_error()) {
+        eprint!("{}", d.render(&checked.sources[*file]));
+    }
+    if let Some(mir) = &checked.mir {
+        print!("{mir}");
+    }
+    summary(checked.error_count())
 }
 
 fn emit(path: &str, what: Emit) -> ExitCode {

@@ -11,6 +11,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use antec::package::Action;
+
 fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
     let mut entries: Vec<PathBuf> = fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("can't read {}: {e}", dir.display()))
@@ -37,59 +39,77 @@ struct Expectations {
     category: String,
     errors: Vec<String>,
     warnings: Vec<String>,
+    stdout: Vec<String>,
+    trap: Option<String>,
+    exit: Option<i32>,
 }
 
 fn parse_header(text: &str) -> Expectations {
-    let mut category = String::new();
-    let mut errors = Vec::new();
-    let mut warnings = Vec::new();
+    let mut e = Expectations {
+        category: String::new(),
+        errors: Vec::new(),
+        warnings: Vec::new(),
+        stdout: Vec::new(),
+        trap: None,
+        exit: None,
+    };
     for line in text.lines() {
         let Some(comment) = line.strip_prefix('#') else { break };
-        let comment = comment.trim();
+        let comment = comment.trim_start();
         let normalize = |v: &str| v.split_whitespace().collect::<Vec<_>>().join(" ");
         if let Some(value) = comment.strip_prefix("category:") {
-            category = value.trim().to_string();
+            e.category = value.trim().to_string();
         } else if let Some(value) = comment.strip_prefix("expect-error:") {
-            errors.push(normalize(value));
+            e.errors.push(normalize(value));
         } else if let Some(value) = comment.strip_prefix("expect-warning:") {
-            warnings.push(normalize(value));
+            e.warnings.push(normalize(value));
+        } else if let Some(value) = comment.strip_prefix("expect-stdout:") {
+            e.stdout.push(value.strip_prefix(' ').unwrap_or(value).to_string());
+        } else if let Some(value) = comment.strip_prefix("expect-trap:") {
+            e.trap = Some(normalize(value));
+        } else if let Some(value) = comment.strip_prefix("expect-exit:") {
+            e.exit = value.trim().parse().ok();
         }
     }
-    Expectations { category, errors, warnings }
+    e
 }
 
-/// Runs one test (a file or a package folder) and returns its errors and
-/// warnings as `CODE @ [file:]line:col`, plus the text holding its header.
-fn run_test(path: &Path) -> (Vec<String>, Vec<String>, String) {
-    let (diags, header): (Vec<(bool, String)>, String) = if path.is_dir() {
-        let checked = antec::package::check_package(path).expect("readable package test");
-        let diags = checked
-            .diagnostics
-            .iter()
-            .map(|(file, d)| {
-                let src = &checked.sources[*file];
-                let (line, col) = src.line_col(d.span.start);
-                (d.is_error(), format!("{} @ {}:{line}:{col}", d.code, src.name))
-            })
-            .collect();
-        (diags, checked.sources[0].text.clone())
+struct Outcome {
+    errors: Vec<String>,
+    warnings: Vec<String>,
+    header: String,
+    run: Option<antec::interp::RunOutput>,
+}
+
+/// Runs one test (a file or a package folder): checks it, and runs it when
+/// its category says so. Diagnostics read `CODE @ [file:]line:col`.
+fn run_test(path: &Path) -> Outcome {
+    let text = if path.is_dir() {
+        fs::read_to_string(path.join("ante.toml")).unwrap_or_default()
     } else {
-        let (src, mut diags) = antec::load_source(path).expect("readable test file");
-        if diags.is_empty() {
-            diags = antec::check_source(&src);
-        }
-        let diags = diags
-            .iter()
-            .map(|d| {
-                let (line, col) = src.line_col(d.span.start);
-                (d.is_error(), format!("{} @ {line}:{col}", d.code))
-            })
-            .collect();
-        (diags, src.text.clone())
+        fs::read_to_string(path).unwrap_or_default()
     };
-    let errors = diags.iter().filter(|(e, _)| *e).map(|(_, s)| s.clone()).collect();
-    let warnings = diags.iter().filter(|(e, _)| !*e).map(|(_, s)| s.clone()).collect();
-    (errors, warnings, header)
+    let category = parse_header(&text).category;
+    let action = if matches!(category.as_str(), "run-pass" | "runtime-trap") {
+        Action::Run { stream: false }
+    } else {
+        Action::Check
+    };
+    let checked = antec::package::process(path, action).expect("readable test");
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+    for (file, d) in &checked.diagnostics {
+        let src = &checked.sources[*file];
+        let (line, col) = src.line_col(d.span.start);
+        let at = if path.is_dir() { format!("{}:{line}:{col}", src.name) } else { format!("{line}:{col}") };
+        let entry = format!("{} @ {at}", d.code);
+        if d.is_error() {
+            errors.push(entry);
+        } else {
+            warnings.push(entry);
+        }
+    }
+    Outcome { errors, warnings, header: text, run: checked.run }
 }
 
 #[test]
@@ -101,8 +121,9 @@ fn conformance_suite() {
 
     let mut failures = Vec::new();
     for path in &files {
-        let (errors, warnings, header) = run_test(path);
-        let expect = parse_header(&header);
+        let out = run_test(path);
+        let expect = parse_header(&out.header);
+        let errors = &out.errors;
         let name = path.strip_prefix(&root).unwrap_or(path).display();
         match expect.category.as_str() {
             "compile-fail" => {
@@ -116,23 +137,68 @@ fn conformance_suite() {
                 }
             }
             "" => failures.push(format!("{name}: missing `# category:` header")),
-            _ => {
+            category => {
                 if !errors.is_empty() {
                     failures.push(format!("{name}: expected no errors, found {errors:?}"));
+                } else if let Some(run) = &out.run {
+                    check_run(&name.to_string(), category, &expect, run, &mut failures);
                 }
             }
         }
         for wanted in &expect.warnings {
-            if !warnings.contains(wanted) {
-                failures.push(format!("{name}: expected warning {wanted}, found {warnings:?}"));
+            if !out.warnings.contains(wanted) {
+                failures.push(format!("{name}: expected warning {wanted}, found {:?}", out.warnings));
             }
         }
     }
     assert!(failures.is_empty(), "{} conformance failures:\n{}", failures.len(), failures.join("\n"));
 }
 
-/// Every program in the repository's `examples/` folder must pass the stages
-/// implemented so far, so the README's welcome example can't silently rot.
+/// Compares a run with `expect-stdout`, `expect-trap` and `expect-exit`.
+fn check_run(
+    name: &str,
+    category: &str,
+    expect: &Expectations,
+    run: &antec::interp::RunOutput,
+    failures: &mut Vec<String>,
+) {
+    let lines: Vec<&str> = run.stdout.lines().collect();
+    if !expect.stdout.is_empty() && lines != expect.stdout {
+        failures.push(format!("{name}: stdout {lines:?}, expected {:?}", expect.stdout));
+    }
+    let want_exit = expect.exit.unwrap_or(if category == "runtime-trap" { 101 } else { 0 });
+    if run.exit_code != want_exit {
+        failures.push(format!(
+            "{name}: exit {} (stderr: {}), expected {want_exit}",
+            run.exit_code,
+            run.stderr.trim()
+        ));
+    }
+    if let Some(want) = &expect.trap {
+        let got = run.trap.as_ref().map(|(code, _, line, col)| format!("{code} @ {line}:{col}"));
+        if got.as_deref() != Some(want.as_str()) {
+            failures.push(format!("{name}: trap {got:?}, expected {want}"));
+        }
+    }
+}
+
+/// The README's welcome program prints exactly what the README says it does.
+#[test]
+fn readme_welcome_output_matches() {
+    let readme =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../README.md")).expect("README");
+    let code = readme.split("```ante\n").nth(1).and_then(|r| r.split("```").next()).expect("an ante block");
+    let expected =
+        readme.split("```text\n").nth(1).and_then(|r| r.split("```").next()).expect("a text block");
+    let checked = antec::package::run_source(&antec::source::SourceFile::new("welcome.ante", code));
+    let errors: Vec<String> = checked.diagnostics.iter().map(|(_, d)| d.message.clone()).collect();
+    let run = checked.run.unwrap_or_else(|| panic!("welcome program didn't run: {errors:?}"));
+    assert_eq!(run.stdout, expected, "README output and real output differ");
+    assert_eq!(run.exit_code, 0);
+}
+
+/// Every program in the repository's `examples/` folder checks, and runs
+/// successfully when it has a `modhalu`, so the examples can't silently rot.
 #[test]
 fn examples_pass_implemented_stages() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
@@ -148,6 +214,19 @@ fn examples_pass_implemented_stages() {
         }
         for d in diags.iter().filter(|d| d.is_error()) {
             failures.push(d.render(&src));
+        }
+        if src.text.contains("modhalu()") {
+            let checked = antec::package::run_source(&src);
+            if let Some(run) = checked.run {
+                if run.exit_code != 0 {
+                    failures.push(format!(
+                        "{}: exit {} ({})",
+                        path.display(),
+                        run.exit_code,
+                        run.stderr.trim()
+                    ));
+                }
+            }
         }
     }
     assert!(failures.is_empty(), "examples have errors:\n{}", failures.join("\n"));

@@ -1,0 +1,8 @@
+# category: runtime-trap
+# expect-trap: T02 @ 8:5
+# level: core
+# Integer division by zero.
+modhalu() -> khali ante:
+    a ante 10
+    b ante 0
+    (a / b) ni choopinchu()

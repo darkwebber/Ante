@@ -1,0 +1,11 @@
+# category: run-pass
+# expect-stdout: undhi(1)
+# expect-stdout: {a: 10, b: 2}
+# level: core
+# Replacing a key keeps its position.
+modhalu() -> khali ante:
+    maare m: jodi[padham, ankam] ante {}
+    "a" ni, 1 tho m.cherchu()
+    "b" ni, 2 tho m.cherchu()
+    "a" ni, 10 tho m.cherchu() |> choopinchu()
+    m ni choopinchu()

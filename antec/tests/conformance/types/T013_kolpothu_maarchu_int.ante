@@ -1,0 +1,6 @@
+# category: run-pass
+# expect-stdout: 44
+# level: core
+# `300 ni kolpothu_maarchu[ankam8]()` is 44.
+modhalu() -> khali ante:
+    300 ni kolpothu_maarchu[ankam8]() |> choopinchu()

@@ -1,0 +1,6 @@
+# category: runtime-trap
+# expect-trap: T07 @ 6:5
+# level: core
+# `(1 == 2) nijame()`.
+modhalu() -> khali ante:
+    (1 == 2) nijame()
