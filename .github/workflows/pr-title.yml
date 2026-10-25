@@ -30,7 +30,3 @@ jobs:
             chore
             revert
           requireScope: false
-          subjectPattern: ^(?![A-Z]).+$
-          subjectPatternError: |
-            The summary "{subject}" should start with a lowercase letter,
-            e.g. "feat(parser): parse else-if chains".
