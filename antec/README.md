@@ -10,8 +10,9 @@
 | M4 Type checker (§9–14) | ✅ done |
 | M5 Call binding, pipes (§11–12) | ✅ M4 tho paatu done |
 | M6 MIR and interpreter (Part V) | ✅ done |
-| M7 LLVM code generation | ⏳ next |
-| M8–M14 | inka start avvaledhu |
+| M7 LLVM code generation (native binaries) | ✅ done |
+| M8 Borrow checker (§15) | ⏳ next |
+| M9–M14 | inka start avvaledhu |
 
 ## Build and test
 
@@ -31,6 +32,14 @@ cargo run -p antec -- run examples/ante_sundharaniki.ante
 
 ```bash
 cargo run -p antec -- emit mir examples/ante_sundharaniki.ante
+```
+
+```bash
+cargo run -p antec -- build examples/ante_sundharaniki.ante -o sundharaniki
+```
+
+```bash
+cargo run -p antec -- emit llvm examples/ante_sundharaniki.ante
 ```
 
 Package (`ante.toml` unna folder) motham check cheyyalante:
@@ -75,6 +84,12 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 | `src/interp/mod.rs` | MIR interpreter: memory, frames, traps (T01–T10), drop order, constants (E1102) |
 | `src/interp/native.rs` | Runtime stdlib: prelude, `padham`, `varusa`, `jodi`, `lekkalu`, `file`, `system`, display, iterators |
 | `src/interp/value.rs` | Runtime values, addresses, insertion-order `jodi` |
+| `src/codegen/mod.rs` | Native backend: monomorphization, type layouts, module assembly |
+| `src/codegen/func.rs` | Okka MIR body → okka LLVM function: places, overflow checks, calls |
+| `src/codegen/native.rs` | Stdlib, iterators, adapters native ga |
+| `src/codegen/glue.rs` | Prathi type ki display, `==`, order, `xerox`, drop functions |
+| `runtime/ante_rt.c` | Chinna C runtime: output, traps, text, sort, files, time |
+| `tests/native.rs` | Prathi run-pass/runtime-trap test ni native ga compile chesi output compare chesthundhi |
 | `std/*.ante` | Standard library signatures, "Ante" lone raasinavi (prelude, `lekkalu`, `file`, `system`, `samayam`, `memory`) |
 | `src/lint.rs` | Warnings (W0001 unused binding, W0002 unnecessary `maare`, W0003 unreachable code, W0005 unused import); errors lenappudu matrame |
 | `src/package.rs` | `ante.toml` + `src/` packages, module discovery, entry point (`modhalu`) check |
@@ -116,6 +131,16 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 - **Constants** kuda interpreter tho ne lekkisthaam (check time lo); trap aithe E1102.
 - **Implementation-defined choices** (§20.6): `lekkalu.motham`/`dot` floats ni 8 lanes lo kalipi, chivarlo lanes ni order lo kaluputhayi. `size_of` ints/floats ki bytes, migathavi ki 8. Hash seed fixed.
 - **Ippatiki levu:** `torch`/`python` calls, raw pointers, `memory`, `bayata "C"` calls (T05 tho aagipothayi; M11, M13–M14 lo vasthayi). Partial move tharvatha migilina fields ki `sardhu` run avvadhu (M8 borrow checker vachaaka).
+
+## Native binaries ela vasthayi (short ga)
+
+- **Textual LLVM IR + clang.** `antec` LLVM IR text raasthundhi, `antec/runtime/ante_rt.c` tho kalipi `clang -O2` ki isthundhi. Rust dependencies emi levu; `clang` (leka `$ANTE_CC`) unte chaalu.
+- **Monomorphization.** `modhalu` nunchi reachable aina prathi function, prathi concrete type combination ki okasari generate avthundhi. Trait calls compile time lone resolve avthayi.
+- **Layouts.** `padham`/`varusa` = `{ptr, len, cap}`, `&mukka` = `{ptr, len}`, enums = `{i32 tag, payload}`, `pani` = `{fn, env}`.
+- **Traps** interpreter laage: same message, same `file:line:col`, exit 101. Overflow checks LLVM `*.with.overflow` intrinsics tho.
+- **Differential testing.** `tests/native.rs` prathi runtime conformance test ni native ga build chesi, interpreter expect chesina output tho compare chesthundhi.
+- **Ippatiki levu (native lo):** `jodi`/`gumpu` (M10 lo hash table tho), `bayata "C"` calls (M11), `torch`/`python`. Avi `antec run` lo pani chesthayi.
+- **Memory:** M8 borrow checker vache varaku compiled programs heap memory ni free cheyyavu (borrow checker lekunda free cheyyadam safe kaadhu). `sardhu` matram correct time ki run avthundhi.
 
 ## Gurthu pettukovalsinavi
 

@@ -155,7 +155,7 @@ struct LoopCx {
 #[derive(Clone)]
 enum Val {
     Place(Place, Ty),
-    Op(Operand),
+    Op(Operand, Ty),
 }
 
 struct Builder<'a, 'p> {
@@ -195,7 +195,7 @@ impl<'a, 'p> Builder<'a, 'p> {
             generics,
             body: Body {
                 name,
-                kind: BodyKind::Closure,
+                kind: BodyKind::Closure { captures: 0 },
                 file: Some(file),
                 locals: Vec::new(),
                 params: 0,
@@ -531,7 +531,7 @@ impl<'a, 'p> Builder<'a, 'p> {
         self.goto(head);
         let next_ty = Ty::App(Con::Undochu, vec![item.clone()]);
         let next = self.new_local(next_ty, None);
-        let it_ref = self.new_local(Ty::Error, None);
+        let it_ref = self.new_local(Ty::reference(true, Ty::App(Con::Pravaham, vec![item.clone()])), None);
         self.assign(Place::local(it_ref), Rvalue::Ref(true, Place::local(it)));
         self.call(
             Callee::Intrinsic(Intrinsic::IterNext),
@@ -550,7 +550,7 @@ impl<'a, 'p> Builder<'a, 'p> {
         self.cur = inner;
         self.loops.push(LoopCx { brk: exit, cont: head, depth: self.frames.len() });
         self.push_frame(false);
-        self.bind_pat(&Place::local(next).field(0), pattern, &HashMap::new());
+        self.bind_pat(&Place::local(next).project(Proj::Variant(0)).field(0), pattern, &HashMap::new());
         self.lower_block(body);
         self.pop_frame();
         self.loops.pop();
@@ -644,8 +644,9 @@ impl<'a, 'p> Builder<'a, 'p> {
                     otherwise: fail,
                 };
                 self.cur = ok;
+                let inner = place.project(Proj::Variant(variant));
                 for (i, sub) in args.iter().flatten().enumerate() {
-                    self.test_pat(&place.field(i as u32), sub, fail);
+                    self.test_pat(&inner.field(i as u32), sub, fail);
                 }
             }
             PatternKind::Record { fields, .. } => {
@@ -693,8 +694,10 @@ impl<'a, 'p> Builder<'a, 'p> {
             PatternKind::Wild | PatternKind::Literal(_) | PatternKind::Range { .. } => {}
             PatternKind::Bind { name, .. } => self.bind_name(name, place, shared),
             PatternKind::Ctor { args, .. } => {
+                let variant = self.tc.results.pat_ctors.get(&expr_id(self.file, p.span)).map_or(0, |c| c.1);
+                let inner = place.project(Proj::Variant(variant));
                 for (i, sub) in args.iter().flatten().enumerate() {
-                    self.bind_pat(&place.field(i as u32), sub, shared);
+                    self.bind_pat(&inner.field(i as u32), sub, shared);
                 }
             }
             PatternKind::Record { fields, .. } => {
@@ -1103,12 +1106,12 @@ impl<'a, 'p> Builder<'a, 'p> {
             Ty::App(Con::SareThappu, a) => (a[0].clone(), a[1].clone()),
             _ => (Ty::Error, Ty::Error),
         };
-        let e = self.by_type(value.field(0), &err_ty);
+        let e = self.by_type(value.project(Proj::Variant(1)).field(0), &err_ty);
         self.assign(Place::local(RETURN), Rvalue::Aggregate(Agg::Adt(AdtRef::SareThappu, 1), vec![e]));
         self.emit_cleanup(0);
         self.terminate(Term::Return);
         self.cur = ok;
-        let v = self.by_type(value.field(0), &ok_ty);
+        let v = self.by_type(value.project(Proj::Variant(0)).field(0), &ok_ty);
         self.assign(dest, Rvalue::Use(v));
     }
 
@@ -1203,7 +1206,9 @@ impl<'a, 'p> Builder<'a, 'p> {
         let rb = self.ref_to(b, lt, false);
         let rty = match op {
             BinOp::Eq | BinOp::Ne => Ty::Bool,
-            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => Ty::Error,
+            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
+                self.g.kramam.map_or(Ty::Error, |k| Ty::App(Con::Adt(k), Vec::new()))
+            }
             _ => lt.clone(),
         };
         let r = self.new_local(rty, None);
@@ -1320,7 +1325,7 @@ impl<'a, 'p> Builder<'a, 'p> {
                 Val::Place(p, ty)
             } else {
                 let op = self.lower_operand(e);
-                Val::Op(self.stable_move(op, ty))
+                Val::Op(self.stable_move(op, ty.clone()), ty)
             };
             vals.insert(eid, v);
         }
@@ -1358,6 +1363,17 @@ impl<'a, 'p> Builder<'a, 'p> {
             Target::Fn { fid, .. } | Target::Trait { fid, .. } => Some(*fid),
             _ => None,
         };
+        let formal_tys: Vec<Ty> = match &plan.target {
+            Target::Fn { fid, tys } | Target::Trait { fid, tys } => {
+                self.g.fns[*fid].params.iter().map(|f| f.ty.subst(tys)).collect()
+            }
+            Target::Value => match self.ty_of(callee) {
+                Ty::Fn(ps, _) => ps.into_iter().map(|(t, _)| t).collect(),
+                _ => Vec::new(),
+            },
+            Target::Opaque => Vec::new(),
+        };
+        let formal = |fi: usize| formal_tys.get(fi).cloned().unwrap_or(Ty::Error);
         for (fi, a) in plan.args.iter().enumerate() {
             let op = match a {
                 ArgPlan::One(x) => self.arg_operand(x, &vals, injected.as_ref(), pre.as_ref(), call.span),
@@ -1371,14 +1387,15 @@ impl<'a, 'p> Builder<'a, 'p> {
                         flags.push(splice);
                         elems.push(self.arg_operand(x, &vals, injected.as_ref(), pre.as_ref(), call.span));
                     }
-                    let t = self.temp(Ty::Error);
+                    let vt = Ty::App(Con::Varusa, vec![formal(fi)]);
+                    let t = self.temp(vt.clone());
                     self.call(
                         Callee::Intrinsic(Intrinsic::Collect(flags)),
                         elems,
                         Place::local(t),
                         call.span,
                     );
-                    self.ref_to(Place::local(t), &Ty::Error, false)
+                    self.ref_to(Place::local(t), &vt, false)
                 }
                 ArgPlan::Named(xs) => {
                     let mut ops = Vec::new();
@@ -1386,7 +1403,7 @@ impl<'a, 'p> Builder<'a, 'p> {
                         ops.push(Operand::Const(Const::Str(Rc::from(name.as_str()))));
                         ops.push(self.arg_operand(x, &vals, injected.as_ref(), pre.as_ref(), call.span));
                     }
-                    let t = self.temp(Ty::Error);
+                    let t = self.temp(formal(fi));
                     self.assign(Place::local(t), Rvalue::Aggregate(Agg::Jodi, ops));
                     Operand::Move(Place::local(t))
                 }
@@ -1458,7 +1475,7 @@ impl<'a, 'p> Builder<'a, 'p> {
             let (op, ty) = match val {
                 Val::Place(p, ty) if owned_collection(&ty) => (self.ref_to(p, &ty, false), ty),
                 Val::Place(p, ty) => (self.by_type(p, &ty), ty),
-                Val::Op(o) => (o, Ty::Error),
+                Val::Op(o, ty) => (o, ty),
             };
             let it = self.make_iter(op, ty, item, span);
             return Operand::Move(Place::local(it));
@@ -1466,15 +1483,15 @@ impl<'a, 'p> Builder<'a, 'p> {
         if a.borrow {
             return match val {
                 Val::Place(p, ty) => self.ref_to(p, &ty, false),
-                Val::Op(o) => {
-                    let p = self.operand_place(o, Ty::Error);
-                    self.ref_to(p, &Ty::Error, false)
+                Val::Op(o, ty) => {
+                    let p = self.operand_place(o, ty.clone());
+                    self.ref_to(p, &ty, false)
                 }
             };
         }
         match val {
             Val::Place(p, ty) => self.by_type(p, &ty),
-            Val::Op(o) => o,
+            Val::Op(o, _) => o,
         }
     }
 
@@ -1528,6 +1545,7 @@ impl<'a, 'p> Builder<'a, 'p> {
         let file = self.file;
         let id = {
             let mut b = Builder::new(self.tc, self.cache.clone(), &mut *self.prog, file, generics, name);
+            b.body.kind = BodyKind::Closure { captures: caps.len() as u32 };
             b.new_local(ret, None);
             for (u, ty) in &caps {
                 let by_ref = !moves;
@@ -1738,6 +1756,11 @@ fn pattern_names<'p>(p: &'p Pattern, out: &mut Vec<&'p Ident>) {
         }
         _ => {}
     }
+}
+
+/// `needs_drop` with a fresh cycle guard.
+pub fn needs_drop_ty(g: &Globals, generics: &[Generic], cache: &RefCell<HashMap<Ty, bool>>, ty: &Ty) -> bool {
+    needs_drop(g, generics, cache, ty, &mut HashSet::new())
 }
 
 /// Whether dropping a value of this type can run a destructor (`Sardhukochu`).

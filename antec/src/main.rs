@@ -10,11 +10,13 @@ antec: \"Ante\" compiler (stage 0) 🛠️
 
 usage:
   antec run [path]                program ni run cheyyi (check chesi, `modhalu()` nunchi start)
+  antec build [path] [-o out]     native executable build cheyyi (LLVM + clang tho)
   antec check [path]              file leka package (ante.toml unna folder) ni check cheyyi;
                                   path lekapothe current folder
   antec emit tokens <file.ante>   token stream choopinchu
   antec emit ast <file.ante>      syntax tree (AST) choopinchu
   antec emit mir [path]           MIR (control-flow graph) choopinchu
+  antec emit llvm [path]          LLVM IR choopinchu
   antec --version                 version choopinchu";
 
 #[derive(Clone, Copy, PartialEq)]
@@ -38,8 +40,13 @@ fn main() -> ExitCode {
         ["check", path] => check(path),
         ["run"] => run("."),
         ["run", path] => run(path),
-        ["emit", "mir"] => emit_mir("."),
-        ["emit", "mir", path] => emit_mir(path),
+        ["emit", "mir"] => emit_mir(".", Action::EmitMir),
+        ["emit", "mir", path] => emit_mir(path, Action::EmitMir),
+        ["emit", "llvm"] => emit_mir(".", Action::EmitLlvm),
+        ["emit", "llvm", path] => emit_mir(path, Action::EmitLlvm),
+        ["build"] => build(".", None),
+        ["build", path] => build(path, None),
+        ["build", path, "-o", out] | ["build", "-o", out, path] => build(path, Some(out)),
         ["emit", "tokens", path] => emit(path, Emit::Tokens),
         ["emit", "ast", path] => emit(path, Emit::Ast),
         _ => {
@@ -92,8 +99,21 @@ fn run(path: &str) -> ExitCode {
     }
 }
 
-fn emit_mir(path: &str) -> ExitCode {
-    let checked = match antec::package::process(Path::new(path), Action::EmitMir) {
+fn build(path: &str, out: Option<&str>) -> ExitCode {
+    let output = match out {
+        Some(o) => std::path::PathBuf::from(o),
+        None => {
+            let p = Path::new(path);
+            let stem = if p.is_dir() {
+                p.canonicalize().ok().and_then(|c| c.file_name().map(|n| n.to_string_lossy().into_owned()))
+            } else {
+                p.file_stem().map(|n| n.to_string_lossy().into_owned())
+            };
+            let name = stem.unwrap_or_else(|| "program".into());
+            std::path::PathBuf::from(if cfg!(windows) { format!("{name}.exe") } else { name })
+        }
+    };
+    let checked = match antec::package::process(Path::new(path), Action::Build { output }) {
         Ok(checked) => checked,
         Err(err) => {
             eprintln!("error: `{path}` chadavalekapoyanu 😕 ({err})");
@@ -103,8 +123,40 @@ fn emit_mir(path: &str) -> ExitCode {
     for (file, d) in checked.diagnostics.iter().filter(|(_, d)| d.is_error()) {
         eprint!("{}", d.render(&checked.sources[*file]));
     }
+    for e in &checked.backend_errors {
+        eprintln!("error: {e}");
+    }
+    if checked.error_count() > 0 {
+        return summary(checked.error_count());
+    }
+    match &checked.built {
+        Some(p) => {
+            println!("✅ native program ready: {} 🚀", p.display());
+            ExitCode::SUCCESS
+        }
+        None => ExitCode::from(1),
+    }
+}
+
+fn emit_mir(path: &str, action: Action) -> ExitCode {
+    let checked = match antec::package::process(Path::new(path), action) {
+        Ok(checked) => checked,
+        Err(err) => {
+            eprintln!("error: `{path}` chadavalekapoyanu 😕 ({err})");
+            return ExitCode::from(2);
+        }
+    };
+    for (file, d) in checked.diagnostics.iter().filter(|(_, d)| d.is_error()) {
+        eprint!("{}", d.render(&checked.sources[*file]));
+    }
+    for e in &checked.backend_errors {
+        eprintln!("error: {e}");
+    }
     if let Some(mir) = &checked.mir {
         print!("{mir}");
+    }
+    if !checked.backend_errors.is_empty() {
+        return ExitCode::from(1);
     }
     summary(checked.error_count())
 }

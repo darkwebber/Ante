@@ -1,0 +1,596 @@
+/*
+ * "Ante" runtime shim (spec Appendix E, M7): the few things compiled
+ * programs need from the operating system — buffered output, traps
+ * (§20.3), memory, text helpers, a stable sort, files and time.
+ *
+ * Generated code passes aggregates by pointer, so this file never depends
+ * on how a C compiler passes structs. Text and vectors share one layout:
+ * { pointer, length, capacity }; capacity 0 marks static (literal) data.
+ */
+
+#include <errno.h>
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <windows.h>
+#else
+#include <sys/stat.h>
+#endif
+
+typedef struct {
+    uint8_t *ptr;
+    int64_t len;
+    int64_t cap;
+} ante_str;
+
+typedef ante_str ante_vec;
+
+static int ante_argc;
+static char **ante_argv;
+static ante_str out_buf;
+
+#if defined(__GNUC__) || defined(__clang__)
+#define NORETURN __attribute__((noreturn))
+#else
+#define NORETURN
+#endif
+
+/* ── output ───────────────────────────────────────────────────────────── */
+
+void ante_flush(void) {
+    if (out_buf.len > 0) {
+        fwrite(out_buf.ptr, 1, (size_t)out_buf.len, stdout);
+        out_buf.len = 0;
+    }
+    fflush(stdout);
+}
+
+static void buf_grow(ante_str *b, int64_t extra) {
+    if (b->len + extra <= b->cap) return;
+    int64_t cap = b->cap ? b->cap * 2 : 64;
+    while (cap < b->len + extra) cap *= 2;
+    uint8_t *p = (uint8_t *)malloc((size_t)cap);
+    if (!p) {
+        fputs("kompa munigindhi! memory ayipoyindhi\n", stderr);
+        exit(101);
+    }
+    if (b->len) memcpy(p, b->ptr, (size_t)b->len);
+    if (b->cap) free(b->ptr);
+    b->ptr = p;
+    b->cap = cap;
+}
+
+void ante_buf_push(ante_str *b, const uint8_t *p, int64_t n) {
+    if (n <= 0) return;
+    buf_grow(b, n);
+    memcpy(b->ptr + b->len, p, (size_t)n);
+    b->len += n;
+}
+
+static void push_c(ante_str *b, const char *s) { ante_buf_push(b, (const uint8_t *)s, (int64_t)strlen(s)); }
+
+/* Writes text to stdout (fd 1, buffered) or stderr (fd 2). */
+void ante_write(int32_t fd, const ante_str *s, int32_t newline) {
+    if (fd == 2) {
+        ante_flush();
+        fwrite(s->ptr, 1, (size_t)s->len, stderr);
+        if (newline) fputc('\n', stderr);
+        return;
+    }
+    ante_buf_push(&out_buf, s->ptr, s->len);
+    if (newline) ante_buf_push(&out_buf, (const uint8_t *)"\n", 1);
+    if (out_buf.len > (1 << 16)) ante_flush();
+}
+
+void ante_init(int32_t argc, char **argv) {
+    ante_argc = argc;
+    ante_argv = argv;
+#ifdef _WIN32
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stderr), _O_BINARY);
+#endif
+}
+
+NORETURN void ante_exit(int32_t code) {
+    ante_flush();
+    exit(code);
+}
+
+/* ── traps (§20.3) ────────────────────────────────────────────────────── */
+
+typedef struct {
+    const uint8_t *file;
+    int64_t file_len;
+    int32_t line;
+    int32_t col;
+} ante_loc;
+
+static NORETURN void trap_text(const char *msg, const ante_loc *loc) {
+    ante_flush();
+    fprintf(stderr, "kompa munigindhi! %s (%.*s:%d:%d)\n", msg, (int)loc->file_len, (const char *)loc->file,
+            loc->line, loc->col);
+    exit(101);
+}
+
+NORETURN void ante_trap(const ante_str *msg, const ante_loc *loc) {
+    char text[1024];
+    int n = msg->len < 1000 ? (int)msg->len : 1000;
+    memcpy(text, msg->ptr, (size_t)n);
+    text[n] = 0;
+    trap_text(text, loc);
+}
+
+NORETURN void ante_trap_overflow(const char *ty, const char *op, int64_t a, int64_t b, int32_t unary,
+                                 int32_t is_unsigned, const ante_loc *loc) {
+    char text[256];
+    if (unary)
+        snprintf(text, sizeof text, "`%s` lo -(%lld) pattadhu", ty, (long long)a);
+    else if (is_unsigned)
+        snprintf(text, sizeof text, "`%s` lo %llu %s %llu pattadhu", ty, (unsigned long long)a, op,
+                 (unsigned long long)b);
+    else
+        snprintf(text, sizeof text, "`%s` lo %lld %s %lld pattadhu", ty, (long long)a, op, (long long)b);
+    trap_text(text, loc);
+}
+
+NORETURN void ante_trap_index(int64_t i, int64_t len, const ante_loc *loc) {
+    char text[128];
+    snprintf(text, sizeof text, "index %lld bayatiki vellindhi (length %lld)", (long long)i, (long long)len);
+    trap_text(text, loc);
+}
+
+NORETURN void ante_trap_slice(int64_t lo, int64_t hi, int64_t len, const ante_loc *loc) {
+    char text[128];
+    snprintf(text, sizeof text, "mukka haddulu tappu: %lld nunchi %lld (length %lld)", (long long)lo, (long long)hi,
+             (long long)len);
+    trap_text(text, loc);
+}
+
+NORETURN void ante_trap_shift(int64_t count, int32_t bits, const ante_loc *loc) {
+    char text[128];
+    snprintf(text, sizeof text, "shift count %lld tappu (0..%d undali)", (long long)count, bits);
+    trap_text(text, loc);
+}
+
+NORETURN void ante_trap_code(int32_t code, const ante_loc *loc) {
+    switch (code) {
+    case 2: trap_text("sunna (0) tho bhaagham cheyyalem", loc);
+    case 6: trap_text("`ledhu` meeda kachithanga() pilicharu", loc);
+    case 7: trap_text("nijame() fail ayyindhi", loc);
+    default: trap_text("antec bug: unreachable code ki vacchindhi", loc);
+    }
+}
+
+/* ── memory ───────────────────────────────────────────────────────────── */
+
+void *ante_alloc(int64_t size) {
+    void *p = malloc(size > 0 ? (size_t)size : 1);
+    if (!p) {
+        fputs("kompa munigindhi! memory ayipoyindhi\n", stderr);
+        exit(101);
+    }
+    return p;
+}
+
+/* Appends one element of `size` bytes to a vector. */
+void ante_vec_push(ante_vec *v, const void *elem, int64_t size) {
+    if (v->len == v->cap) {
+        int64_t cap = v->cap ? v->cap * 2 : 4;
+        uint8_t *p = (uint8_t *)ante_alloc(cap * size);
+        if (v->len) memcpy(p, v->ptr, (size_t)(v->len * size));
+        v->ptr = p;
+        v->cap = cap;
+    }
+    memcpy(v->ptr + v->len * size, elem, (size_t)size);
+    v->len += 1;
+}
+
+/* Appends `n` elements. */
+void ante_vec_extend(ante_vec *v, const void *elems, int64_t n, int64_t size) {
+    for (int64_t i = 0; i < n; i++) ante_vec_push(v, (const uint8_t *)elems + i * size, size);
+}
+
+typedef int32_t (*ante_cmp_fn)(const void *, const void *, void *);
+
+static void merge_sort(uint8_t *a, uint8_t *tmp, int64_t n, int64_t size, ante_cmp_fn cmp, void *ctx) {
+    if (n < 2) return;
+    int64_t mid = n / 2;
+    merge_sort(a, tmp, mid, size, cmp, ctx);
+    merge_sort(a + mid * size, tmp, n - mid, size, cmp, ctx);
+    int64_t i = 0, j = mid, k = 0;
+    while (i < mid && j < n) {
+        if (cmp(a + j * size, a + i * size, ctx) < 0)
+            memcpy(tmp + (k++) * size, a + (j++) * size, (size_t)size);
+        else
+            memcpy(tmp + (k++) * size, a + (i++) * size, (size_t)size);
+    }
+    while (i < mid) memcpy(tmp + (k++) * size, a + (i++) * size, (size_t)size);
+    while (j < n) memcpy(tmp + (k++) * size, a + (j++) * size, (size_t)size);
+    memcpy(a, tmp, (size_t)(n * size));
+}
+
+/* Stable sort (§21.2: all sorts are stable). */
+void ante_sort(void *base, int64_t n, int64_t size, ante_cmp_fn cmp, void *ctx) {
+    if (n < 2) return;
+    uint8_t *tmp = (uint8_t *)ante_alloc(n * size);
+    merge_sort((uint8_t *)base, tmp, n, size, cmp, ctx);
+    free(tmp);
+}
+
+/* ── formatting ───────────────────────────────────────────────────────── */
+
+void ante_buf_i64(ante_str *b, int64_t v) {
+    char t[32];
+    snprintf(t, sizeof t, "%lld", (long long)v);
+    push_c(b, t);
+}
+
+void ante_buf_u64(ante_str *b, uint64_t v) {
+    char t[32];
+    snprintf(t, sizeof t, "%llu", (unsigned long long)v);
+    push_c(b, t);
+}
+
+void ante_buf_hex(ante_str *b, uint64_t v) {
+    char t[32];
+    snprintf(t, sizeof t, "%llx", (unsigned long long)v);
+    push_c(b, t);
+}
+
+void ante_buf_char(ante_str *b, uint32_t c) {
+    uint8_t t[4];
+    int n;
+    if (c < 0x80) {
+        t[0] = (uint8_t)c;
+        n = 1;
+    } else if (c < 0x800) {
+        t[0] = (uint8_t)(0xC0 | (c >> 6));
+        t[1] = (uint8_t)(0x80 | (c & 0x3F));
+        n = 2;
+    } else if (c < 0x10000) {
+        t[0] = (uint8_t)(0xE0 | (c >> 12));
+        t[1] = (uint8_t)(0x80 | ((c >> 6) & 0x3F));
+        t[2] = (uint8_t)(0x80 | (c & 0x3F));
+        n = 3;
+    } else {
+        t[0] = (uint8_t)(0xF0 | (c >> 18));
+        t[1] = (uint8_t)(0x80 | ((c >> 12) & 0x3F));
+        t[2] = (uint8_t)(0x80 | ((c >> 6) & 0x3F));
+        t[3] = (uint8_t)(0x80 | (c & 0x3F));
+        n = 4;
+    }
+    ante_buf_push(b, t, n);
+}
+
+/*
+ * Floats in the shortest form that reads back exactly, positional (no
+ * exponent); whole numbers below the threshold get ".0" (spec §13.5).
+ */
+static void fmt_float(ante_str *b, double v, int is32) {
+    if (isnan(v)) { push_c(b, "NaN"); return; }
+    if (isinf(v)) { push_c(b, v > 0 ? "inf" : "-inf"); return; }
+    char e[64];
+    int prec;
+    for (prec = 1; prec <= 17; prec++) {
+        snprintf(e, sizeof e, "%.*e", prec - 1, v);
+        double back = strtod(e, NULL);
+        if (is32 ? (float)back == (float)v : back == v) break;
+    }
+    /* e = [-]d[.ddd]e[+-]XX */
+    char digits[40];
+    int nd = 0, neg = 0;
+    const char *p = e;
+    if (*p == '-') { neg = 1; p++; }
+    while (*p && *p != 'e') {
+        if (*p >= '0' && *p <= '9') digits[nd++] = *p;
+        p++;
+    }
+    int exp10 = atoi(p + 1);
+    while (nd > 1 && digits[nd - 1] == '0') nd--;
+    char out[400];
+    int k = 0;
+    if (neg) out[k++] = '-';
+    int point = exp10 + 1; /* digits before the decimal point */
+    if (point <= 0) {
+        out[k++] = '0';
+        out[k++] = '.';
+        for (int i = 0; i < -point; i++) out[k++] = '0';
+        for (int i = 0; i < nd; i++) out[k++] = digits[i];
+    } else {
+        for (int i = 0; i < point; i++) out[k++] = i < nd ? digits[i] : '0';
+        if (nd > point) {
+            out[k++] = '.';
+            for (int i = point; i < nd; i++) out[k++] = digits[i];
+        } else if (fabs(v) < (is32 ? 1e7 : 1e16)) {
+            out[k++] = '.';
+            out[k++] = '0';
+        }
+    }
+    ante_buf_push(b, (const uint8_t *)out, k);
+}
+
+void ante_buf_f64(ante_str *b, double v) { fmt_float(b, v, 0); }
+void ante_buf_f32(ante_str *b, float v) { fmt_float(b, (double)v, 1); }
+
+/* ── text (padham) ────────────────────────────────────────────────────── */
+
+void ante_str_concat(ante_str *out, const ante_str *a, const ante_str *b) {
+    ante_str r = {0, 0, 0};
+    buf_grow(&r, a->len + b->len + 1);
+    ante_buf_push(&r, a->ptr, a->len);
+    ante_buf_push(&r, b->ptr, b->len);
+    *out = r;
+}
+
+void ante_str_copy(ante_str *out, const ante_str *s) {
+    ante_str r = {0, 0, 0};
+    buf_grow(&r, s->len + 1);
+    ante_buf_push(&r, s->ptr, s->len);
+    *out = r;
+}
+
+int32_t ante_str_cmp(const ante_str *a, const ante_str *b) {
+    int64_t n = a->len < b->len ? a->len : b->len;
+    int c = n ? memcmp(a->ptr, b->ptr, (size_t)n) : 0;
+    if (c) return c < 0 ? -1 : 1;
+    return a->len < b->len ? -1 : (a->len > b->len ? 1 : 0);
+}
+
+int64_t ante_str_chars(const ante_str *s) {
+    int64_t n = 0;
+    for (int64_t i = 0; i < s->len; i++)
+        if ((s->ptr[i] & 0xC0) != 0x80) n++;
+    return n;
+}
+
+/* Decodes the character at byte `*pos`, advancing it; returns 0 at the end. */
+int32_t ante_str_next_char(const ante_str *s, int64_t *pos, uint32_t *c) {
+    int64_t i = *pos;
+    if (i >= s->len) return 0;
+    uint8_t b0 = s->ptr[i];
+    uint32_t v;
+    int n;
+    if (b0 < 0x80) { v = b0; n = 1; }
+    else if ((b0 >> 5) == 6) { v = b0 & 0x1F; n = 2; }
+    else if ((b0 >> 4) == 14) { v = b0 & 0x0F; n = 3; }
+    else { v = b0 & 0x07; n = 4; }
+    for (int k = 1; k < n && i + k < s->len; k++) v = (v << 6) | (s->ptr[i + k] & 0x3F);
+    *pos = i + n;
+    *c = v;
+    return 1;
+}
+
+static int is_space(uint8_t c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'; }
+
+void ante_str_trim(ante_str *out, const ante_str *s) {
+    int64_t a = 0, b = s->len;
+    while (a < b && is_space(s->ptr[a])) a++;
+    while (b > a && is_space(s->ptr[b - 1])) b--;
+    ante_str r = {s->ptr + a, b - a, 0};
+    ante_str_copy(out, &r);
+}
+
+int32_t ante_str_starts(const ante_str *s, const ante_str *p) {
+    return p->len <= s->len && memcmp(s->ptr, p->ptr, (size_t)p->len) == 0;
+}
+
+int32_t ante_str_contains(const ante_str *s, const ante_str *p) {
+    if (p->len == 0) return 1;
+    for (int64_t i = 0; i + p->len <= s->len; i++)
+        if (memcmp(s->ptr + i, p->ptr, (size_t)p->len) == 0) return 1;
+    return 0;
+}
+
+/* Splits `s` by `sep` into a vector of text. */
+void ante_str_split(ante_vec *out, const ante_str *s, const ante_str *sep) {
+    ante_vec v = {0, 0, 0};
+    if (sep->len == 0) {
+        int64_t pos = 0, start;
+        uint32_t c;
+        while ((start = pos), ante_str_next_char(s, &pos, &c)) {
+            ante_str part = {s->ptr + start, pos - start, 0}, copy;
+            ante_str_copy(&copy, &part);
+            ante_vec_push(&v, &copy, sizeof copy);
+        }
+        *out = v;
+        return;
+    }
+    int64_t start = 0;
+    for (int64_t i = 0; i + sep->len <= s->len;) {
+        if (memcmp(s->ptr + i, sep->ptr, (size_t)sep->len) == 0) {
+            ante_str part = {s->ptr + start, i - start, 0}, copy;
+            ante_str_copy(&copy, &part);
+            ante_vec_push(&v, &copy, sizeof copy);
+            i += sep->len;
+            start = i;
+        } else {
+            i++;
+        }
+    }
+    ante_str part = {s->ptr + start, s->len - start, 0}, copy;
+    ante_str_copy(&copy, &part);
+    ante_vec_push(&v, &copy, sizeof copy);
+    *out = v;
+}
+
+/* Parses an integer in `base`; 1 on success. Accepts a leading sign. */
+int32_t ante_str_parse_int(const ante_str *s, int32_t base, int32_t is_unsigned, int64_t *out) {
+    if (s->len == 0 || s->len > 70 || base < 2 || base > 36) return 0;
+    int64_t i = 0;
+    int neg = 0;
+    if (s->ptr[0] == '+' || s->ptr[0] == '-') {
+        neg = s->ptr[0] == '-';
+        i = 1;
+        if (s->len == 1) return 0;
+    }
+    unsigned __int128 v = 0;
+    for (; i < s->len; i++) {
+        int c = s->ptr[i], d;
+        if (c >= '0' && c <= '9') d = c - '0';
+        else if (c >= 'a' && c <= 'z') d = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'Z') d = c - 'A' + 10;
+        else return 0;
+        if (d >= base) return 0;
+        v = v * (unsigned)base + (unsigned)d;
+        if (v > ((unsigned __int128)1 << 64)) return 0;
+    }
+    if (is_unsigned) {
+        if (neg && v != 0) return 0;
+        if (v > UINT64_MAX) return 0;
+        *out = (int64_t)(uint64_t)v;
+        return 1;
+    }
+    if (neg) {
+        if (v > (unsigned __int128)INT64_MAX + 1) return 0;
+        *out = (int64_t)(0 - (uint64_t)v);
+    } else {
+        if (v > INT64_MAX) return 0;
+        *out = (int64_t)v;
+    }
+    return 1;
+}
+
+int32_t ante_str_parse_float(const ante_str *s, double *out) {
+    char t[128];
+    if (s->len == 0 || s->len >= (int64_t)sizeof t) return 0;
+    memcpy(t, s->ptr, (size_t)s->len);
+    t[s->len] = 0;
+    char *end;
+    errno = 0;
+    double v = strtod(t, &end);
+    while (*end && is_space((uint8_t)*end)) end++;
+    if (*end || end == t) return 0;
+    *out = v;
+    return 1;
+}
+
+/* ── files, system, time ──────────────────────────────────────────────── */
+
+static char *cstr(const ante_str *s) {
+    char *p = (char *)ante_alloc(s->len + 1);
+    memcpy(p, s->ptr, (size_t)s->len);
+    p[s->len] = 0;
+    return p;
+}
+
+static void set_err(ante_str *err, const char *what) {
+    ante_str r = {0, 0, 0};
+    push_c(&r, what);
+    *err = r;
+}
+
+int32_t ante_file_read(const ante_str *path, ante_str *out, ante_str *err) {
+    char *p = cstr(path);
+    FILE *f = fopen(p, "rb");
+    free(p);
+    if (!f) {
+        set_err(err, strerror(errno));
+        return 0;
+    }
+    ante_str r = {0, 0, 0};
+    uint8_t chunk[8192];
+    size_t n;
+    while ((n = fread(chunk, 1, sizeof chunk, f)) > 0) ante_buf_push(&r, chunk, (int64_t)n);
+    fclose(f);
+    *out = r;
+    return 1;
+}
+
+int32_t ante_file_write(const ante_str *path, const ante_str *text, ante_str *err) {
+    char *p = cstr(path);
+    FILE *f = fopen(p, "wb");
+    free(p);
+    if (!f) {
+        set_err(err, strerror(errno));
+        return 0;
+    }
+    fwrite(text->ptr, 1, (size_t)text->len, f);
+    fclose(f);
+    return 1;
+}
+
+int32_t ante_file_exists(const ante_str *path) {
+    char *p = cstr(path);
+    FILE *f = fopen(p, "rb");
+    free(p);
+    if (f) fclose(f);
+    return f != NULL;
+}
+
+void ante_args(ante_vec *out) {
+    ante_vec v = {0, 0, 0};
+    for (int i = 1; i < ante_argc; i++) {
+        ante_str s = {0, 0, 0};
+        push_c(&s, ante_argv[i]);
+        ante_vec_push(&v, &s, sizeof s);
+    }
+    *out = v;
+}
+
+int32_t ante_env(const ante_str *k, ante_str *out) {
+    char *p = cstr(k);
+    const char *v = getenv(p);
+    free(p);
+    if (!v) return 0;
+    ante_str r = {0, 0, 0};
+    push_c(&r, v);
+    *out = r;
+    return 1;
+}
+
+int32_t ante_read_line(ante_str *out) {
+    ante_flush();
+    ante_str r = {0, 0, 0};
+    int c, any = 0;
+    while ((c = fgetc(stdin)) != EOF) {
+        any = 1;
+        if (c == '\n') break;
+        uint8_t ch = (uint8_t)c;
+        ante_buf_push(&r, &ch, 1);
+    }
+    if (!any) return 0;
+    if (r.len > 0 && r.ptr[r.len - 1] == '\r') r.len--;
+    *out = r;
+    return 1;
+}
+
+void ante_os(ante_str *out) {
+    ante_str r = {0, 0, 0};
+#if defined(_WIN32)
+    push_c(&r, "windows");
+#elif defined(__APPLE__)
+    push_c(&r, "macos");
+#else
+    push_c(&r, "linux");
+#endif
+    *out = r;
+}
+
+void ante_arch(ante_str *out) {
+    ante_str r = {0, 0, 0};
+#if defined(__aarch64__) || defined(_M_ARM64)
+    push_c(&r, "aarch64");
+#else
+    push_c(&r, "x86_64");
+#endif
+    *out = r;
+}
+
+int64_t ante_now_ns(void) {
+#ifdef _WIN32
+    LARGE_INTEGER f, c;
+    QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&c);
+    return (int64_t)((double)c.QuadPart * 1e9 / (double)f.QuadPart);
+#else
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (int64_t)t.tv_sec * 1000000000 + t.tv_nsec;
+#endif
+}

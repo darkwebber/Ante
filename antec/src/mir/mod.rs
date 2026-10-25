@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
-pub use build::{build_program, op_ty as build_op_ty};
+pub use build::{build_program, needs_drop_ty, op_ty as build_op_ty};
 
 use crate::ast::{BinOp, UnOp};
 use crate::resolve::{DefId, FileId};
@@ -34,8 +34,59 @@ pub struct Program {
 #[derive(Clone, Debug)]
 pub enum BodyKind {
     Fn(FnId),
-    Closure,
+    /// A closure; its first `captures` parameters are the captured values.
+    Closure {
+        captures: u32,
+    },
     Const(DefId),
+}
+
+/// The code behind a trait method for concrete types (§13.3).
+#[derive(Clone, Debug)]
+pub enum Resolved {
+    /// A body (an implementation's method, or the trait's default) and its types.
+    Body(BodyId, Vec<Ty>),
+    /// A built-in implementation, named `Trait.method`.
+    Native(String),
+}
+
+/// The trait and method name a trait-method function belongs to.
+pub fn trait_method_of(g: &crate::typeck::Globals, fid: FnId) -> Option<(DefId, String)> {
+    g.traits
+        .iter()
+        .find_map(|(&def, tr)| tr.methods.iter().find(|(_, f)| *f == fid).map(|(n, _)| (def, n.clone())))
+}
+
+/// Resolves a trait method call with concrete types: `tys` is
+/// `[idhi, trait args…, own generics…]`.
+pub fn resolve_trait(prog: &Program, g: &crate::typeck::Globals, fid: FnId, tys: &[Ty]) -> Option<Resolved> {
+    let (tdef, name) = trait_method_of(g, fid)?;
+    let tr = &g.traits[&tdef];
+    let ntrait = tr.generics.len();
+    let self_ty = tys.first().cloned().unwrap_or(Ty::Error);
+    let trait_args: Vec<Ty> = tys.iter().skip(1).take(ntrait.saturating_sub(1)).cloned().collect();
+    let own: Vec<Ty> = tys.iter().skip(ntrait).cloned().collect();
+    let solver = crate::typeck::solve::Solver { g, generics: &[] };
+    let mut table = crate::types::InferTable::default();
+    let tref = crate::typeck::TraitRef { def: tdef, args: trait_args };
+    Some(match solver.find_impl(&mut table, &self_ty, &tref, 0) {
+        Some((idx, fresh)) => {
+            let imp = &g.impls[idx];
+            let impl_args: Vec<Ty> = fresh.iter().map(|t| table.resolve(t)).collect();
+            match imp.methods.get(&name).and_then(|m| prog.fn_bodies.get(m)) {
+                Some(&body) => {
+                    let mut all = impl_args;
+                    all.extend(own);
+                    Resolved::Body(body, all)
+                }
+                None => match prog.fn_bodies.get(&fid) {
+                    Some(&body) => Resolved::Body(body, tys.to_vec()),
+                    None => Resolved::Native(format!("{}.{name}", tr.name)),
+                },
+            }
+        }
+        None => Resolved::Native(format!("{}.{name}", tr.name)),
+    })
 }
 
 pub struct Body {
@@ -100,6 +151,8 @@ pub enum Proj {
     Deref,
     /// A record, tuple or variant field.
     Field(u32),
+    /// Views an enum value as one of its variants, before its fields.
+    Variant(u32),
     /// An element of an array, `varusa` or `mukka`; traps T03 when out of bounds.
     Index(Local, Span),
 }
@@ -211,6 +264,7 @@ impl fmt::Display for Place {
             s = match p {
                 Proj::Deref => format!("(*{s})"),
                 Proj::Field(i) => format!("{s}.{i}"),
+                Proj::Variant(v) => format!("({s} as #{v})"),
                 Proj::Index(l, _) => format!("{s}[_{l}]"),
             };
         }

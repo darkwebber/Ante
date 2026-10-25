@@ -3,6 +3,7 @@
 //! M3 names and modules (§7–8), M4 types (§9–14).
 
 pub mod ast;
+pub mod codegen;
 pub mod diag;
 pub mod interp;
 pub mod lexer;

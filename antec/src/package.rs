@@ -18,8 +18,12 @@ pub struct Checked {
     pub diagnostics: Vec<(FileId, Diagnostic)>,
     /// The program's result, for `antec run`.
     pub run: Option<RunOutput>,
-    /// The MIR text, for `antec emit mir`.
+    /// The MIR (`antec emit mir`) or LLVM IR (`antec emit llvm`) text.
     pub mir: Option<String>,
+    /// The native executable written by `antec build`.
+    pub built: Option<PathBuf>,
+    /// Problems in the native backend or the C toolchain.
+    pub backend_errors: Vec<String>,
 }
 
 impl Checked {
@@ -33,7 +37,7 @@ impl Checked {
 }
 
 /// What to do once the program checks.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Action {
     Check,
     /// Run `modhalu`; `stream` writes output as it is produced.
@@ -41,6 +45,11 @@ pub enum Action {
         stream: bool,
     },
     EmitMir,
+    EmitLlvm,
+    /// Compile to a native executable at this path (M7).
+    Build {
+        output: PathBuf,
+    },
 }
 
 /// Parsed input for the later stages.
@@ -117,7 +126,31 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
     diagnostics.extend(crate::lint::lint(&modules, &resolution));
     let mut run = None;
     let mut mir = None;
+    let mut built = None;
+    let mut backend_errors = Vec::new();
+    let entry_fn = || {
+        let module = match &entry {
+            Some(e) => resolution.module_by_name.get(e).copied(),
+            None => parsed.first().and_then(|(name, _, _)| resolution.module_by_name.get(name).copied()),
+        };
+        module
+            .and_then(|m| resolution.modules[m].values.get("modhalu").copied())
+            .and_then(|d| tc.globals.fn_of_def.get(&d).copied())
+    };
     match action {
+        Action::EmitLlvm | Action::Build { .. } => match entry_fn() {
+            None => backend_errors.push("`modhalu()` function ledhu, native program build cheyyalem".into()),
+            Some(fid) => match crate::codegen::emit_llvm(&program, &tc, &sources, fid) {
+                Err(errs) => backend_errors = errs,
+                Ok(ir) => match &action {
+                    Action::Build { output } => match link_native(&ir, output) {
+                        Ok(()) => built = Some(output.clone()),
+                        Err(e) => backend_errors.push(e),
+                    },
+                    _ => mir = Some(ir),
+                },
+            },
+        },
         Action::Check => {}
         Action::EmitMir => {
             let names = |fid: usize| tc.globals.fns[fid].name.clone();
@@ -145,7 +178,10 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
             }
         }
     }
-    finish(sources, diagnostics, run, mir)
+    let mut checked = finish(sources, diagnostics, run, mir);
+    checked.built = built;
+    checked.backend_errors = backend_errors;
+    checked
 }
 
 fn finish(
@@ -155,7 +191,33 @@ fn finish(
     mir: Option<String>,
 ) -> Checked {
     diagnostics.sort_by_key(|(file, d)| (*file, d.span.start));
-    Checked { sources, diagnostics, run, mir }
+    Checked { sources, diagnostics, run, mir, built: None, backend_errors: Vec::new() }
+}
+
+/// Compiles LLVM IR plus the runtime with the C toolchain (`$ANTE_CC`, else `clang`).
+pub fn link_native(ir: &str, output: &Path) -> Result<(), String> {
+    let stem = output.file_stem().and_then(|s| s.to_str()).unwrap_or("out");
+    let dir = std::env::temp_dir().join(format!("antec-{}-{stem}", std::process::id()));
+    fs::create_dir_all(&dir).map_err(|e| format!("`{}` create cheyyalem: {e}", dir.display()))?;
+    let ll = dir.join("program.ll");
+    let rt = dir.join("ante_rt.c");
+    fs::write(&ll, ir).map_err(|e| e.to_string())?;
+    fs::write(&rt, crate::codegen::RUNTIME_C).map_err(|e| e.to_string())?;
+    let cc = std::env::var("ANTE_CC").unwrap_or_else(|_| "clang".into());
+    let mut cmd = std::process::Command::new(&cc);
+    cmd.arg("-O2").arg("-w").arg("-Wno-override-module").arg("-o").arg(output).arg(&ll).arg(&rt);
+    if !cfg!(windows) {
+        cmd.arg("-lm");
+    }
+    let result = cmd.output();
+    let _ = fs::remove_dir_all(&dir);
+    match result {
+        Ok(out) if out.status.success() => Ok(()),
+        Ok(out) => Err(format!("`{cc}` fail ayyindhi:\n{}", String::from_utf8_lossy(&out.stderr))),
+        Err(e) => Err(format!(
+            "`{cc}` dorakaledhu ({e}). Native build ki clang kavali: macOS lo Xcode tools, Linux lo `clang` package, Windows lo LLVM install cheyyandi; leka `ANTE_CC` set cheyyandi"
+        )),
+    }
 }
 
 /// The entry point of a package (§7.5).
