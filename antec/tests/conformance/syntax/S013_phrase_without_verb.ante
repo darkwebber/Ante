@@ -1,0 +1,5 @@
+# category: compile-fail
+# expect-error: E0202 @ 5:10
+# level: core
+modhalu() -> khali ante:
+    10 ni

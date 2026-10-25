@@ -1,0 +1,5 @@
+# category: compile-fail
+# expect-error: E0201 @ 5:14
+# level: core
+modhalu() -> khali ante:
+    x ni f() g()

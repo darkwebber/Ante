@@ -1,0 +1,20 @@
+# category: build-pass
+# level: core
+# Every §6 disambiguation rule in one file; must parse without errors.
+modhalu() -> khali ante:
+    t ante (a, b)                                   # D4: tuple
+    c ante (a, b kalipi())                          # D4: call with two phrases
+    r ante 0 nunchi 5 lopu                          # D5: range
+    s ante "f.txt" nunchi chadhuvu()                # D5: `nunchi` role
+    y ante v ni maarchu[ankam64]()                  # D7: generic call
+    z ante (handlers[0])()                          # D7: index, then call
+    o ante undhi(5)                                 # D10: constructor
+    n ante "12" ni parse()?                         # D11: `?` on the whole call
+    x |> _ ni a ga, 5 tho kalupu()                  # pipe hole
+    items lo okko item ki:                          # `lo okko` is a loop, not a role
+        item ni choopinchu()
+    result batti:                                   # `batti :` is a match, not a role
+        sare(v) aithe:
+            v ni choopinchu()
+        thappu(e) aithe:
+            e ni gola_pettu()

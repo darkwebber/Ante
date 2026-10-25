@@ -9,7 +9,7 @@
 
 Simple ga cheppalante: amma ki explain chesinattu code raayochu, kaani adhi C laaga fast ga run avthundhi. 😎
 
-> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (milestone M1) matrame ready. Simple ga cheppalante: code ni tokens ga mukkalu cheyyagaladhu, inka run cheyyaledhu. 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
+> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2) ready. Simple ga cheppalante: code ni chadivi, grammar correct ga undho ledho cheppagaladhu, kaani inka run cheyyaledhu. 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
 
 ## "Ante" Sundharaniki! 🎬
 
@@ -98,8 +98,9 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 | Milestone | Em untundhi | Status |
 |---|---|---|
 | M1 | Lexer and layout | ✅ done |
-| M2 | Parser and AST | ⏳ next |
-| M3–M11 | Names, types, borrow checker, LLVM codegen, stdlib, FFI | 🔜 |
+| M2 | Parser and AST (`antec emit ast`) | ✅ done (`antec fmt` inka raavali) |
+| M3 | Names and modules | ⏳ next |
+| M4–M11 | Types, borrow checker, LLVM codegen, stdlib, FFI | 🔜 |
 | M12 | `@vegam` performance | 🔜 |
 | M13 | PyTorch binding | 🔜 |
 | M14 | Python bridge | 🔜 |

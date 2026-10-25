@@ -379,7 +379,7 @@ Anything else at module scope is E0209 (executable statement at module level). A
 
 **D7. Generic arguments vs indexing.** `postfix '[' … ']'` directly followed by `( )` is a generic call, and the bracket contents are parsed as types. Otherwise it's indexing. To index and then call, write `(handlers[0])()`.
 
-**D8. Closures vs grouping.** `(` … `)` followed by `=>` is a closure parameter list. Otherwise it's grouping or a tuple.
+**D8. Closures vs grouping.** `(` … `)` followed by `=>` is a closure parameter list. Otherwise it's grouping or a tuple. A closure body extends as far as a `pipe_expr` can, so a closure used as an argument phrase must be parenthesized: `xs, ((x) => x * 2) ni prathi_dhaaniki()`.
 
 **D9. Record literals.** `path {` with no line break between them is a record literal. A `{` that starts an operand on its own is a map literal.
 
@@ -1398,6 +1398,9 @@ A test may have several `expect-stdout` lines, which are matched in order. A com
 | S010 | `x += 1` inside an expression | E0210 |
 | S011 | `@pariksha` followed by a statement | E0208 |
 | S012 | Statement at module level | E0209 |
+| S013 | Phrase with no verb (`10 ni`) | E0202 |
+| S014 | `a < b < c` | E0417 |
+| S015 | One file exercising D4, D5, D7, D10, D11, pipe holes, `lo okko` and `batti :` | parses; build-pass |
 | B001 | `20 tho, 10 ni kalupu()` | `30` |
 | B002 | `3 ni c ga, 1 ni a ga, 2 ni b ga kalupu_moodu()` | a=1, b=2, c=3 |
 | B003 | `1 ni, 3 ni c ga, 2 ni kalupu_moodu()` | a=1, b=2, c=3; source-order effects |

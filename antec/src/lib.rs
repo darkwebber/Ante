@@ -1,8 +1,11 @@
-//! `antec`, the stage-0 compiler for Ante, written in Rust.
-//! Milestone M1: source handling, lexer and layout (spec Part II).
+//! `antec`, the stage-0 compiler for "Ante", written in Rust.
+//! Milestones: M1 lexer and layout (spec Part II), M2 parser (Part III).
 
+pub mod ast;
 pub mod diag;
 pub mod lexer;
+pub mod parser;
+pub mod pretty;
 pub mod source;
 pub mod token;
 
@@ -36,7 +39,20 @@ pub fn load_source(path: &Path) -> std::io::Result<(SourceFile, Vec<Diagnostic>)
     Ok(source_from_bytes(path.display().to_string(), bytes))
 }
 
+/// Lexes and parses a file. Parsing is skipped when lexing reports errors,
+/// so one mistake doesn't cascade into many.
+pub fn parse_source(src: &SourceFile) -> (Option<ast::Module>, Vec<Diagnostic>) {
+    let lexed = lexer::lex(src);
+    if lexed.diagnostics.iter().any(Diagnostic::is_error) {
+        return (None, lexed.diagnostics);
+    }
+    let parsed = parser::parse(src, lexed.tokens);
+    let mut diags = lexed.diagnostics;
+    diags.extend(parsed.diagnostics);
+    (Some(parsed.module), diags)
+}
+
 /// Runs every compiler stage implemented so far and returns its diagnostics.
 pub fn check_source(src: &SourceFile) -> Vec<Diagnostic> {
-    lexer::lex(src).diagnostics
+    parse_source(src).1
 }

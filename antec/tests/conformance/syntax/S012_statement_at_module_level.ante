@@ -1,0 +1,4 @@
+# category: compile-fail
+# expect-error: E0209 @ 4:1
+# level: core
+"Andhariki namaskaram!" ni choopinchu()
