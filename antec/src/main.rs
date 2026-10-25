@@ -8,9 +8,17 @@ const USAGE: &str = "\
 antec: \"Ante\" compiler (stage 0) 🛠️
 
 usage:
-  antec check <file.ante>         ippati varaku ready ayina stages tho check cheyyi (M1: lexing)
+  antec check <file.ante>         ippati varaku ready ayina stages tho check cheyyi (M2: lexing + parsing)
   antec emit tokens <file.ante>   token stream choopinchu
+  antec emit ast <file.ante>      syntax tree (AST) choopinchu
   antec --version                 version choopinchu";
+
+#[derive(Clone, Copy, PartialEq)]
+enum Mode {
+    Check,
+    Tokens,
+    Ast,
+}
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -23,8 +31,9 @@ fn main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
-        ["check", path] => run(path, false),
-        ["emit", "tokens", path] => run(path, true),
+        ["check", path] => run(path, Mode::Check),
+        ["emit", "tokens", path] => run(path, Mode::Tokens),
+        ["emit", "ast", path] => run(path, Mode::Ast),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
@@ -32,7 +41,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(path: &str, print_tokens: bool) -> ExitCode {
+fn run(path: &str, mode: Mode) -> ExitCode {
     let (src, mut diags) = match antec::load_source(Path::new(path)) {
         Ok(loaded) => loaded,
         Err(err) => {
@@ -41,17 +50,23 @@ fn run(path: &str, print_tokens: bool) -> ExitCode {
         }
     };
     if diags.is_empty() {
-        let result = antec::lexer::lex(&src);
-        if print_tokens {
+        if mode == Mode::Tokens {
+            let result = antec::lexer::lex(&src);
             for tok in &result.tokens {
                 let (line, col) = src.line_col(tok.span.start);
                 println!("{line}:{col}\t{}", tok.kind);
             }
+            diags = result.diagnostics;
+        } else {
+            let (module, parse_diags) = antec::parse_source(&src);
+            if let (Mode::Ast, Some(module)) = (mode, &module) {
+                print!("{}", antec::pretty::module(module));
+            }
+            diags = parse_diags;
         }
-        diags = result.diagnostics;
     }
     let code = report(&src, &diags);
-    if !print_tokens && code == ExitCode::SUCCESS {
+    if mode == Mode::Check && code == ExitCode::SUCCESS {
         println!("✅ {}: anthaa ok! Errors emi levu.", src.name);
     }
     code

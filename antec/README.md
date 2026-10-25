@@ -5,8 +5,9 @@
 | Milestone | Status |
 |---|---|
 | M1 Lexer and layout (§4) | ✅ done |
-| M2 Parser and AST (§5–6) | ⏳ next |
-| M3–M14 | inka start avvaledhu |
+| M2 Parser and AST (§5–6) | ✅ done (`antec fmt` inka raavali) |
+| M3 Names and modules (§7–8) | ⏳ next |
+| M4–M14 | inka start avvaledhu |
 
 ## Build and test
 
@@ -17,7 +18,11 @@ cargo test -p antec
 ```
 
 ```bash
-cargo run -p antec -- emit tokens antec/tests/conformance/lex/L003_line_joining.ante
+cargo run -p antec -- emit ast examples/ante_sundharaniki.ante
+```
+
+```bash
+cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 ```
 
 ## Code ekkada undhi
@@ -28,9 +33,20 @@ cargo run -p antec -- emit tokens antec/tests/conformance/lex/L003_line_joining.
 | `src/diag.rs` | Diagnostics (error code + span + message) |
 | `src/token.rs` | Tokens, keyword table |
 | `src/lexer.rs` | Lexer (§4.1–4.6), layout: NEWLINE / INDENT / DEDENT, line joining (§4.2) |
+| `src/ast.rs` | Syntax tree (§5) |
+| `src/parser.rs` | Recursive-descent parser, §6 disambiguation rules (D1–D12) |
+| `src/pretty.rs` | `antec emit ast` kosam S-expression printer |
 | `src/main.rs` | `antec` CLI |
 | `tests/lexer.rs` | Lexer unit tests |
-| `tests/conformance.rs` | `tests/conformance/` lo unna `.ante` cases ni run chesthundhi (spec Appendix C format) |
+| `tests/parser.rs` | Parser golden tests: prathi D-rule, prathi parser error code |
+| `tests/conformance.rs` | `tests/conformance/` cases (spec Appendix C format), `examples/`, inka spec/README lo unna prathi `ante` example parse avvali; truncated inputs tho parser panic avvakoodadhu |
+
+## Parser ela pani chesthundhi (short ga)
+
+- **Line first, details later.** Prathi statement ni first full logical line chusi classify chesthaam (D1 items ki, D2 statements ki): last token `pettu` aithe assignment, `icchey` aithe return, `:` aithe block header. Anduke chaala decisions ki backtracking avasaram ledhu.
+- **Phrases + verb.** `clause` = phrases (`expr role? label?`, commas tho) + callee `path()`. Okka plain expression unte adhi normal expression (D3).
+- **Backtracking rendu chotla matrame:** brackets lopala commas (D4: phrase list callee tho end aithe call, lekapothe list elements) inka `nunchi … lopu` ranges (D5).
+- **Errors tharvatha continue:** oka statement lo error vasthe, aa logical line (inka dhaani block) skip chesi next line nunchi parse chesthundhi. Okka run lo chaala errors choopisthundhi.
 
 ## Gurthu pettukovalsinavi
 

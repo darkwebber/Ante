@@ -272,22 +272,30 @@ impl TokenKind {
 
 /// Quotes text for display, escaping only what Ante's own literals would
 /// need escaped, so Telugu (including vowel signs) prints as written.
-fn write_quoted(f: &mut fmt::Formatter<'_>, text: &str, quote: char) -> fmt::Result {
-    use fmt::Write;
-    f.write_char(quote)?;
+pub fn quote(text: &str, quote: char) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push(quote);
     for c in text.chars() {
         match c {
-            '\\' => f.write_str("\\\\")?,
-            '\n' => f.write_str("\\n")?,
-            '\t' => f.write_str("\\t")?,
-            '\r' => f.write_str("\\r")?,
-            '\0' => f.write_str("\\0")?,
-            c if c == quote => write!(f, "\\{c}")?,
-            c if c.is_control() => write!(f, "\\u{{{:x}}}", c as u32)?,
-            c => f.write_char(c)?,
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            '\0' => out.push_str("\\0"),
+            c if c == quote => {
+                out.push('\\');
+                out.push(c);
+            }
+            c if c.is_control() => out.push_str(&format!("\\u{{{:x}}}", c as u32)),
+            c => out.push(c),
         }
     }
-    f.write_char(quote)
+    out.push(quote);
+    out
+}
+
+fn write_quoted(f: &mut fmt::Formatter<'_>, text: &str, q: char) -> fmt::Result {
+    f.write_str(&quote(text, q))
 }
 
 impl fmt::Display for TokenKind {
