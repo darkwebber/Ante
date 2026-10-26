@@ -1,0 +1,19 @@
+# category: run-pass
+# expect-stdout: 1200000
+# expect-stdout: 719999400000
+# expect-stdout: 15000
+# level: core
+# Long loops that need temporaries don't grow the stack (every backend).
+modhalu() -> khali ante:
+    maare v: varusa[ankam] ante []
+    0 nunchi 1200000 lopu okko i ki:
+        i ni v.cherchu()
+    v.enni() ni choopinchu()
+    maare motham ante 0
+    v lo okko x ki:
+        motham += x
+    motham ni choopinchu()
+    maare s ante ""
+    0 nunchi 5000 lopu okko i ki:
+        s lo (s + "abc") pettu
+    s.byte_len() ni choopinchu()

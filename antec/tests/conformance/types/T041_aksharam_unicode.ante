@@ -1,0 +1,14 @@
+# category: run-pass
+# expect-stdout: avunu avunu kaadhu
+# expect-stdout: kaadhu kaadhu kaadhu
+# expect-stdout: avunu avunu
+# expect-stdout: avunu avunu
+# expect-stdout: kaadhu avunu
+# level: core
+# `aksharam` predicates follow Unicode, not just ASCII.
+modhalu() -> khali ante:
+    f"{'అ'.letter_aa()} {'అ'.alnum_aa()} {'అ'.ascii_aa()}" ni choopinchu()
+    f"{'్'.letter_aa()} {'!'.alnum_aa()} {'5'.space_aa()}" ni choopinchu()
+    f"{'٣'.digit_aa()} {'7'.digit_aa()}" ni choopinchu()
+    f"{'\u{3000}'.space_aa()} {'\t'.space_aa()}" ni choopinchu()
+    f"{'é'.ascii_aa()} {'é'.letter_aa()}" ni choopinchu()

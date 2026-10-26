@@ -255,6 +255,35 @@ pub enum Term {
     Unreachable,
 }
 
+impl Term {
+    /// The blocks control can go to next.
+    pub fn successors(&self) -> Vec<BlockId> {
+        match self {
+            Term::Goto(b) => vec![*b],
+            Term::Switch { targets, otherwise, .. } => {
+                targets.iter().map(|(_, b)| *b).chain(std::iter::once(*otherwise)).collect()
+            }
+            Term::Call { next, .. } => vec![*next],
+            Term::Return | Term::Unreachable => Vec::new(),
+        }
+    }
+}
+
+impl Body {
+    /// Which blocks can run, starting from the entry block.
+    pub fn reachable(&self) -> Vec<bool> {
+        let mut seen = vec![false; self.blocks.len()];
+        let mut work = vec![0 as BlockId];
+        while let Some(b) = work.pop() {
+            let Some(slot) = seen.get_mut(b as usize) else { continue };
+            if !std::mem::replace(slot, true) {
+                work.extend(self.blocks[b as usize].term.successors());
+            }
+        }
+        seen
+    }
+}
+
 // ── printing (`antec emit mir`) ────────────────────────────────────────────
 
 impl fmt::Display for Place {

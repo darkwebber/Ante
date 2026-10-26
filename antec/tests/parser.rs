@@ -407,7 +407,9 @@ fn module_level_errors() {
     assert_eq!(errs("x ni choopinchu()\n"), ["E0209 @ 1:1"]);
     assert_eq!(errs("@pariksha\nx thechuko\n"), ["E0208 @ 1:1"]);
     assert_eq!(errs("f(ante: ankam) -> khali ante:\n    icchey\n"), ["E0307 @ 1:3"]);
-    assert_eq!(errs("async\n"), ["E1201 @ 1:1", "E0209 @ 1:1"]);
+    // A reserved word is reported once (E1201), not again as E0209.
+    assert_eq!(errs("async\n"), ["E1201 @ 1:1"]);
+    assert_eq!(errs("@pariksha\nx ante 1\n"), ["E0208 @ 1:1"]);
 }
 
 #[test]

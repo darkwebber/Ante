@@ -1,0 +1,9 @@
+# category: runtime-trap
+# expect-trap: T08 @ 6:6
+# level: core
+# Recursion with no end overflows the stack: T08, not a crash.
+loti(n: ankam ni) -> ankam ante:
+    ((n ni loti()) + 1) icchey
+
+modhalu() -> khali ante:
+    0 ni loti() |> choopinchu()

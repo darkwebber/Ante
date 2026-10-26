@@ -478,7 +478,7 @@ pub(super) fn next_fn(gen: &mut Gen, name: &str, item: &Ty) -> String {
     let opt = Ty::App(Con::Undochu, vec![item.clone()]);
     let lt = fx.ll(&opt);
     let r = iter_next(&mut fx, "%it", item, &opt);
-    format!("define internal {lt} {name}(ptr %it) {{\nentry:\n{}  ret {lt} {r}\n}}\n", fx.out)
+    format!("define internal {lt} {name}(ptr %it) {{\nentry:\n{}  ret {lt} {r}\n}}\n", fx.code())
 }
 
 fn call_next(fx: &mut Fx, it: &str, item: &Ty) -> String {
@@ -640,7 +640,7 @@ pub(super) fn adapter_fn(gen: &mut Gen, name: &str, a: Adapter, tys: &[Ty]) -> S
     fx.emit("ret i1 true");
     fx.start(&none);
     fx.emit("ret i1 false");
-    format!("define internal i1 {name}(ptr %s, ptr %out) {{\nentry:\n{}}}\n", fx.out)
+    format!("define internal i1 {name}(ptr %s, ptr %out) {{\nentry:\n{}}}\n", fx.code())
 }
 
 // ── built-in trait methods ─────────────────────────────────────────────────
@@ -1190,47 +1190,20 @@ pub(super) fn std_call(
         "aksharam.digit_aa" | "aksharam.letter_aa" | "aksharam.space_aa" | "aksharam.alnum_aa"
         | "aksharam.ascii_aa" => {
             let c = v(0);
-            let range = |fx: &mut Fx, lo: u32, hi: u32| {
-                let a = fx.r();
-                fx.emit(format!("{a} = icmp uge i32 {c}, {lo}"));
-                let b = fx.r();
-                fx.emit(format!("{b} = icmp ule i32 {c}, {hi}"));
-                let r = fx.r();
-                fx.emit(format!("{r} = and i1 {a}, {b}"));
-                r
+            let pred: fn(char) -> bool = match key.as_str() {
+                "aksharam.digit_aa" => char::is_numeric,
+                "aksharam.letter_aa" => char::is_alphabetic,
+                "aksharam.space_aa" => char::is_whitespace,
+                "aksharam.alnum_aa" => char::is_alphanumeric,
+                _ => |c| c.is_ascii(),
             };
-            let or = |fx: &mut Fx, a: &str, b: &str| {
-                let r = fx.r();
-                fx.emit(format!("{r} = or i1 {a}, {b}"));
-                r
-            };
-            let digit = range(fx, 48, 57);
-            let upper = range(fx, 65, 90);
-            let lower = range(fx, 97, 122);
-            let high = range(fx, 128, 0x10FFFF);
-            let r = match key.as_str() {
-                "aksharam.digit_aa" => digit,
-                "aksharam.letter_aa" => {
-                    let l = or(fx, &upper, &lower);
-                    or(fx, &l, &high)
-                }
-                "aksharam.alnum_aa" => {
-                    let l = or(fx, &upper, &lower);
-                    let l = or(fx, &l, &high);
-                    or(fx, &l, &digit)
-                }
-                "aksharam.space_aa" => {
-                    let sp = fx.r();
-                    fx.emit(format!("{sp} = icmp eq i32 {c}, 32"));
-                    let ws = range(fx, 9, 13);
-                    or(fx, &sp, &ws)
-                }
-                _ => {
-                    let r = fx.r();
-                    fx.emit(format!("{r} = icmp ult i32 {c}, 128"));
-                    r
-                }
-            };
+            let r = fx.r();
+            if key == "aksharam.ascii_aa" {
+                fx.emit(format!("{r} = icmp ult i32 {c}, 128"));
+            } else {
+                let (table, n) = fx.gen.char_table(&key, pred);
+                fx.emit(format!("{r} = call i1 @ante_char_in(i32 {c}, ptr {table}, i64 {n})"));
+            }
             (r, Ty::Bool)
         }
         "ankamlu.hex_ga" => {

@@ -17,6 +17,9 @@ pub(super) struct Fx<'g, 'a> {
     pub body: Option<&'a Body>,
     pub tys: Vec<Ty>,
     pub out: String,
+    /// Stack slots, all hoisted into the entry block: an `alloca` inside a
+    /// loop would grow the stack on every iteration.
+    allocas: String,
     n: usize,
     pub locals: Vec<Ty>,
     flags: HashMap<Local, String>,
@@ -43,6 +46,7 @@ pub(super) fn emit_body(gen: &mut Gen, name: &str, b: BodyId, tys: &[Ty]) -> Str
         body: Some(body),
         tys: tys.to_vec(),
         out: String::new(),
+        allocas: String::new(),
         n: 0,
         locals,
         flags: HashMap::new(),
@@ -59,6 +63,7 @@ impl<'g, 'a> Fx<'g, 'a> {
             body: None,
             tys: Vec::new(),
             out: String::new(),
+            allocas: String::new(),
             n: 0,
             locals: Vec::new(),
             flags: HashMap::new(),
@@ -79,7 +84,12 @@ impl<'g, 'a> Fx<'g, 'a> {
     }
 
     pub fn emit(&mut self, line: impl AsRef<str>) {
-        let _ = writeln!(self.out, "  {}", line.as_ref());
+        let line = line.as_ref();
+        // Storing the empty unit value `{}` does nothing.
+        if line.starts_with("store {} ") {
+            return;
+        }
+        let _ = writeln!(self.out, "  {line}");
     }
 
     pub fn start(&mut self, label: &str) {
@@ -115,8 +125,15 @@ impl<'g, 'a> Fx<'g, 'a> {
 
     pub fn alloca(&mut self, ll: &str) -> String {
         let p = self.r();
-        self.emit(format!("{p} = alloca {ll}"));
+        let _ = writeln!(self.allocas, "  {p} = alloca {ll}");
         p
+    }
+
+    /// The finished instructions of a glue function's entry block onwards,
+    /// with the hoisted stack slots first.
+    pub fn code(&mut self) -> String {
+        let allocas = std::mem::take(&mut self.allocas);
+        format!("{allocas}{}", std::mem::take(&mut self.out))
     }
 
     /// Stores a value in a fresh stack slot and returns its address.
@@ -230,7 +247,12 @@ impl<'g, 'a> Fx<'g, 'a> {
         }
         self.emit("br label %bb0");
         let prologue = std::mem::take(&mut self.out);
+        // Blocks nothing jumps to (left over from lowering) aren't emitted.
+        let live = body.reachable();
         for (i, b) in body.blocks.iter().enumerate() {
+            if !live[i] {
+                continue;
+            }
             self.start(&format!("bb{i}"));
             for s in &b.stmts {
                 self.stmt(s);
@@ -238,7 +260,8 @@ impl<'g, 'a> Fx<'g, 'a> {
             self.term(&b.term);
         }
         let blocks = std::mem::take(&mut self.out);
-        self.out = format!("{header}{prologue}{blocks}}}\n");
+        let allocas = std::mem::take(&mut self.allocas);
+        self.out = format!("{header}{allocas}{prologue}{blocks}}}\n");
     }
 
     // ── places ─────────────────────────────────────────────────────────────
@@ -855,7 +878,8 @@ impl<'g, 'a> Fx<'g, 'a> {
                     BinOp::BitAnd => format!("{r} = and {lt} {x}, {y}"),
                     BinOp::BitOr => format!("{r} = or {lt} {x}, {y}"),
                     BinOp::BitXor => format!("{r} = xor {lt} {x}, {y}"),
-                    _ => format!("{r} = icmp {} {lt} {x}, {y}", icmp(op, false)),
+                    // `avunu` is 1 and characters are code points: both compare unsigned.
+                    _ => format!("{r} = icmp {} {lt} {x}, {y}", icmp(op, true)),
                 };
                 self.emit(line);
                 r
@@ -873,7 +897,8 @@ impl<'g, 'a> Fx<'g, 'a> {
                 let c = self.r();
                 self.emit(format!("{c} = call i32 @ante_str_cmp(ptr {px}, ptr {py})"));
                 let r = self.r();
-                self.emit(format!("{r} = icmp {} i32 {c}, 0", icmp(op, true)));
+                // `ante_str_cmp` returns -1, 0 or 1: a signed comparison with 0.
+                self.emit(format!("{r} = icmp {} i32 {c}, 0", icmp(op, false)));
                 r
             }
             OpTy::Unit => {

@@ -45,6 +45,24 @@ fn clang_available() -> bool {
     Command::new(cc).arg("--version").output().is_ok_and(|o| o.status.success())
 }
 
+/// Which trap a runtime message reports (§20.3), from its wording.
+fn trap_code(msg: &str) -> &'static str {
+    let reason = msg.strip_prefix("kompa munigindhi! ").unwrap_or(msg);
+    let table: &[(&str, &str)] = &[
+        ("pattadhu", "T01"),
+        ("maarchalem", "T01"),
+        ("sunna (0) tho bhaagham", "T02"),
+        ("bayatiki vellindhi", "T03"),
+        ("shift count", "T04"),
+        ("kachithanga()", "T06"),
+        ("nijame()", "T07"),
+        ("stack nindipoyindhi", "T08"),
+        ("memory ayipoyindhi", "T09"),
+        ("mukka haddulu", "T10"),
+    ];
+    table.iter().find(|(w, _)| reason.contains(w)).map(|(_, c)| *c).unwrap_or("T05")
+}
+
 #[test]
 fn native_matches_expectations() {
     if !clang_available() {
@@ -69,49 +87,62 @@ fn native_matches_expectations() {
             continue;
         }
         let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
-        let exe = out_dir.join(if cfg!(windows) { format!("{name}.exe") } else { name.clone() });
-        let checked =
-            antec::package::process(&path, Action::Build { output: exe.clone() }).expect("readable");
-        if NOT_YET_NATIVE.contains(&name.as_str()) {
-            if checked.built.is_some() {
-                failures.push(format!("{name}: builds natively now; take it off NOT_YET_NATIVE"));
+        // Every program is built twice: optimized (`--release`) and not.
+        for release in [true, false] {
+            let level = if release { "O2" } else { "O0" };
+            let base = format!("{name}-{level}");
+            let exe = out_dir.join(if cfg!(windows) { format!("{base}.exe") } else { base });
+            let action = Action::Build { output: exe.clone(), release };
+            let checked = antec::on_big_stack(|| antec::package::process(&path, action)).expect("readable");
+            if NOT_YET_NATIVE.contains(&name.as_str()) {
+                if checked.built.is_some() {
+                    failures.push(format!("{name}: builds natively now; take it off NOT_YET_NATIVE"));
+                }
+                continue;
             }
-            continue;
-        }
-        if checked.built.is_none() {
-            failures.push(format!("{name}: native build failed: {:?}", checked.backend_errors));
-            continue;
-        }
-        ran += 1;
-        let out = Command::new(&exe).output().expect("runs");
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        let lines: Vec<&str> = stdout.lines().collect();
-        let want = header(&text, "expect-stdout:");
-        if !want.is_empty() && lines != want {
-            failures.push(format!("{name}: stdout {lines:?}, expected {want:?}"));
-        }
-        let trap = header(&text, "expect-trap:");
-        let default_exit = if category.trim() == "runtime-trap" { 101 } else { 0 };
-        let want_exit =
-            header(&text, "expect-exit:").first().and_then(|e| e.trim().parse().ok()).unwrap_or(default_exit);
-        if out.status.code() != Some(want_exit) {
-            failures.push(format!(
-                "{name}: exit {:?}, expected {want_exit} (stderr: {})",
-                out.status.code(),
-                stderr.trim()
-            ));
-        }
-        if let Some(t) = trap.first() {
-            // `T01 @ 7:12` → the message ends with `(file:7:12)`.
-            let pos = t.split('@').nth(1).map(str::trim).unwrap_or("");
-            if !stderr.trim_end().ends_with(&format!(":{pos})")) {
-                failures.push(format!("{name}: trap message `{}` doesn't point at {pos}", stderr.trim()));
+            if checked.built.is_none() {
+                failures.push(format!("{name} ({level}): native build failed: {:?}", checked.backend_errors));
+                continue;
+            }
+            ran += 1;
+            let out = Command::new(&exe).output().expect("runs");
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let lines: Vec<&str> = stdout.lines().collect();
+            let want = header(&text, "expect-stdout:");
+            if !want.is_empty() && lines != want {
+                failures.push(format!("{name} ({level}): stdout {lines:?}, expected {want:?}"));
+            }
+            let trap = header(&text, "expect-trap:");
+            let default_exit = if category.trim() == "runtime-trap" { 101 } else { 0 };
+            let want_exit = header(&text, "expect-exit:")
+                .first()
+                .and_then(|e| e.trim().parse().ok())
+                .unwrap_or(default_exit);
+            if out.status.code() != Some(want_exit) {
+                failures.push(format!(
+                    "{name} ({level}): exit {:?}, expected {want_exit} (stderr: {})",
+                    out.status.code(),
+                    stderr.trim()
+                ));
+            }
+            if let Some(t) = trap.first() {
+                // `T01 @ 7:12` → the right kind of trap, and the message ends
+                // with `(file:7:12)`. T08 and T09 have no position natively.
+                let (code, pos) =
+                    t.split_once('@').map(|(c, p)| (c.trim(), p.trim())).unwrap_or((t.trim(), ""));
+                let msg = stderr.trim_end();
+                if trap_code(msg) != code {
+                    failures.push(format!("{name} ({level}): trap `{msg}` isn't {code}"));
+                }
+                if !matches!(code, "T08" | "T09") && !msg.ends_with(&format!(":{pos})")) {
+                    failures.push(format!("{name} ({level}): trap message `{msg}` doesn't point at {pos}"));
+                }
             }
         }
     }
     let _ = fs::remove_dir_all(&out_dir);
-    assert!(ran >= 40, "only {ran} native programs ran");
+    assert!(ran >= 90, "only {ran} native programs ran");
     assert!(failures.is_empty(), "{} native failures:\n{}", failures.len(), failures.join("\n"));
 }
 
@@ -131,7 +162,9 @@ fn native_welcome_program() {
     let src = dir.join("welcome.ante");
     fs::write(&src, code).expect("write");
     let exe = dir.join(if cfg!(windows) { "welcome.exe" } else { "welcome" });
-    let checked = antec::package::process(&src, Action::Build { output: exe.clone() }).expect("readable");
+    // A debug (`-O0`) build, so both optimization levels are covered.
+    let action = Action::Build { output: exe.clone(), release: false };
+    let checked = antec::on_big_stack(|| antec::package::process(&src, action)).expect("readable");
     assert!(checked.built.is_some(), "build failed: {:?}", checked.backend_errors);
     let out = Command::new(&exe).output().expect("runs");
     let _ = fs::remove_dir_all(&dir);

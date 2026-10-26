@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r1. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r4. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -897,6 +897,8 @@ The drop order of collection elements is implementation-defined, but it is deter
 kompa munigindhi! <reason> (<file>:<line>:<col>)
 ```
 
+For T08 and T09 the position may be left out (`kompa munigindhi! <reason>`) when the implementation can't know it, as when compiled code detects a stack overflow through a guard page.
+
 | Code | Reason |
 |---|---|
 | T01 | integer overflow, e.g. `ankam8 lo 127 + 1 pattadhu` ("doesn't fit") |
@@ -914,7 +916,7 @@ kompa munigindhi! <reason> (<file>:<line>:<col>)
 
 20.5 **Determinism.** Apart from I/O, time, environment, `HashCheyochu` seeds (which may be randomized per process, though `jodi` iteration stays insertion-ordered), and documented `@vegam` effects, program behavior is deterministic.
 
-20.6 **Implementation-defined** behavior (to be documented): value layout (except §22.3), stack size, accuracy of transcendental functions, the drop order of collection elements, hash seeds, the constant-evaluation step limit, and the text of diagnostics.
+20.6 **Implementation-defined** behavior, which each implementation documents (for `antec`, in `antec/README.md`): value layout (except §22.3), stack size, accuracy of transcendental functions, the drop order of collection elements, hash seeds, the constant-evaluation step limit, limits on how deeply source code may nest (exceeding them is E0216), and the text of diagnostics and of I/O errors.
 
 ---
 
@@ -1087,10 +1089,10 @@ The programmer guarantees alignment, validity, lifetime, aliasing and the callin
 
 | Command | Action |
 |---|---|
-| `antec build [--release]` | compile the package |
-| `antec run [-- args]` | build, then run |
+| `antec build [path] [-o out] [--release]` | compile a package or file to a native executable |
+| `antec run [path] [-- args]` | run the program; `args` become `system.args()` |
 | `antec pariksha` | build and run tests ("exam") |
-| `antec fmt` | canonical formatting; must preserve the AST and evaluation order |
+| `antec fmt [path] [--check]` | canonical formatting; must preserve the AST and evaluation order. `--check` changes nothing and fails if a file isn't formatted |
 | `antec check [path]` | check a file, or a package folder (default: the current folder), without generating code |
 | `antec migrate` | rewrite code for renamed words and new editions (§23.5) |
 | `antec emit (tokens\|ast\|mir\|llvm)` | debugging output |
@@ -1285,6 +1287,7 @@ Severity is error unless the code starts with W. The prose shown is the referenc
 | E0213 | pipe hole misuse, or `aapey`/`vadhiley` outside a loop | |
 | E0214 | control flow inside `vellagane` | |
 | E0215 | invalid assignment target | |
+| E0216 | code nested deeper than the implementation's limit (§20.6) | "chaala lothuga nest ayyindhi" |
 | **Names** | | |
 | E0301 | undefined name | |
 | E0302 | duplicate definition | |
@@ -1406,6 +1409,9 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | L003 | Line joining by rules (a)–(d) of §4.2.3 | parses; build-pass |
 | L004 | `1__0`, `0x_F` | E0106 |
 | L005 | `"\u{D800}"` | E0108 |
+| L006 | Telugu letters outside a literal or comment | E0101 |
+| L007 | Backslash at the end of a line (no continuation) | E0201 |
+| L008 | String never closed | E0104 |
 | S001 | `10 ni, 20 tho kalupu()` | stdout `30` |
 | S002 | `x ni f() g()` | E0201 |
 | S003 | `10 ni 20 tho kalupu()` (missing comma) | E0203 |
@@ -1421,6 +1427,9 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | S013 | Phrase with no verb (`10 ni`) | E0202 |
 | S014 | `a < b < c` | E0417 |
 | S015 | One file exercising D4, D5, D7, D10, D11, pipe holes, `lo okko` and `batti :` | parses; build-pass |
+| S016 | Loops of a million iterations that need temporaries | run-pass (no stack growth) |
+| S017 | 600 nested parentheses | E0216 |
+| S018 | One expression 1,200 operators long | E0216 |
 | B001 | `20 tho, 10 ni kalupu()` | `30` |
 | B002 | `3 ni c ga, 1 ni a ga, 2 ni b ga kalupu_moodu()` | a=1, b=2, c=3 |
 | B003 | `1 ni, 3 ni c ga, 2 ni kalupu_moodu()` | a=1, b=2, c=3; source-order effects |
@@ -1456,7 +1465,7 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | T016 | `127 ni, 1 tho lekkalu.chuttu_kalupu()` on `ankam8` | `-128` |
 | T017 | Strict float sum: same bits on every run | run-pass |
 | T018 | `@vegam` sum is within the documented tolerance and vectorized (inspect IR) | run-pass |
-| T019 | `a < b < c` | E0417 |
+| T019 | `<` and friends on text (by bytes), `ato_ito` (`kaadhu < avunu`), `aksharam` and tuples | stdout matches |
 | T020 | Non-boolean `aithe` condition | E0403 |
 | T021 | `padham[0]` | E0413 |
 | T022 | Annotation and value disagree | E0401 |
@@ -1476,6 +1485,9 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | T036 | Literals, operators, records, enums, closures, adapters, conversions | build-pass |
 | T037 | `MIN / -1` | T01 |
 | T038 | Division, remainder, shifts and float arithmetic | stdout matches |
+| T039 | Recursion with no end | T08 |
+| T040 | Float display: shortest round-trip form, `.0` on whole numbers however big | stdout matches |
+| T041 | `aksharam` predicates follow Unicode | stdout matches |
 | O001 | Use after move | E0601 |
 | O002 | Assign to a non-`maare` binding | E0602 |
 | O003 | Move out of `xs[0]` (non-Copy element) | E0603 |
@@ -1540,6 +1552,7 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | D003 | f-string interpolation | stdout matches |
 | D004 | Iteration adapters (`jalleda_pattu`, `prathi_dhaaniki`, `poguchey`, `modhati`, `dhaatu`, `kalipi`) | stdout matches |
 | D005 | `padham` counts characters, not bytes; parsing and splitting | stdout matches |
+| D006 | File errors (missing file, a folder); `file.undhaa` on a folder | stdout matches |
 | X001 | Program without `python`/`torch` imports | no CPython or LibTorch linkage |
 | X002 | `modhalu` returns `thappu(e)` | exit 1, stderr `thappu: …` |
 | X003 | `bayata` call outside `naa_risk` | E1001 |
@@ -1740,7 +1753,7 @@ The recommended architecture: Rust, a hand-written lexer and recursive-descent p
 | M4 | Type checker for monomorphic code: literals, operators, records, enums, patterns (§9, §10, §14) | E04xx, E07xx |
 | M5 | Call binding, automatic borrows, pipes (§11–12) | B- and P-series |
 | M6 | MIR lowering and MIR interpreter, with traps and drop/`vellagane` order (Part V) | first run-pass and runtime-trap cases |
-| M7 | LLVM code generation for core types; runtime in "Ante" plus a small C shim for allocation, I/O and traps | the same cases, compiled natively on AArch64 and x86-64 |
+| M7 | LLVM code generation for core types; a small C runtime for allocation, I/O and traps (parts move to "Ante" once the standard library is written in it) | the same cases, compiled natively on AArch64 and x86-64 |
 | M8 | Ownership and borrow checker on MIR (§15) | O-series |
 | M9 | Generics, traits, monomorphization, `@automatic`, closures (§13, §10.7) | G-series |
 | M10 | Standard library (§21), iteration adapters, f-strings | D-series; Appendix D programs |
@@ -1775,12 +1788,13 @@ These are reserved and rejected with E1201 where syntax exists:
 
 # Appendix G — Change history
 
-Edition 1.0 starts at draft r1, which is the first public revision. Every later change to this spec that affects programs is listed here, newest first, with its revision number and the release that shipped it (see `docs/VERSIONING.md`).
+Edition 1.0 starts at draft r1, which is the first public revision. Every later change to this spec that affects programs is listed here, newest first, with its revision number and the release that ships it (see `docs/VERSIONING.md`). Before 1.0, new features and clarifications bump the patch version, so several revisions can ship in one release.
 
 | Revision | Release | Change |
 |---|---|---|
-| r3 | `antec` 0.3.0 | Programs run (M6): built-in display format (§13.5); standard library types implement the basic traits (§21.3); runtime seed cases S001–S008, B001–B011, P001–P005, T001–T016, T037–T038, O010–O017, M003, M006, G001–G012, D001–D005, X002. |
-| r2 | `antec` 0.2.0 | Clarifications from the type checker (M4): automatic dereference of scalar references in operators (§10.5.1); method lookup skips reference candidates (§13.4.2); numbers implement the arithmetic traits (§13.5); `jalleda_pattu`'s predicate receives `&I` (§21.4.2); Appendix D.7 defines `Model.parameters`; new seed cases T022–T036, P006, O015–O016, M004–M005, W004, G009–G012. |
+| r4 | `antec` 0.1.1 | Hardening after M7: T08/T09 messages may omit the position (§20.3); nesting limits and E0216 (§20.6); the implementation-defined list now includes I/O error text (§20.6); `antec fmt [--check]`, `antec run [path] [-- args]`, `antec build [-o out] [--release]` (§23.1); T019 now tests ordering (the chained comparison case is S014); new seed cases T039–T041, S016–S018, D006, and L006–L008 (already tested, now listed). |
+| r3 | `antec` 0.1.1 | Programs run (M6): built-in display format (§13.5); standard library types implement the basic traits (§21.3); runtime seed cases S001–S008, B001–B011, P001–P005, T001–T016, T037–T038, O010–O017, M003, M006, G001–G012, D001–D005, X002. |
+| r2 | `antec` 0.1.1 | Clarifications from the type checker (M4): automatic dereference of scalar references in operators (§10.5.1); method lookup skips reference candidates (§13.4.2); numbers implement the arithmetic traits (§13.5); `jalleda_pattu`'s predicate receives `&I` (§21.4.2); Appendix D.7 defines `Model.parameters`; new seed cases T022–T036, P006, O015–O016, M004–M005, W004, G009–G012. |
 | r1 | `antec` 0.1.0 | First public draft of Edition 1.0. |
 
 ---
@@ -1791,7 +1805,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 - The Rust Reference (ownership, patterns, traits): https://doc.rust-lang.org/reference/
 - Rust RFC 2094, non-lexical lifetimes: https://rust-lang.github.io/rfcs/2094-nll.html
 - LLVM Language Reference, fast-math flags: https://llvm.org/docs/LangRef.html#fast-math-flags
-- `inkwell` (LLVM bindings for Rust): https://github.com/TheDan64/inkwell
+- LLVM Language Reference (the textual IR `antec` emits): https://llvm.org/docs/LangRef.html
 - `tch-rs` (Rust LibTorch bindings): https://github.com/LaurentMazare/tch-rs
 - PyTorch C++ API: https://pytorch.org/cppdocs/
 - DLPack: https://dmlc.github.io/dlpack/latest/

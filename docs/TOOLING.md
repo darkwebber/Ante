@@ -43,11 +43,26 @@ Warning vaddhu anukunte, peru `_` tho start cheyyandi (`_x ante 5`).
 
 Lints errors lenappudu matrame run avthayi, kaabatti first errors fix cheyyandi, taruvatha warnings.
 
+## `antec fmt` ✨
+
+Code ni official style lo pedathundhi: 4 spaces indentation, operators chuttu spaces, commas tharvatha okka space, D4 kosam avasaramaina brackets (spec §6), `(a + b) icchey` laanti chadavadaniki easy brackets, okka blank line kante ekkuva undavu, top-level items madhyalo okka blank line. 100 characters kante pedda function signatures lo prathi parameter oka line lo. Literals (`0xFF`, `1_000`, escapes) ela raasaro ala ne untayi. Comments ekkada unnayo akkade untayi.
+
+```bash
+cargo run -p antec -- fmt examples
+```
+
+CI lo leka commit mundhu check cheyyalante (emi maarchadhu, format avvakapothe exit 1):
+
+```bash
+cargo run -p antec -- fmt --check examples
+```
+
+**Safe ga untundhi:** format chesina code malli parse chesi, syntax tree (and evaluation order) same ga undho, rendosaari format chesthe emi maaradho check chesthundhi. Edhi fail aina file ni touch cheyyadhu, "antec bug" ani cheptundhi. Errors unna file ni format cheyyadhu.
+
 ## Roadmap 🗺️
 
 | Tool | Em chesthundhi | Eppudu | Depends on |
 |---|---|---|---|
-| **`antec fmt`** | Code ni official style lo format: indentation, spacing, D4 brackets (spec §6) | Next | M2 parser ✅ (comments preserve cheyyadaniki lexer lo trivia kavali) |
 | **Type-aware lints** | Vaadani results, naming style, `xerox()` avasaram lenichota | Next | Type checker ✅ |
 | **Language server (`antec lsp`)** | Type chesthunnappude errors, go to definition, find references, rename, hover lo types, completion | Next | Resolver ✅, type checker ✅ (prathi expression type record chesthundhi) |
 | **tree-sitter grammar** | Neovim, Helix, Zed, Emacs lo fast incremental highlighting; GitHub code navigation | Fmt tharvatha | Parser grammar (spec §5) |

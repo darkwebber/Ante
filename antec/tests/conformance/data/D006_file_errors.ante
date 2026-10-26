@@ -1,0 +1,14 @@
+# category: run-pass
+# expect-stdout: thappu(aa file ledhu)
+# expect-stdout: thappu(adhi file kaadhu, folder)
+# expect-stdout: avunu kaadhu
+# level: core
+# File errors read the same in every backend; a folder exists too.
+file thechuko
+
+modhalu() -> khali ante:
+    "ee/file/ekkada/ledhu.txt" ni file.chadhuvu() |> choopinchu()
+    "." ni file.chadhuvu() |> choopinchu()
+    folder ante "." ni file.undhaa()
+    ledhu_ ante "ledhu.txt" ni file.undhaa()
+    f"{folder} {ledhu_}" ni choopinchu()

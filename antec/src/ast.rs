@@ -344,6 +344,64 @@ pub struct Expr {
     pub span: Span,
 }
 
+impl Expr {
+    /// The direct sub-expressions.
+    pub fn children(&self) -> Vec<&Expr> {
+        match &self.kind {
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Str(_)
+            | ExprKind::Char(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Ledhu
+            | ExprKind::BareSare
+            | ExprKind::Unit
+            | ExprKind::Hole
+            | ExprKind::Path(_) => Vec::new(),
+            ExprKind::FStr(parts) => parts
+                .iter()
+                .filter_map(|p| match p {
+                    FStrPart::Expr(e) => Some(e),
+                    FStrPart::Text(_) => None,
+                })
+                .collect(),
+            ExprKind::Call { callee, phrases, .. } => {
+                let mut out = vec![&**callee];
+                for p in phrases {
+                    if let PhraseKind::Value(e) | PhraseKind::Spread(e) = &p.kind {
+                        out.push(e);
+                    }
+                }
+                out
+            }
+            ExprKind::Try(e) => vec![&**e],
+            ExprKind::Pipe { input, stage } => vec![&**input, &**stage],
+            ExprKind::Binary { lhs, rhs, .. } => vec![&**lhs, &**rhs],
+            ExprKind::Unary { operand, .. } => vec![&**operand],
+            ExprKind::Field { base, .. } | ExprKind::TupleIndex { base, .. } => vec![&**base],
+            ExprKind::Index { base, indices } => std::iter::once(&**base).chain(indices).collect(),
+            ExprKind::Range { lo, hi, .. } => vec![&**lo, &**hi],
+            ExprKind::Closure { body, .. } => vec![&**body],
+            ExprKind::Ctor { args, .. } => args.iter().collect(),
+            ExprKind::Record { fields, .. } => fields.iter().map(|(_, e)| e).collect(),
+            ExprKind::Tuple(items) | ExprKind::List(items) => items.iter().collect(),
+            ExprKind::Map(pairs) => pairs.iter().flat_map(|(k, v)| [k, v]).collect(),
+        }
+    }
+
+    /// The height of the syntax tree, computed without recursion so that
+    /// it's safe on any input.
+    pub fn depth(&self) -> usize {
+        let mut max = 0;
+        let mut stack = vec![(self, 1)];
+        while let Some((e, d)) = stack.pop() {
+            max = max.max(d);
+            stack.extend(e.children().into_iter().map(|c| (c, d + 1)));
+        }
+        max
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum PhraseKind {
     Value(Expr),

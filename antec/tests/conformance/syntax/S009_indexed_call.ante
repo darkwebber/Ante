@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E0401 @ 10:5
+# level: core
+# `handlers[0]()` reads as a generic call (D7); the fix is `(handlers[0])()`.
+nammaskaram() -> khali ante:
+    "namaste" ni choopinchu()
+
+modhalu() -> khali ante:
+    handlers ante [nammaskaram]
+    handlers[0]()
