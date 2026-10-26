@@ -80,23 +80,16 @@ impl Collector<'_> {
             let module = if file.module == "prelude" { 0 } else { self.res().module_by_name[file.module] };
             self.load_std_items(module, &file.ast);
         }
-        // Marker traits and traits whose methods can't be written in 1.0
-        // syntax (`NunchiRavochu.nunchi`: `nunchi` is a role word).
-        for (name, params) in [("CopyKottochu", 0), ("NunchiRavochu", 1)] {
-            if let Some(&def) = self.globals.std_traits.get(name) {
-                let mut generics = vec![Generic { name: "idhi".into(), bounds: Vec::new(), is_const: false }];
-                if params == 1 {
-                    generics.push(Generic { name: "F".into(), bounds: Vec::new(), is_const: false });
-                }
-                self.globals.traits.entry(def).or_insert(super::Trait {
-                    name: name.into(),
-                    generics,
-                    methods: Vec::new(),
-                    defaults: Default::default(),
-                    module: 0,
-                    file: None,
-                });
-            }
+        // The marker trait.
+        if let Some(&def) = self.globals.std_traits.get("CopyKottochu") {
+            self.globals.traits.entry(def).or_insert(super::Trait {
+                name: "CopyKottochu".into(),
+                generics: vec![Generic { name: "idhi".into(), bounds: Vec::new(), is_const: false }],
+                methods: Vec::new(),
+                defaults: Default::default(),
+                module: 0,
+                file: None,
+            });
         }
     }
 
@@ -241,7 +234,7 @@ mod tests {
             assert!(prelude.contains(&name.to_string()), "prelude `{name}` has no signature");
         }
         for name in stdlib::PRELUDE_TRAITS {
-            let marker = matches!(*name, "CopyKottochu" | "NunchiRavochu");
+            let marker = *name == "CopyKottochu";
             assert!(marker || prelude.contains(&name.to_string()), "trait `{name}` has no declaration");
         }
         for m in stdlib::STD_MODULES.iter().filter(|m| !m.open) {

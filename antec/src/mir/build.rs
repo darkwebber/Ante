@@ -310,7 +310,8 @@ impl<'a, 'p> Builder<'a, 'p> {
     }
 
     fn by_type(&self, p: Place, ty: &Ty) -> Operand {
-        if self.is_copy(ty) {
+        // A `pani` place used as a value is xeroxed, not moved (§10.7.4).
+        if self.is_copy(ty) || matches!(ty, Ty::Fn(..)) {
             Operand::Copy(p)
         } else {
             Operand::Move(p)
@@ -1148,7 +1149,7 @@ impl<'a, 'p> Builder<'a, 'p> {
     }
 
     fn lower_try(&mut self, value: Place, ty: &Ty, dest: Place, span: Span) {
-        let _ = span;
+        let convert = self.tc.results.try_converts.get(&expr_id(self.file, span)).cloned();
         let d = self.new_local(Ty::ANKAM, None);
         self.assign(Place::local(d), Rvalue::Discriminant(value.clone()));
         let ok = self.new_block();
@@ -1163,7 +1164,14 @@ impl<'a, 'p> Builder<'a, 'p> {
             Ty::App(Con::SareThappu, a) => (a[0].clone(), a[1].clone()),
             _ => (Ty::Error, Ty::Error),
         };
-        let e = self.by_type(value.project(Proj::Variant(1)).field(0), &err_ty);
+        let mut e = self.by_type(value.project(Proj::Variant(1)).field(0), &err_ty);
+        if let Some((to, from)) = convert {
+            // The function's error comes from the operand's (§10.6).
+            let fid = self.std_method("NunchiRavochu", "daani_nunchi");
+            let t = self.new_local(to.clone(), None);
+            self.call(Callee::Trait(fid, vec![to, from]), vec![e], Place::local(t), span);
+            e = Operand::Move(Place::local(t));
+        }
         self.assign(Place::local(RETURN), Rvalue::Aggregate(Agg::Adt(AdtRef::SareThappu, 1), vec![e]));
         self.emit_cleanup(0);
         self.terminate(Term::Return);
@@ -1611,6 +1619,36 @@ impl<'a, 'p> Builder<'a, 'p> {
             };
             caps.push((*u, ty));
         }
+        // Copies of a closure share its captures, and any copy may go to
+        // another task, so a capture must be safe to share (§10.7.2).
+        for (u, ty) in &caps {
+            let bad = if contains_ty(self.g, ty, &mut |t| matches!(t, Ty::Ptr(..)), &mut HashSet::new()) {
+                Some("raw pointer")
+            } else if moves
+                && contains_ty(self.g, ty, &mut |t| matches!(t, Ty::Ref(true, _)), &mut HashSet::new())
+            {
+                Some("`&maare` reference")
+            } else {
+                None
+            };
+            if let Some(what) = bad {
+                let name = match u {
+                    Some(decl) => {
+                        self.vars.get(decl).and_then(|&v| self.body.locals[v as usize].name.clone())
+                    }
+                    None => Some("naa".into()),
+                }
+                .unwrap_or_else(|| "capture".into());
+                self.prog.errors.push((
+                    self.file,
+                    crate::diag::Diagnostic::error(
+                        "E0612",
+                        e.span,
+                        format!("closure `{name}` ni capture cheyyalem: andhulo {what} undhi, closure copies anni dhaanni panchukuntayi"),
+                    ),
+                ));
+            }
+        }
         let name = format!("{}::pani", self.body.name);
         let generics = self.generics.clone();
         let file = self.file;
@@ -1793,6 +1831,25 @@ pub fn op_ty(ty: &Ty) -> Option<OpTy> {
     })
 }
 
+/// Whether `ty` or anything it holds satisfies `pred`.
+fn contains_ty(g: &Globals, ty: &Ty, pred: &mut dyn FnMut(&Ty) -> bool, seen: &mut HashSet<DefId>) -> bool {
+    if pred(ty) {
+        return true;
+    }
+    match ty {
+        Ty::Ref(_, t) | Ty::Ptr(_, t) | Ty::Array(t, _) => contains_ty(g, t, pred, seen),
+        Ty::Tuple(items) => items.iter().any(|t| contains_ty(g, t, pred, seen)),
+        Ty::App(Con::Adt(d), args) => {
+            seen.insert(*d)
+                && crate::typeck::solve::adt_field_types(g, *d, args)
+                    .iter()
+                    .any(|t| contains_ty(g, t, pred, seen))
+        }
+        Ty::App(_, args) => args.iter().any(|t| contains_ty(g, t, pred, seen)),
+        _ => false,
+    }
+}
+
 fn owned_collection(ty: &Ty) -> bool {
     matches!(ty, Ty::Array(..) | Ty::App(Con::Varusa | Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _))
 }
@@ -1896,7 +1953,7 @@ pub fn needs_drop(
             visiting.remove(d);
             r
         }
-        Ty::Str => true,
+        Ty::Str | Ty::Fn(..) => true,
         Ty::App(Con::Varusa | Con::Pette | Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => true,
         Ty::App(_, args) | Ty::Tuple(args) => {
             args.iter().any(|a| needs_drop(g, generics, cache, a, visiting))

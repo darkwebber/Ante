@@ -610,6 +610,13 @@ pub(super) fn call_xerox(fx: &mut Fx, ty: &Ty, v: &str) -> String {
 
 fn xerox_value(fx: &mut Fx, ty: &Ty, v: &str) -> String {
     let lt = fx.ll(ty);
+    if let Ty::Fn(..) = ty {
+        let f = fx.load("%pani", v);
+        let env = fx.r();
+        fx.emit(format!("{env} = extractvalue %pani {f}, 1"));
+        fx.emit(format!("call void @ante_pani_inc(ptr {env})"));
+        return f;
+    }
     if let Ty::App(Con::Adt(_), _) = ty {
         if let Some((bd, tys)) = user_impl(fx.gen, "XeroxTheeyochu", ty) {
             return fx.call_body_vals(bd, &tys, &[v.to_string()]).0;
@@ -696,7 +703,7 @@ fn needs_deep(gen: &Gen, ty: &Ty) -> bool {
             return true;
         }
         match ty {
-            Ty::Str | Ty::App(Con::Varusa | Con::Pette, _) => true,
+            Ty::Str | Ty::Fn(..) | Ty::App(Con::Varusa | Con::Pette, _) => true,
             Ty::Tuple(items) => items.iter().any(|t| go(gen, t, depth + 1)),
             Ty::Array(e, _) => go(gen, e, depth + 1),
             Ty::App(Con::Undochu | Con::SareThappu | Con::Adt(_), _) => {
@@ -709,6 +716,20 @@ fn needs_deep(gen: &Gen, ty: &Ty) -> bool {
 }
 
 // ── drop glue (§19.3) ──────────────────────────────────────────────────────
+
+/// Drops the captures of a closure environment, last capture first; the
+/// runtime frees the memory.
+pub(super) fn env_drop(gen: &mut Gen, name: &str, caps: &[Ty]) -> String {
+    let mut fx = Fx::new_for_glue(gen);
+    let et = fx.ll(&super::func::env_ty(caps));
+    for (k, t) in caps.iter().enumerate().rev() {
+        if fx.needs_drop(t) {
+            let p = fx.gep(&et, "%env", &["0".into(), (k + 2).to_string()]);
+            call_drop(&mut fx, t, &p);
+        }
+    }
+    format!("define internal void {name}(ptr %env) {{\nentry:\n{}  ret void\n}}\n", fx.code())
+}
 
 pub(super) fn drop_glue(gen: &mut Gen, name: &str, ty: &Ty) -> String {
     let mut fx = Fx::new_for_glue(gen);
@@ -725,6 +746,13 @@ fn call_drop(fx: &mut Fx, ty: &Ty, v: &str) {
 }
 
 fn drop_into(fx: &mut Fx, ty: &Ty, v: &str) {
+    if let Ty::Fn(..) = ty {
+        let f = fx.load("%pani", v);
+        let env = fx.r();
+        fx.emit(format!("{env} = extractvalue %pani {f}, 1"));
+        fx.emit(format!("call void @ante_pani_dec(ptr {env})"));
+        return;
+    }
     if let Ty::App(Con::Adt(_), _) = ty {
         // `sardhu` first, then the fields (§19.3).
         if let Some((bd, tys)) = user_impl(fx.gen, "Sardhukochu", ty) {

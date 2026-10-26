@@ -1,0 +1,26 @@
+# category: run-pass
+# expect-stdout: thappu(naa thappu: code 42)
+# level: core
+# `?` converts the error with `NunchiRavochu.daani_nunchi` (§10.6).
+edho_okati NaaThappu ante:
+    Chinna(padham)
+
+NaaThappu ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        naa batti:
+            NaaThappu.Chinna(s) aithe:
+                f"naa thappu: {s}" icchey
+
+NaaThappu ki NunchiRavochu[ankam] gunam undhi:
+    daani_nunchi(vishayam: ankam ni) -> idhi ante:
+        NaaThappu.Chinna(f"code {vishayam}") icchey
+
+paniki_raadhu() -> sare_thappu[ankam, ankam] ante:
+    thappu(42) icchey
+
+pilu() -> sare_thappu[ankam, NaaThappu] ante:
+    x ante paniki_raadhu()?
+    sare(x + 1) icchey
+
+modhalu() -> khali ante:
+    pilu() ni choopinchu()

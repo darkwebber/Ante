@@ -50,6 +50,9 @@ gunam Thippochu ante:
 gunam MatmulCheyochu ante:
     matmul(naa: &idhi, inkokati: &idhi ni) -> idhi
 
+gunam NunchiRavochu[F] ante:
+    daani_nunchi(vishayam: F ni) -> idhi
+
 # ── prelude types ───────────────────────────────────────────────────────────
 
 edho_okati Kramam ante:

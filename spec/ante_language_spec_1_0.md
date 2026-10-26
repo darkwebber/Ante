@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r8. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r10. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -123,8 +123,8 @@ Joined lines do not affect the indentation stack. A backslash at the end of a li
 | Ranges | `lopu` `varaku` |
 | Parameters | `migathavi` `migatha_perlu` `peru_thone` |
 | Literals and constructors | `avunu` `kaadhu` `ledhu` `sare` `thappu` |
-| Types | `ankam` `ankam8` `ankam16` `ankam32` `ankam64` `aasajeevi` `amsam` `amsam32` `amsam64` `ato_ito` `padham` `aksharam` `jatha` `jodi` `undochu` `varusa` `mukka` `sare_thappu` `pani` `pette` `khali` `raadhu` `idhi` `panchukunna` (§24.4) |
-| Reserved for later editions | `edhaina` `kitiki` `gurinchi` `async` `await` `yield` |
+| Types | `ankam` `ankam8` `ankam16` `ankam32` `ankam64` `aasajeevi` `amsam` `amsam32` `amsam64` `ato_ito` `padham` `aksharam` `jatha` `jodi` `undochu` `varusa` `mukka` `sare_thappu` `pani` `pette` `khali` `raadhu` `idhi` `panchukunna` (§24.4) `edhaina` (Annex P) |
+| Reserved for later editions | `kitiki` `gurinchi` `async` `await` `yield` |
 
 `undhi` is both the optional constructor (`undhi(v)`) and the implementation keyword (`… gunam undhi:`). The two positions never overlap.
 
@@ -455,7 +455,7 @@ Module items shadow prelude names. Standard library modules (`lekkalu`, `file`, 
 | `undochu[T]` | Optional: `undhi(T)` or `ledhu` | if T is |
 | `sare_thappu[T, E]` | Result: `sare(T)` or `thappu(E)` | if T and E are |
 | `pette[T]` | Owned heap box ("a box"); used for recursive types | no |
-| `pani[(P…) -> R]` | Callable value (§10.7) | if it has no captures |
+| `pani[(P…) -> R]` | Callable value (§10.7) | no; using a `pani` place shares it instead of moving it (§10.7.4) |
 | `&T` | Shared reference | yes |
 | `&maare T` | Exclusive mutable reference | no |
 | `*T`, `*maare T` | Raw pointers (§22) | yes |
@@ -563,7 +563,7 @@ A tuple binding `(a, b) ante e` requires `e : jatha[A, B]`. Bindings are never u
 | `e[a nunchi b lopu]` | same `e`; result is a place of type `mukka[T]` (unsized, so it must be borrowed) |
 | `&e`, `&maare e` | `&T`, `&maare T`; `&maare` requires a mutable place (E0607) |
 | `*e` | `e : &T`, `&maare T` or `pette[T]` gives `T`; raw pointers need `naa_risk` |
-| `e?` | `e : sare_thappu[T, E]` gives `T`. The enclosing function must return `sare_thappu[_, F]` where `F = E` or `F` implements `NunchiRavochu[E]`, in which case the error is converted with `F.nunchi` (E0411, E0412) |
+| `e?` | `e : sare_thappu[T, E]` gives `T`. The enclosing function must return `sare_thappu[_, F]` where `F = E` or `F` implements `NunchiRavochu[E]`, in which case the error is converted with `F.daani_nunchi` (E0411, E0412) |
 | `f"…{c}…"` | each `c : C` with `C: Choopinchochu`; result `padham` |
 | `undhi(e)`, `sare(e)`, `thappu(e)`, `E.V(e…)` | the constructor's type, with arity checked (E0704) |
 | `T{f: e, …}` | every field exactly once (E0416); fields must be visible |
@@ -574,13 +574,16 @@ A tuple binding `(a, b) ante e` requires `e : jatha[A, B]`. Bindings are never u
 10.7.1 A closure `(x: T ni, …) => body` has type `pani[(T ni, …) -> R]`, where `R` is the type of `body`. Parameter types and roles may be left out when an expected `pani` type supplies them.
 
 10.7.2 **Captures.**
-- A closure captures by shared borrow any outer local it reads.
-- It captures by mutable borrow any outer local it assigns or borrows with `&maare` (the local must be `maare`).
+- A closure captures by shared borrow any outer local it uses (`naa` included).
 - With the `theesuko` ("take it") prefix, it captures every outer local it mentions by **move** (a copy for `CopyKottochu` types). The closure owns those values, but it may run many times and its copies share them, so its body can't move a captured value out (E0603). Use `.xerox()` instead.
+- A closure body can't change anything it captured: assigning to it, borrowing it with `&maare` or calling a `&maare idhi` method on it, directly or through a field, index or `*`, is E0611. Pass the place to the closure as a `&maare` parameter instead.
+- A closure can't capture a raw pointer, or a value containing one, and a `theesuko` closure can't capture a `&maare` reference (E0612): its copies would share them.
 
-A closure with any borrow captures is RC (§9.3).
+A closure with any borrow captures is RC (§9.3). The borrow checker knows which closure values hold borrows (§15.4.6).
 
 10.7.3 A named function used as a value has a `pani` type with its declared parameter roles. Calling a local of `pani` type uses the call syntax of §11 with the roles from its type.
+
+10.7.4 **Copies.** `pani` doesn't implement `CopyKottochu`, but a `pani` place used as a value isn't moved either: it makes another handle to the same closure, in O(1). All handles share the captured values, which are dropped, last capture first, when the last handle is dropped. `pani` implements `XeroxTheeyochu` (the same O(1) copy, explicitly). Because §10.7.2 rules out the captures that couldn't be shared, every `pani` is `Pampochu` and `Panchukovochu` (§24.3).
 
 ## 11. Calls
 
@@ -701,7 +704,7 @@ The receiver borrow is taken **after** the argument phrases are evaluated, so `v
 | `Kalupochu`, `Theeseyochu`, `Guninchochu`, `Panchochu`, `Migulochu` | `kalupu`/`theesey`/`guninchu`/`panchu`/`migulu(naa: &idhi, inkokati: &idhi ni) -> idhi` | `+ - * / %` |
 | `Thippochu` | `thippu(naa: &idhi) -> idhi` | unary `-` ("flip") |
 | `MatmulCheyochu` | `matmul(naa: &idhi, inkokati: &idhi ni) -> idhi` | `@` |
-| `NunchiRavochu[F]` | `nunchi(vishayam: F ni) -> idhi` | conversion "can come from F"; used by `?` (§10.6) |
+| `NunchiRavochu[F]` | `daani_nunchi(vishayam: F ni) -> idhi` | conversion "can come from F" (`daani_nunchi`: "from that one"); used by `?` (§10.6) |
 
 `Hasher` is a prelude record with `x ni h.kalupu()` for every integer type, `aksharam`, `ato_ito` and `&mukka[aasajeevi ankam8]`, and `h.chaalu() -> aasajeevi ankam64` ("finish"). The algorithm is implementation-defined but must be deterministic for a fixed seed.
 
@@ -920,12 +923,14 @@ For T08 and T09 the position may be left out (`kompa munigindhi! <reason>`) when
 | T10 | invalid slice bounds (a > b, or b > length) |
 | T11 | opening a poisoned `Thaalam` (§24.4) |
 | T12 | a task opening a `Thaalam` it already holds (§24.4) |
+| T13 | a Python exception where no `sare_thappu` can carry it: attributes, indexing, operators, iteration (Annex P.12.3) |
+| T14 | the Python environment couldn't be loaded, or an import failed, at program start (Annex P.18.5) |
 
 20.4 Output to stdout is buffered and flushed at normal exit, before a trap message, and by `system.flush()`.
 
 20.5 **Determinism.** Apart from I/O, time, environment, `HashCheyochu` seeds (which may be randomized per process, though `jodi` iteration stays insertion-ordered), and documented `@twaraga` effects, program behavior is deterministic.
 
-20.6 **Implementation-defined** behavior, which each implementation documents (for `antec`, in `antec/README.md`): value layout (except §22.3), stack size, accuracy of transcendental functions, the drop order of collection elements, hash seeds, the constant-evaluation step limit, limits on how deeply source code may nest (exceeding them is E0216), and the text of diagnostics and of I/O errors. Services adds: the task scheduler and task stack size (§24.1, §24.5.4), TLS cipher suites (§28.3), the bundled time zone database version (§26) and the order of log fields. Web adds: generated image formats and widths (W.18) and the internal structure of generated HTML, CSS and client code beyond W.5.
+20.6 **Implementation-defined** behavior, which each implementation documents (for `antec`, in `antec/README.md`): value layout (except §22.3), stack size, accuracy of transcendental functions, the drop order of collection elements, hash seeds, the constant-evaluation step limit, limits on how deeply source code may nest (exceeding them is E0216), and the text of diagnostics and of I/O errors. Services adds: the task scheduler and task stack size (§24.1, §24.5.4), TLS cipher suites (§28.3), the bundled time zone database version (§26) and the order of log fields. Web adds: generated image formats and widths (W.18) and the internal structure of generated HTML, CSS and client code beyond W.5. Python adds: the bundled typeshed version, how the asyncio loop thread is run (P.16), the wording of learner hints (P.12.4) and the cost of a bridge operation.
 
 ---
 
@@ -1106,6 +1111,9 @@ The programmer guarantees alignment, validity, lifetime, aliasing and the callin
 | `antec migrate` | rewrite code for renamed words and new editions (§23.5) |
 | `antec emit (tokens\|ast\|mir\|llvm)` | debugging output |
 | `antec web (new\|dev\|build\|check)` | web applications (Annex W.22) |
+| `antec python (sync\|stubs\|doctor)` | the Python environment and its bindings (Annex P.3.4) |
+| `antec repl` | interactive session (§23.7) |
+| `antec jupyter install` | registers the "Ante" Jupyter kernel (§23.7) |
 
 `--release` changes optimization level only, never semantics.
 
@@ -1126,7 +1134,7 @@ torch = false           # Annex T
 python = false          # Annex P
 ```
 
-A lockfile `ante.lock` pins exact versions, and builds with the lockfile are reproducible. An optional `[build]` table sets `stack = "64MB"` (main-thread stack size; the default is at least 8 MB), `task_stack = "1MB"` (the stack of every other task, §24.5.4) and `target = "<llvm triple>"`. Web packages also have a `[web]` table (Annex W.3.2).
+A lockfile `ante.lock` pins exact versions, and builds with the lockfile are reproducible. An optional `[build]` table sets `stack = "64MB"` (main-thread stack size; the default is at least 8 MB), `task_stack = "1MB"` (the stack of every other task, §24.5.4) and `target = "<llvm triple>"`. Web packages also have a `[web]` table (Annex W.3.2), and packages that import Python a `[python]` table (Annex P.3.2).
 
 23.2.1 **Installation layout.** A toolchain installation is a directory `$ANTE_HOME` (default: the directory above the `antec` binary) with:
 
@@ -1156,6 +1164,24 @@ error[E0601]: `a` ni already `b` ki icchesav kada! Malli vaadalevu.
 - Once `antec` 1.0.0 ships, Edition 1.0 is frozen: a program valid under it stays valid under every later compiler. Further vocabulary changes go into Edition 2.0.
 
 23.6 **Diagnostics format.** `--message-format=json` emits `{code, severity, file, line, col, end_line, end_col, message}`. Lines and columns are 1-based. A column counts Unicode scalar values from the start of the line. Conformance tests compare only `code` and the primary span. Codes are listed in Appendix B.
+
+23.7 **Interactive use.** Learners try things one line at a time, so the toolchain provides a session.
+
+23.7.1 `antec repl` starts a session, inside the current package when there is one. Each **entry** is one or more complete logical lines:
+- An import or declaration is added to the session's module, and later entries can use it. Declaring an item again replaces it for later entries.
+- Statements run as if appended to the body of one long function. Bindings stay across entries, and the borrow checker treats all entries as one body: a value moved in one entry is E0601 in a later one.
+- An expression statement whose value isn't `khali` is displayed with `Choopinchochu` (otherwise, its type is shown).
+- `?` may be used in any entry. A `thappu` ends the entry and is displayed as `thappu: <e>`.
+- A compile error discards the entry.
+- A trap ends the entry, not the session: the message is shown, earlier bindings keep their values, and the trapped entry binds nothing.
+- The session runs on the MIR interpreter, with the same semantics as a built program.
+
+23.7.2 **Jupyter.** `antec jupyter install` registers an "Ante" kernel in which each cell is an entry.
+- A displayed `edhaina` (Annex P) uses Python's display protocol (`_repr_mimebundle_`, `_repr_html_`, `_repr_png_`, `_repr_svg_`, then `str`), so pandas tables and images appear inline.
+- matplotlib figures created by a cell are shown when the cell ends.
+- Other values are shown as text.
+
+23.7.3 The website playground (M19) runs the same session in the browser, without Python.
 
 ---
 
@@ -1220,7 +1246,7 @@ Both halves run at the same time; `kalisi` returns only after both tasks are don
 - Scalars, `padham`, `khali`, `raadhu` and every type in Part IX not listed otherwise are both.
 - A tuple, array, record, enum, `varusa`, `pette`, `undochu`, `sare_thappu`, `jodi`, `gumpu` is `Pampochu` (or `Panchukovochu`) when all of its components are.
 - `&T` is `Pampochu` when `T` is `Panchukovochu`. `&maare T` is `Pampochu` when `T` is `Pampochu`. Neither reference is `Panchukovochu` unless `T` is.
-- A closure is `Pampochu` when all its captures are.
+- Every `pani` is `Pampochu` and `Panchukovochu` (§10.7.4).
 - `panchukunna[T]` is `Pampochu` and `Panchukovochu` when `T` is `Pampochu` and `Panchukovochu`.
 - `Thaalam[T]`, `Kaluva` ends, `Atomic[T]` and `Token[T]` are `Pampochu` and `Panchukovochu` when `T` is `Pampochu`.
 - Raw pointers are neither.
@@ -1512,15 +1538,569 @@ T.9 **Autograd, CUDA and MPS** are available as in PyTorch (`loss.backward()`, `
 
 # Annex P — Python bridge ("Ante" Python 1.0)
 
-P.1 **Import.** `python nunchi pkg thechuko` embeds CPython. It requires `features.python = true`. Programs without such an import never link CPython.
+## P.1 Scope and goals
 
-P.2 **Dynamic values** have type `edhaina` ("anything"), an opaque reference-counted handle that manages the GIL and reference counts.
+P.1.1 Annex P lets an "Ante" program use any Python package: the scientific and data stack (numpy, pandas, scipy), machine learning (scikit-learn), plotting (matplotlib), computer vision (OpenCV), AI services and models (OpenAI, Hugging Face), PyTorch's Python ecosystem and the standard library. The program stays an "Ante" program: no Python source appears in it, Python exceptions arrive as `sare_thappu` values, and the ownership rules of §15 still hold for every "Ante" value. **"Ante" Python 1.0** = "Ante" Core 1.0 plus this annex. Where a clause uses tasks (§24) or the data tree (§25.2), it applies when the implementation also provides Services 1.0.
 
-P.3 **Role binding.** Python positional parameters bind as `ni` formals in declaration order. Keyword parameters bind with `ga`. Positional-only and keyword-only constraints are honored (E0505 for keyword-only misuse).
+P.1.2 **Goals**, in priority order:
+1. **Beginners first.** A learner who knows "Ante"'s call syntax can follow any numpy, pandas, scikit-learn, PyTorch or Hugging Face tutorial: the library names, arguments and results are the library's own, and only the spelling of the call changes. When something goes wrong, the message is in Tinglish and says what to do (P.12.4).
+2. **Nothing breaks silently.** Every way a Python call can fail is either a `thappu` the program sees or a trap with Python's traceback.
+3. **Safe by default.** Without `naa_risk`, no Python object can reach freed "Ante" memory, and no data race between "Ante" code and Python is possible on "Ante" values.
+4. **The libraries work as their documentation says.** Values stay Python objects (arrays stay numpy arrays, frames stay pandas frames), so every method, operator, mask and slice a library documents is available, with no wrapper layer to fall behind.
+5. **Fast where it matters.** Vectorized work stays inside the libraries; large arrays cross the boundary without a copy when ownership allows it (P.11).
 
-P.4 **Stubs.** The toolchain generates "Ante" declarations from `.pyi` stubs. Known types are statically typed. Everything else is `edhaina`.
+P.1.3 Everything in this annex lives in the module `python` and in modules under it. The only syntax it uses beyond Core is the type keyword `edhaina` ("anything"), which moves from "reserved" to the Types group (§4.4.2).
 
-P.5 **Errors.** Every bridge call returns `sare_thappu[T, PythonThappu]`. Python exceptions are caught and converted, and never unwind through "Ante" frames.
+## P.2 Overview
+
+```ante
+python.numpy ni np ga thechuko
+python.matplotlib.pyplot ni plt ga thechuko
+
+modhalu() -> sare_thappu[khali, python.PythonThappu] ante:
+    x ante 0.0 ni, 6.28 ni, 100 ni np.linspace()?
+    y ante x ni np.sin()?
+    x ni, y ni plt.plot()?
+    "sine.png" ni plt.savefig()?
+    big ante y[y > 0.5]
+    f"0.5 kanna ekkuva: {big.size}" ni choopinchu()
+    sare(()) icchey
+```
+
+- `np.linspace` and `plt.plot` are Python functions. Their signatures come from the packages' type stubs (P.6), so a misspelled name or an unknown keyword is a compile error.
+- Each call returns `sare_thappu[_, python.PythonThappu]`, and `?` passes a Python exception on (P.12).
+- `x`, `y` and `big` have type `edhaina`: handles to numpy arrays. `y > 0.5` is numpy's comparison, giving a boolean mask, and `y[mask]` is numpy indexing (P.8, P.9).
+
+## P.3 The Python environment
+
+P.3.1 **Versions.** The bridge works with CPython 3.11 or later. An implementation links only CPython's Stable ABI (the Limited API of 3.11, which includes the buffer protocol), so one built program runs with every later CPython. On free-threaded CPython builds (3.15t and later) it uses the free-threaded Stable ABI (`abi3t`, PEP 803). An implementation may also use version-specific API when it checks the running version first. Other Python implementations (PyPy, GraalPy) are not required.
+
+P.3.2 **Manifest.** A package that imports Python sets `features.python = true` and may add a `[python]` table:
+
+```toml
+[features]
+python = true
+
+[python]
+version = ">=3.12"                  # accepted CPython versions (PEP 440 specifier)
+venv = ".venv"                      # the environment, relative to the package root (default ".venv")
+requires = [                        # PEP 508 requirements
+    "numpy>=2.1",
+    "pandas>=3.0",
+    "scipy>=1.14",
+    "scikit-learn>=1.5",
+    "matplotlib>=3.9",
+    "opencv-python-headless>=4.10",
+    "openai>=2.0",
+    "transformers>=5.0",
+]
+```
+
+P.3.3 **Finding the environment.** At build time and at run time, the first of these that exists is used:
+1. the environment variable `ANTE_PYTHON` (a Python executable, or an environment directory);
+2. at run time only: the environment recorded when the program was built, then a bundle next to the executable (P.19.3);
+3. the `[python] venv` directory of the package;
+4. the active virtual environment (`VIRTUAL_ENV`).
+
+If none exists, `antec` reports E1502 at build time, and the built program stops at start with T14 (P.18.5). The interpreter's version must satisfy `[python] version` (E1502 / T14 otherwise).
+
+P.3.4 **Commands** (§23.1):
+
+| Command | Action |
+|---|---|
+| `antec python sync` | creates the environment if it is missing (with `uv` when it is on `PATH`, otherwise `python3 -m venv`; when no accepted interpreter is installed and `uv` is available, `uv python install`), installs `requires`, records the interpreter version, its ABI (GIL or free-threaded) and every installed distribution with its version and hash in `ante.lock`, then regenerates the bindings (P.6) |
+| `antec python stubs` | regenerates the bindings only |
+| `antec python doctor` | prints the interpreter path, version and ABI, each required package and its version, and for each imported module whether it has stubs |
+
+Installation from `ante.lock` verifies the recorded hashes. Builds with an unchanged lockfile produce the same bindings (§23.2.2).
+
+## P.4 Importing
+
+P.4.1 Python modules appear under the module path `python`, with their dotted names (§7.3):
+
+```ante
+python.numpy ni np ga thechuko
+python.matplotlib.pyplot ni plt ga thechuko
+python nunchi cv2, json thechuko
+python.openai nunchi OpenAI thechuko
+```
+
+An import is valid only with `features.python = true` (E1501). The module must exist in the environment at build time (E1502).
+
+P.4.2 **When imports run.** Before `modhalu` starts, the runtime starts the interpreter (P.17) and imports every Python module the program names, in the order of their first appearance in the program's modules (a deterministic order). A failed import stops the program with T14 and Python's traceback. There is no lazy import at an arbitrary later point, so a missing package never surfaces in the middle of a run. `name ni python.import_cheyyi() -> sare_thappu[edhaina, PythonThappu]` imports a module chosen at run time.
+
+P.4.3 **The package's own Python code.** The directory `python/` at the package root, if present, is put first on `sys.path`. Small Python helpers (for example a subclass a library requires, P.22) live there as ordinary `.py` files and are imported like any other module. There is no way to embed Python source text in "Ante" code.
+
+P.4.4 **Names.** A Python name that is an "Ante" keyword gets a trailing `_` (`lo` → `lo_`, `pettu` → `pettu_`). Python names that aren't valid `NAME`s (non-ASCII identifiers) are reached with `python.attr` (P.8.4).
+
+## P.5 The type `edhaina`
+
+P.5.1 `edhaina` ("anything") is a handle to a Python object: a strong reference. Dropping the handle releases the reference. Python's garbage collector owns the objects; the handles held by "Ante" values keep them alive.
+
+P.5.2 `edhaina` implements `XeroxTheeyochu`: `e.xerox()` makes another handle to the **same** object in O(1), like Python assignment. To copy the object itself, call its Python method (`a.copy()`, `copy.deepcopy`). It doesn't implement `CopyKottochu`, `Polchochu`, `VarusaPettochu` or `HashCheyochu`; its `Choopinchochu` shows `str(obj)` (if `__str__` raises, it shows `<str() failed: Type: message>` and never traps). `e.repr_ga() -> padham` gives `repr(obj)` with the same fallback.
+
+P.5.3 `edhaina` is `Pampochu` and `Panchukovochu` (§24.3): tasks may share Python objects. A Python object's own state is guarded by Python's rules (the GIL, or per-object locking on free-threaded builds), not by §24.3.4. Using one Python object from several tasks at once is therefore not undefined behavior in "Ante" terms, but a library that isn't thread-safe may raise or give inconsistent results.
+
+P.5.4 Python objects are mutable through any handle. The borrow checker governs the **handle**: `&edhaina` and `&maare edhaina` restrict reassigning the variable, not what Python does to the object. Every bridge operation (call, attribute, index, operator) takes the handle by shared borrow.
+
+P.5.5 **Bridge methods.** These names on an `edhaina` are "Ante" methods, found before any Python attribute of the same name: `xerox`, `repr_ga`, `nijamaa`, `okkokkati`, `aagu`, `async_okkokkati`, `varusa_ga`, `mukka_ga`, `maare_mukka_ga`, `idhenaa`. A Python attribute with one of these names is reached with `python.attr` (P.8.4).
+
+## P.6 Signatures from stubs
+
+P.6.1 **Bindings.** For each imported module, `antec python sync` generates "Ante" declarations (the bindings) for the module's functions, classes and annotated attributes. It takes signatures from, in order:
+1. the package's own types (PEP 561 `py.typed`, inline annotations or `.pyi` files);
+2. a stub distribution for it (`pandas-stubs`, `scipy-stubs`, `types-*`), when one is installed;
+3. typeshed, for the standard library (bundled with `antec`);
+4. otherwise, runtime introspection (`inspect.signature`) of each public callable. Every type is then `edhaina`, and W1501 is reported once per module.
+
+The bindings live in `target/python/` and are regenerated when `ante.lock` changes.
+
+P.6.2 **Parameters** become formals by kind (Annex T.6 uses the same rule):
+
+| Python parameter | Formal | Passed as |
+|---|---|---|
+| positional-only (before `/`) | `ni`, in declaration order | `x ni` only (`ga` is E0505) |
+| positional-or-keyword | `ni`, in declaration order, with its name as a label | `x ni` or `x name ga` |
+| keyword-only (after `*`) | labelled | `x name ga` only (positional is E0505) |
+| `*args` | `migathavi` | extra `ni` phrases, or a spread `...xs` |
+| `**kwargs` | `migatha_perlu` | extra labels, or a spread of a `jodi[padham, _]` |
+
+A parameter with a default may be left out; Python then applies its own default (the bridge never passes a value for an omitted parameter). A missing required parameter is E0501, an unknown label E0504 (§11.2).
+
+P.6.3 **Types.** An annotation maps to an "Ante" type when it is one of these, and to `edhaina` otherwise (classes, `Any`, `TypeVar`s, protocols, `numpy.typing.NDArray`, unions other than with `None`):
+
+| Python annotation | "Ante" type |
+|---|---|
+| `int` | `ankam` |
+| `float` | `amsam64` |
+| `bool` | `ato_ito` |
+| `str`, `Literal["a", …]` | `padham` |
+| `bytes` | `baitlu` (Services); `edhaina` otherwise |
+| `None` | `khali` |
+| `X \| None`, `Optional[X]` | `undochu[X]` |
+| `list[X]`, `tuple[X, ...]`, `Sequence[X]` | `varusa[X]` |
+| `tuple[A, B, …]` | `jatha[A, B, …]` |
+| `dict[K, V]`, `Mapping[K, V]` | `jodi[K, V]` |
+| `set[X]`, `frozenset[X]` | `gumpu[X]` |
+| `Callable[[A, …], R]` | `pani[(A ni, …) -> R]` (P.15) |
+
+- **Results** of a mapped type are converted (P.10). A result that doesn't convert is `thappu(PythonThappu)` with `TypeError` and a message naming the stub, so a wrong stub never becomes wrong data.
+- **Parameters** accept any value that converts to Python (P.10), whatever the annotation. Stubs are often narrower than the code. A value whose type clearly contradicts the annotation (`padham` for an `int`) is warning W1502.
+- **Overloads** (`@overload`): a call is accepted if it matches some overload's parameters. The result type is mapped only when every matching overload maps to the same type, and is `edhaina` otherwise.
+- **Module attributes** with annotations are read with their mapped type, each time they are used (Python modules can change them).
+
+P.6.4 Static checking stops at module-level names: a module's functions, classes and attributes are checked against the bindings (E1503 for a name the bindings don't have). Values are `edhaina`, so methods and attributes **of objects** are looked up at run time.
+
+## P.7 Calls
+
+P.7.1 **Every call into Python returns `sare_thappu[R, PythonThappu]`**, where `R` is the mapped result type (P.6.3) or `edhaina`. A Python exception becomes `thappu` (P.12). This covers functions, classes (constructors), methods of objects and calls of callable `edhaina` values.
+
+P.7.2 **Calling a binding** uses the formals of P.6.2:
+
+```ante
+a ante (3, 4) ni np.zeros()?                                    # the shape, positionally
+b ante (3, 4) ni, np.float32 dtype ga np.zeros()?               # a keyword argument
+c ante "data.csv" ni, ";" sep ga, ["peru", "vayasu"] usecols ga pd.read_csv()?
+```
+
+P.7.3 **Calling an object's method or an `edhaina` value** has no static signature. Phrases with role `ni` are positional arguments, in source order; labelled phrases (`x name ga`) are keyword arguments. Any other role is E1507. Spreads pass `*args` (a `varusa`, `mukka` or iterable `edhaina`) and `**kwargs` (a `jodi[padham, _]`).
+
+```ante
+m ante a.mean()?
+s ante 1 axis ga a.sum()?
+r ante (2, 6) ni b.reshape()?
+```
+
+P.7.4 **Arguments.** Phrases are evaluated in source order (§11.5); then each is converted to a Python object (P.10) and the call is made. An owned value is consumed (converted, then dropped); a borrowed value is copied into the new Python object; an `edhaina` passes its object. No "Ante" memory is shared with Python by a call, except through P.11.
+
+P.7.5 Constructors are calls: `OpenAI()?`, `"sentiment-analysis" ni pipeline()?`.
+
+## P.8 Attributes and indexing
+
+P.8.1 **Reading** `e.name` gets the attribute. A Python exception in it is trap T13. **Writing** `e.name lo v pettu` sets it (T13 on exception).
+
+P.8.2 **Indexing** `e[k]` calls `e.__getitem__`, and `e[k] lo v pettu` calls `e.__setitem__` (T13 on exception). The key is built from the index expressions:
+
+| In the brackets | Python key |
+|---|---|
+| one expression | that value, converted (P.10) |
+| several, `e[i, j]` | a tuple of them |
+| `a nunchi b lopu` | `slice(a, b)` (both ends half-open, as in Python) |
+| `_` | `slice(None)`, the whole dimension (`:`) |
+| `python.Ellipsis` | `...` |
+| `start ni, stop ni, step ni python.slice()` | `slice(start, stop, step)`; pass `python.None` for a missing part |
+
+`a nunchi b varaku` is E1508 in a Python index: Python's negative indices would make the inclusive end change meaning.
+
+```ante
+row ante img[0]                       # first row
+ch ante img[_, _, 2]                  # channel 2 of an H×W×3 image
+mid ante xs[10 nunchi 20 lopu]
+evens ante xs[0 ni, python.None ni, 2 ni python.slice()]
+adults ante df[df["vayasu"] >= 18]
+df.loc[0, "peru"] lo "Ravi" pettu
+```
+
+P.8.3 **Compound assignment.** `e += v` (and `-=` `*=` `/=`) calls Python's in-place operator (`operator.iadd`) and stores its result back into `e`, so a numpy array is updated in place. `e[k] += v` and `e.name += v` evaluate `e` and `k` once.
+
+P.8.4 **Functions for the rest** (all return `sare_thappu[_, PythonThappu]` except where noted):
+
+| Function | Python |
+|---|---|
+| `e ni, "name" tho python.attr()` | `getattr(e, name)` |
+| `e ni, "name" ni, v tho python.attr_pettu()` | `setattr(e, name, v)` |
+| `e ni, "name" tho python.undhaa() -> ato_ito` | `hasattr(e, name)`; never fails |
+| `e ni, k tho python.index_theesey()` | `del e[k]` |
+| `a ni, b tho python.okkate() -> ato_ito` | `a is b`; never fails |
+| `python.None`, `python.Ellipsis` | the constants (type `edhaina`) |
+
+P.8.5 **Checked forms.** Everything that traps T13 has a form in `python.choosi` ("after checking") that returns `sare_thappu` instead: `python.choosi.attr`, `python.choosi.attr_pettu`, `python.choosi.index`, `python.choosi.index_pettu`, the operators of P.9, and iteration (P.13).
+
+## P.9 Operators
+
+P.9.1 When at least one operand has type `edhaina` and the other converts to Python (P.10), an operator calls Python's operator and the result has type `edhaina`:
+
+| "Ante" | Python | Checked form in `python.choosi` |
+|---|---|---|
+| `+ - * / % @` | `+ - * / % @` | `kalupu` `theesey` `guninchu` `panchu` `migulu` `matmul` |
+| unary `-`, `~` | `-x`, `~x` | `thippu`, `invert` |
+| `& \| ^ << >>` | the same | `bit_and` `bit_or` `bit_xor` `lshift` `rshift` |
+| `== != < <= > >=` | rich comparison | `eq` `ne` `lt` `le` `gt` `ge` |
+
+A Python exception in an operator is trap T13, like a shape mismatch in Annex T.3.
+
+P.9.2 **Comparisons give `edhaina`,** an exception to §10.5: Python's comparisons need not return a boolean (numpy and pandas return masks). To use a Python value as a condition, convert it: `e.nijamaa() -> sare_thappu[ato_ito, PythonThappu]` calls `bool(e)` (numpy raises for arrays of more than one element, which arrives as `thappu`). `!`, `&&` and `||` need `ato_ito` and don't accept `edhaina` (E0401).
+
+P.9.3 `python.pow(a, b)` (`**`) and `python.floordiv(a, b)` (`//`) are calls and return `sare_thappu`.
+
+## P.10 Conversions
+
+P.10.1 Two standard traits connect "Ante" values to Python objects:
+- **`Pythonki`** ("to Python"): `naa.python_ga() -> edhaina` makes a new Python object from the value. It doesn't fail (running out of memory is T09).
+- **`Pythonnunchi`** ("from Python"): `e ni T.python_nunchi() -> sare_thappu[T, PythonThappu]`. A value of the wrong Python type is `TypeError`, and an integer out of range is `OverflowError`.
+
+P.10.2 **Built-in implementations:**
+
+| "Ante" type | To Python | From Python, accepts |
+|---|---|---|
+| `ankam*`, `aasajeevi ankam*` | `int` | `int`, and objects with `__index__` (numpy integers); not `bool` |
+| `amsam32`, `amsam64` | `float` | `float`, `int`, objects with `__float__` (numpy floats); `amsam32` rounds to nearest |
+| `ato_ito` | `bool` | `bool`, `numpy.bool_`; no truthiness |
+| `aksharam` | one-character `str` | a `str` of length 1 |
+| `padham` | `str` | `str` |
+| `baitlu` (Services) | `bytes` | `bytes`, `bytearray`, `memoryview` (copied) |
+| `khali` | `None` | `None` |
+| `undochu[T]` | `None` or the value | `None` → `ledhu`, else `undhi(T)` |
+| `jatha[A, B, …]` | `tuple` | `tuple` or `list` of that length |
+| `[T; N]`, `varusa[T]`, `&mukka[T]` | `list` (copied) | any iterable; for numeric `T` a buffer is read directly (P.11.1) |
+| `jodi[K, V]` | `dict`, in insertion order | any `Mapping` |
+| `gumpu[T]` | `set` | `set`, `frozenset` |
+| `edhaina` | itself | itself (always succeeds) |
+| `&T` of any of these | as for `T` (copied) | — |
+
+Other types implement neither trait: records, enums, `sare_thappu`, `pani` (use P.15), iterators, references to other types, `Rahasyam` (§27.4: pass `r.bayatiki_theesuko()` explicitly), locks and channels. Passing one to Python is E1504. The two traits can't be implemented by hand outside `naa_risk`; records and enums cross through the data tree (P.10.3).
+
+P.10.3 **Records and enums** (Services): any `Raayochu` value converts with `x ni python.raayi() -> edhaina`, and any `Chadhavochu` type reads with `e ni python.chadhuvu[T]() -> sare_thappu[T, ChadhuvuThappu]`, using the data tree of §25.2.2 with Python's types: null ↔ `None`, map ↔ `dict`, list ↔ `list` (reading also accepts `tuple`), and the scalars of P.10.2. Floats keep NaN and infinities in both directions. When reading, an object with a `model_dump` method (a Pydantic model, such as an OpenAI response) is read through `model_dump(mode="python")`, a dataclass through `dataclasses.asdict`, and a numpy scalar through `.item()`. The rules of §25.2.3 (unknown keys rejected, `@peru`, `@lekapothe_kotthadhi`) apply.
+
+## P.11 Arrays and buffers
+
+P.11.1 **Copying out.** `e.varusa_ga[T]() -> sare_thappu[varusa[T], PythonThappu]` copies the elements of a Python object into a new `varusa[T]`, for `T` an integer or float type or `ato_ito`. If the object exports a buffer (PEP 3118: numpy arrays, `bytes`, `array.array`, `memoryview`, OpenCV images, CPU tensors through `.numpy()`), its elements are copied in C (row-major) order whatever their strides, and the buffer's element format must be exactly `T`'s (`'d'` for `amsam64`, `'f'` for `amsam32`, `'q'`/`'l'` for 64-bit integers, `'B'` for `aasajeevi ankam8`, `'?'` for `ato_ito`, and so on). A different format is `TypeError` whose message suggests `.astype(...)`; there is no silent cast. Objects without a buffer are iterated and each element converted (P.10). Read the shape from the object itself, for example `e.shape`.
+
+P.11.2 **Moving in, without a copy.** `xs ni python.array_ga() -> sare_thappu[edhaina, PythonThappu]`, for `xs: varusa[T]` with `T` a type of P.11.1, gives a one-dimensional `numpy.ndarray` that takes over the vector's memory: nothing is copied, and the memory is freed by the "Ante" allocator when Python releases the array. The `varusa` is moved, so "Ante" can no longer reach the memory and no race is possible. Reshaping in numpy (`(h, w) ni arr.reshape()`) makes a view, also without a copy. It is `thappu(ImportError)` when numpy isn't installed.
+
+P.11.3 **Borrowed views (`naa_risk`).** `e.mukka_ga[T]()` and `e.maare_mukka_ga[T]()` return `sare_thappu[python.View[T], PythonThappu]` and `sare_thappu[python.MaareView[T], PythonThappu]`. The view dereferences to `&mukka[T]` (or `&maare mukka[T]`) over the object's own buffer, without a copy. The buffer must be C-contiguous with format `T`, and writable for the `maare` form. A view keeps the object alive and holds its buffer export, so the object can't be resized while the view exists. Both calls are allowed only inside `naa_risk` (E1001). The programmer guarantees that while a view exists, no Python code and no other task writes the buffer (for `mukka_ga`), or touches it at all (for `maare_mukka_ga`). Python objects can be reached from code the borrow checker can't see, so this can't be checked.
+
+P.11.4 **PyTorch tensors.** With Annex T also present, `t.python_ga()` on a `torch.Tensor` gives the Python `torch.Tensor` over the same storage, and `e ni torch.Tensor.python_nunchi()` does the reverse. Both use DLPack (version 1.0 or later, negotiated with `max_version`) and copy nothing. Any other DLPack producer (numpy, CuPy, JAX) reaches Annex T the same way.
+
+P.11.5 **Data frames** stay Python objects; there is no "Ante" data-frame type in Python 1.0. Columns come out through `col.to_numpy()` and P.11.1, and rows through `"records" ni df.to_dict()` and P.10.3.
+
+## P.12 Errors
+
+P.12.1 A Python exception, or a failed conversion, gives `PythonThappu`:
+
+```ante
+andhariki rakam PythonThappu ante:
+    peru: padham          # the exception class, qualified: "ValueError", "openai.RateLimitError"
+    message: padham       # str(exception)
+    traceback: padham     # Python's formatted traceback; empty when there is none
+    object: edhaina       # the exception object itself
+```
+
+It implements `Choopinchochu` (`peru: message`) and `XeroxTheeyochu`. `err.idhenaa(cls: &edhaina) -> ato_ito` ("is it this?") is `isinstance(err.object, cls)`, and `kaadhu` if `isinstance` itself fails. Every `BaseException` is converted, including `SystemExit` (Python code calling `sys.exit()` doesn't end the program) and `KeyboardInterrupt`.
+
+P.12.2 `?` works on bridge results in functions returning `sare_thappu[_, PythonThappu]`, or any `E` with `NunchiRavochu[PythonThappu]` (§10.6).
+
+P.12.3 **Trap T13** ("Python lo exception") is raised where §-rules give no `sare_thappu`: attributes, indexing and operators (P.8–P.9), and iteration with `lo okko` (P.13). Dropping or displaying an `edhaina` never traps (P.5.2). The trap message carries the exception's `peru: message` and the traceback, which go to stderr.
+
+```ante
+python.openai nunchi RateLimitError thechuko
+samayam nunchi Kaalam thechuko
+task thechuko
+
+adugu(client: &edhaina, prashna: padham ni) -> sare_thappu[padham, python.PythonThappu] ante:
+    0 nunchi 3 lopu okko prayatnam ki:
+        r ante "gpt-5.5" model ga, prashna input ga client.responses.create()
+        r batti:
+            sare(resp) aithe:
+                resp.output_text ni padham.python_nunchi() icchey
+            thappu(e) aithe:
+                e.idhenaa(&RateLimitError) aithe:
+                    wait ante (prayatnam + 1) ni Kaalam.sec()
+                    wait ni task.nidrapo()
+                ledhante:
+                    thappu(e) icchey
+    thappu("malli malli rate limit" ni python.runtime_error()) icchey
+```
+
+`python.runtime_error(message)` (and `python.value_error`, `python.type_error`) build a `PythonThappu` from "Ante" code.
+
+P.12.4 **Hints for learners.** When a T13 trap, or a `thappu(PythonThappu)` returned from `modhalu`, is reported, the report shows the exception's `peru`, `message` and traceback, and the implementation must add a Tinglish hint when it recognizes one of these situations (the hint's wording is implementation-defined):
+
+| Situation | The hint says |
+|---|---|
+| `ModuleNotFoundError` | which package to add to `[python] requires`, and to run `antec python sync` |
+| numpy "truth value of an array … is ambiguous" | use `.any()` or `.all()`, then `nijamaa()` |
+| numpy or PyTorch shape mismatch in an operator | the two shapes, read from the operands |
+| `AttributeError` on `None` right after `cv2.imread` | the image wasn't loaded: check the path |
+| `openai.AuthenticationError` | `OPENAI_API_KEY` isn't set |
+| a CUDA device requested where none exists | check `torch.cuda.is_available()` first, or use `"cpu"` |
+| pandas `SettingWithCopy`/chained-assignment pattern (P.20.3) | write `df.loc[row, col] lo v pettu` |
+
+## P.13 Iteration
+
+P.13.1 `e lo okko x ki:` iterates any Python iterable: `iter(e)`, then `next` until `StopIteration`, with `x: edhaina`. An exception during iteration is T13. `e.okkokkati() -> python.Iterator` gives the iterator as an "Ante" value implementing `Okkokkati[edhaina]`, so the adapters of §21.4.2 work on it.
+
+P.13.2 **Checked iteration.** `e ni python.choosi.okkokkati()` yields `sare_thappu[edhaina, PythonThappu]` items. After a `thappu` it ends. Use it for streams that can fail midway, such as a streamed model response over the network:
+
+```ante
+stream ante "gpt-5.5" model ga, prashna input ga, avunu stream ga client.responses.create()?
+stream ni python.choosi.okkokkati() lo okko ev ki:
+    ev batti:
+        sare(event) aithe:
+            event ni choopinchu()
+        thappu(e) aithe:
+            f"stream aagipoyindhi: {e}" ni choopinchu()
+```
+
+P.13.3 "Ante" collections cross into Python as lists (P.10.2). An "Ante" iterator isn't converted lazily (P.22); collect it first with `.varusa_ga()`.
+
+## P.14 Context managers
+
+P.14.1 Python's `with` is `cm ni, f tho python.with_lo() -> sare_thappu[T, PythonThappu]`, with `f: pani[(edhaina ni) -> sare_thappu[T, PythonThappu]]`:
+1. it calls `cm.__enter__()` (a `thappu` if that raises), and calls `f` with the result;
+2. if `f` returns `sare(v)`, it calls `cm.__exit__(None, None, None)` and gives `sare(v)` (or `thappu` if `__exit__` raises);
+3. if `f` returns `thappu(err)`, it calls `cm.__exit__` with `err.object`'s type, value and traceback, so the manager sees the failure (a database connection rolls back), then gives `thappu(err)`. An error is never suppressed, even if `__exit__` returns true.
+
+A trap inside `f` ends the task or process as usual (§20.3, §24.5), and `__exit__` doesn't run (like `vellagane`, §19.4).
+
+```ante
+python nunchi sqlite3 thechuko
+
+marks_raayi() -> sare_thappu[khali, python.PythonThappu] ante:
+    conn ante "app.db" ni sqlite3.connect()?
+    # Commits when the closure gives `sare`, rolls back when it gives `thappu`.
+    conn ni, ((c) => "INSERT INTO marks VALUES (1, 95)" ni c.execute()) tho python.with_lo()?
+    sare(()) icchey
+```
+
+P.14.2 `python.async_with_lo` does the same with `__aenter__`/`__aexit__`, awaited as in P.16.
+
+## P.15 Callbacks
+
+P.15.1 **Owning callbacks.** `f ni python.function_ga() -> edhaina` turns a closure or named function into a Python callable, for `f: pani[(A ni, …) -> R]` where:
+- each `A` implements `Pythonnunchi` (often `edhaina`). Python's positional arguments are converted (a mismatch raises `TypeError` in Python), and keyword arguments raise `TypeError`;
+- `R` implements `Pythonki`, or is `sare_thappu[R2, PythonThappu]`, where `thappu(err)` raises `err.object` in Python;
+- `f` holds no borrow (the borrow checker sees this, §15.4.6), because Python may keep it and call it later from any thread (E1505 otherwise; use P.15.2). Every `pani` is already `Pampochu` and `Panchukovochu` (§10.7.4).
+
+`f ni python.function_ga_anni()` accepts a `pani[(&mukka[edhaina] ni, &jodi[padham, edhaina] tho) -> R]` that receives all positional and keyword arguments ("all"). A closure passed where a stub expects `Callable` is converted with `function_ga` automatically.
+
+P.15.2 **Scoped callbacks.** `python.ikkade[T](body: pani[(&python.Scope ni) -> T] ni) -> T` ("right here") runs `body`. Inside it, `g ni s.function_ga() -> edhaina` accepts closures that **borrow** from the enclosing code. Such a callable works only while `ikkade` is running, only on the task that created it, and only while that task is inside a bridge call. A call at any other time or from another thread raises `RuntimeError("Ante callback ippudu ledhu")` in Python. That covers the usual case (an optimizer or a library calling back during the call itself) without any value escaping its borrow:
+
+```ante
+python.scipy.optimize ni opt ga thechuko
+
+# How far the line y = m·x is from the points, for slope `m`.
+dooram(m: edhaina ni, xs: &varusa[amsam64] tho, ys: &varusa[amsam64] kosam) -> amsam64 ante:
+    slope ante (m[0] ni amsam64.python_nunchi()).kachithanga()
+    maare motham ante 0.0
+    0 nunchi xs.enni() lopu okko i ki:
+        d ante slope * xs[i] - ys[i]
+        motham += d * d
+    motham icchey
+
+modhalu() -> sare_thappu[khali, python.PythonThappu] ante:
+    xs ante [1.0, 2.0, 3.0]
+    ys ante [2.1, 3.9, 6.2]
+    vethuku ante (s: &python.Scope ni) => (((m) => m ni, &xs tho, &ys kosam dooram()) ni s.function_ga()) ni, [0.0] ni opt.minimize()
+    result ante vethuku ni python.ikkade()?
+    f"slope = {result.x}" ni choopinchu()
+    sare(()) icchey
+```
+
+The closure borrows `xs` and `ys`; `ikkade` guarantees scipy can't call it after they are gone.
+
+P.15.3 While "Ante" code in a callback runs, the bridge detaches from the interpreter (P.17.1), so other tasks can use Python. A trap inside a callback can't unwind through Python's C frames: it prints the trap message and ends the process with status 101, as for exported functions (§22.4).
+
+P.15.4 Callbacks can't be pickled. A library that sends a callable to another process (`multiprocessing`, `datasets.map(num_proc=…)`) gets `PicklingError` (a `thappu`). Put such functions in the package's `python/` folder (P.4.3).
+
+## P.16 Async Python
+
+P.16.1 "Ante" has no `async` (§24.1.3). Python awaitables are waited for with `e.aagu() -> sare_thappu[edhaina, PythonThappu]` ("wait"): the bridge runs one asyncio event loop on a thread of its own, started on first use, submits the awaitable to it, and suspends only the current task until it finishes (§24.1.1). Several tasks waiting at once run their awaitables concurrently on that loop. This is how async clients (`AsyncOpenAI`, `httpx.AsyncClient`) give real concurrency:
+
+```ante
+python.openai nunchi AsyncOpenAI thechuko
+task thechuko
+
+okka_prashna(client: &edhaina, p: &padham ni) -> sare_thappu[edhaina, python.PythonThappu] ante:
+    pani_ante ante "gpt-5.5" model ga, p input ga client.responses.create()?
+    pani_ante.aagu() icchey
+
+rendu_prashnalu(j: &task.Jattu ni) -> khali ante:
+    client ante AsyncOpenAI().kachithanga()
+    a ante (() => client, "Telugu lo 'hello' ela cheppali?" ni okka_prashna()) ni j.pampu()
+    b ante (() => client, "Binary search ante enti?" ni okka_prashna()) ni j.pampu()
+    a.aagu() ni choopinchu()
+    b.aagu() ni choopinchu()
+```
+
+Both requests are in flight at the same time.
+
+P.16.2 `aagu` is a cancellation point (§24.6): cancelling the task cancels the asyncio task, and `aagu` returns `thappu` with `peru` `"asyncio.CancelledError"`.
+
+P.16.3 `e.async_okkokkati()` iterates an async iterable (`async for`). It yields `sare_thappu[edhaina, PythonThappu]` items, awaiting each `__anext__` as in P.16.1, and ends at `StopAsyncIteration` or after a `thappu`.
+
+P.16.4 Python code that calls `asyncio.run` itself works as any other call (it makes its own loop on the calling thread). The bridge's loop is not the running loop of other threads.
+
+## P.17 Threads, tasks and the interpreter
+
+P.17.1 **Attaching.** There is one interpreter per process; subinterpreters are not used (numpy and many extension modules don't support them). Every bridge operation (call, conversion, attribute, index, operator, iteration step, drop of an `edhaina`) **attaches** the current OS thread to the interpreter for its duration and detaches after: on GIL builds it holds the GIL; on free-threaded builds it holds an attached thread state. "Ante" code between bridge operations never holds the GIL.
+
+P.17.2 **Blocking.** A bridge operation may block its OS thread: Python I/O, waiting for the GIL, a long computation. The scheduler treats every bridge operation as a blocking region, so other tasks keep running (§24.1.1 holds). Cancellation is not observed during a synchronous Python call; it is observed when the call returns.
+
+P.17.3 **Pinning.** From its first bridge operation until it ends, a task stays on one OS thread with one Python thread state. So Python's per-thread state (`threading.local`, `torch.no_grad()`, `decimal` contexts, CUDA streams) behaves as in a Python thread. When a program imports Python, its first task (`modhalu`) runs on the process's **main thread**, which GUI toolkits need (P.20.4).
+
+P.17.4 **Parallelism.** On GIL builds, Python bytecode from different tasks runs one at a time, while work inside extensions that release the GIL (numpy, OpenCV, PyTorch kernels, I/O) runs in parallel. On free-threaded builds, Python code runs in parallel too, and an extension module that doesn't declare free-threading support makes CPython enable the GIL again (CPython's own rule). Which build is used follows from the environment (P.3); a program is correct on both.
+
+## P.18 Output, signals and processes
+
+P.18.1 **Output order.** Before a bridge operation that may run Python code, the runtime flushes "Ante"'s stdout buffer if it holds anything. After it, the bridge flushes `sys.stdout` and `sys.stderr`. Output from "Ante" and from Python appears in program order.
+
+P.18.2 **Signals.** The interpreter is started without Python's signal handlers, so Ctrl-C ends the program as it does without Python (§20). Python code doesn't see `KeyboardInterrupt` from the terminal.
+
+P.18.3 **`sys`.** `sys.argv` is the program path followed by `system.args()`. `sys.executable` is the environment's Python interpreter (not the "Ante" program).
+
+P.18.4 **Child processes.** Before importing any module, the bridge sets `multiprocessing`'s start method to `spawn` on every platform (forking a process that has other threads is unsafe) and its executable to `sys.executable`. Libraries that start worker processes (PyTorch `DataLoader(num_workers=…)`, `datasets.map(num_proc=…)`, `concurrent.futures.ProcessPoolExecutor`) therefore work. Their workers run Python only; what they receive must be picklable (P.15.4).
+
+P.18.5 **Start and end.**
+- At start, before `modhalu`, the runtime loads the environment (P.3.3), starts the interpreter and runs the imports (P.4.2). If any of this fails, the program prints the reason and ends with trap **T14** ("Python ready avvaledhu").
+- At normal exit (after `modhalu` returns and §19.3 drops), the runtime finalizes the interpreter, running Python's `atexit` handlers.
+- On a trap or `system.vellipo(n)`, it only flushes Python's stdout and stderr.
+
+## P.19 Building and deploying
+
+P.19.1 `antec build` doesn't link `libpython`. The built program loads the environment's shared library at start (P.3.3). A program without Python imports never loads it (X001).
+
+P.19.2 Building needs the environment, to read stubs (P.6). `antec check` uses the generated bindings and doesn't start Python unless they are missing.
+
+P.19.3 **Bundling.** `antec build --python-bundle` copies a relocatable interpreter (for example from python-build-standalone) and the locked packages into `<out>.python/` next to the executable. The pair then runs on machines without Python. The `container` deploy target (Annex W.23) includes the environment.
+
+P.19.4 **Targets without CPython.** Importing Python on the `wasm32` client target (Annex W.19) or another target without CPython is E1506.
+
+## P.20 Library notes
+
+P.20.1 These notes show how the rules above meet each library. Each has seed cases in Appendix C (PY-series). The libraries' own documentation applies unchanged; only the spelling of calls changes.
+
+P.20.2 **numpy.**
+- Arrays are `edhaina`. Operators, masks, broadcasting and fancy indexing are numpy's (P.8–P.9).
+- dtypes are keyword arguments (`np.float32 dtype ga`).
+- Random numbers come from `42 ni np.random.default_rng()`.
+- **Performance:** each bridge operation costs a few hundred nanoseconds. Keep loops inside numpy (vectorize), or move the data into "Ante" once (P.11.1), loop there, and move the result back without a copy (P.11.2).
+
+P.20.3 **pandas** (3.x).
+- Frames and series are `edhaina`, and `df["col"]`, `df.loc[...]` and `df.iloc[...]` are indexing (P.8.2).
+- pandas 3 uses copy-on-write: every result of indexing behaves as a copy. Chained assignment (`df["a"][0] lo 1 pettu`) changes nothing, so write `df.loc[0, "a"] lo 1 pettu`.
+- Rows come out as records through P.10.3.
+
+P.20.4 **matplotlib.**
+- `plt.savefig` works on every task and every machine. Without a display, matplotlib chooses the `Agg` backend itself, and `MPLBACKEND` is passed through.
+- Interactive windows (`plt.show()`) need the main task (P.17.3). On macOS a GUI backend raises outside the main thread, which arrives as `thappu`.
+
+P.20.5 **OpenCV** (`cv2`).
+- Images are numpy arrays of shape H×W×3 in **BGR** order, `uint8`.
+- `cv2.imread` returns `None` for a file it can't read, instead of raising. Check it with `img ni, python.None tho python.okkate()`.
+- `cv2.imshow` and `cv2.waitKey` need the main task. On servers, use `opencv-python-headless`.
+
+P.20.6 **scipy.**
+- Optimizers, integrators and root finders call back into "Ante" through P.15. Use `python.ikkade` when the function reads local state.
+- Sparse matrices are `edhaina`.
+
+P.20.7 **scikit-learn.**
+- Estimators are `edhaina`. `fit`, `predict` and `score` take numpy arrays or pandas frames (P.7.3).
+- `train_test_split` returns a list of four arrays; index it (`parts[0]`).
+- Results such as `accuracy_score` map to `amsam64` from the stubs, so they print and compare as "Ante" numbers.
+
+```ante
+python.sklearn.datasets nunchi load_iris thechuko
+python.sklearn.model_selection nunchi train_test_split thechuko
+python.sklearn.neighbors nunchi KNeighborsClassifier thechuko
+
+modhalu() -> sare_thappu[khali, python.PythonThappu] ante:
+    iris ante load_iris()?
+    parts ante iris.data ni, iris.target ni, 0.25 test_size ga, 7 random_state ga train_test_split()?
+    model ante 3 n_neighbors ga KNeighborsClassifier()?
+    parts[0] ni, parts[2] ni model.fit()?
+    score ante parts[1] ni, parts[3] ni model.score()?
+    f"accuracy: {score}" ni choopinchu()
+    sare(()) icchey
+```
+
+P.20.8 **OpenAI.**
+- The client reads `OPENAI_API_KEY` from the environment. Never pass a `Rahasyam` implicitly (P.10.2).
+- Errors are `PythonThappu`; tell them apart with `idhenaa` (P.12).
+- Streams iterate with P.13.2 or P.16.3. Many requests at once use tasks with the sync client, or `AsyncOpenAI` and `aagu` (P.16).
+- Response objects are Pydantic models, which read into records through P.10.3.
+
+P.20.9 **Hugging Face.**
+- `transformers` 5 is PyTorch-only. `pipeline`, tokenizers and models are `edhaina`, configured with keyword arguments.
+- `datasets.map(num_proc=…)` uses worker processes (P.18.4) and needs functions from the package's `python/` folder.
+- A `Trainer` callback must subclass `TrainerCallback`. Write that small class in `python/`, delegating to an "Ante" function (P.15).
+- Hub downloads are cached by `huggingface_hub` as in Python (`HF_HOME`).
+
+```ante
+python.transformers nunchi pipeline thechuko
+
+modhalu() -> sare_thappu[khali, python.PythonThappu] ante:
+    classify ante "sentiment-analysis" ni pipeline()?
+    result ante "Ee movie super undhi!" ni classify()?
+    result[0]["label"] ni choopinchu()
+    sare(()) icchey
+```
+
+- Prefer `safetensors` weights. Loading pickled weights or `trust_remote_code=True` runs code from the model's author, and the bridge doesn't change that.
+
+P.20.10 **PyTorch.**
+- Training loops written in "Ante" use Annex T, which needs no Python and no GIL.
+- The Python `torch` is for the ecosystem around it (Hugging Face, torchvision transforms).
+- Tensors move between the two without a copy (P.11.4).
+
+## P.21 Security
+
+- No string of Python source can be run from "Ante" (no `eval`/`exec` in `python`). Python code lives in reviewed `.py` files (P.4.3). A library that evaluates strings itself (`pandas.eval`, `trust_remote_code`) is the program's choice.
+- Secrets reach Python only through `bayatiki_theesuko()` (P.10.2).
+- Packages are pinned with hashes in `ante.lock` (P.3.4).
+- A Python library runs with the program's full rights. The bridge is not a sandbox.
+
+## P.22 Not in Python 1.0
+
+These are left for later and are rejected with E1201 where syntax would exist:
+- subinterpreters;
+- defining Python classes in "Ante", or subclassing a Python class (use a helper in `python/`, P.4.3);
+- writing Python extension modules in "Ante" (exporting "Ante" functions to Python programs);
+- typed instance types generated from stubs (instances are `edhaina`, P.6.4);
+- passing an "Ante" iterator to Python lazily, as a generator;
+- an "Ante" data-frame type and zero-copy Arrow interchange (`__arrow_c_stream__`).
+
+Interactive use (`antec repl` and the Jupyter kernel, which show Python objects through their `_repr_html_` and `_repr_png_`, so pandas tables and matplotlib figures appear inline) is specified in §23.7.
 
 ---
 
@@ -2142,6 +2722,12 @@ All keywords and standard-library names in this spec follow A.2. The locked word
 | `Mundhe` | beforehand | pre-rendered page |
 | `daari` | way | route |
 | `Vaddhu` | no thanks | access refused |
+| `edhaina` | anything ("edhaina parledhu") | a Python object |
+| `Pythonki` / `Pythonnunchi` | to Python / from Python | conversion traits |
+| `ikkade` | right here | scoped Python callbacks |
+| `okkate` / `idhenaa` / `nijamaa` | the same one / is it this? / is it true? | `is` / `isinstance` / `bool()` |
+| `with_lo` | in a `with` | Python context manager |
+| `daani_nunchi` | from that one | `NunchiRavochu` conversion (`From::from`) |
 
 ---
 
@@ -2227,6 +2813,8 @@ Severity is error unless the code starts with W. The prose shown is the referenc
 | E0608 | returned reference with no single source | |
 | E0609 | use of a maybe-uninitialized value | |
 | E0610 | `&maare` argument needs an explicit borrow | "`&maare x` ani raayi" |
+| E0611 | a closure changing a variable it captured | "closure lopala bayati `x` ni maarchalem" |
+| E0612 | a closure capturing a raw pointer, or a `theesuko` closure capturing a `&maare` reference | |
 | **Patterns** | | |
 | E0701 | non-exhaustive match | "`X` case marchipoyav!" |
 | E0703 | refutable pattern in a binding | |
@@ -2287,6 +2875,14 @@ Severity is error unless the code starts with W. The prose shown is the referenc
 | E1416 | a focus style that removes the focus indicator | |
 | E1417 | an animation that flashes more than three times a second | |
 | E1418 | a production web build without `site_url` | |
+| E1501 | a Python import without `features.python = true` | "Python kavalante `ante.toml` lo `python = true` pettandi" |
+| E1502 | no Python environment, a version outside `[python] version`, or a module that isn't installed in it | "`numpy` install avvaledhu: `antec python sync` run cheyyandi" |
+| E1503 | a name that the module's bindings don't have | "`numpy` lo `zeross` ledhu" |
+| E1504 | a value whose type has no Python conversion passed to Python (`sare_thappu`, `pani` outside P.15, `Rahasyam`, iterators, records without the data tree) | |
+| E1505 | an owning callback (`python.function_ga`) that holds a borrow | "idhi borrow chesthundhi: `python.ikkade` lo vaadandi" |
+| E1506 | a Python import on a target without CPython (the `wasm32` client) | |
+| E1507 | a role other than `ni` or a `ga` label in a call to a Python object | |
+| E1508 | `nunchi … varaku` in a Python index | "Python index lo `lopu` vaadandi" |
 | **Warnings** | | |
 | W0001 | unused binding | |
 | W0002 | unnecessary `maare` | |
@@ -2298,6 +2894,8 @@ Severity is error unless the code starts with W. The prose shown is the referenc
 | W1403 | heading levels skip | |
 | W1404 | translation missing in a non-default locale | |
 | W1406 | a state-changing `http_routes` handler that never checks the request's origin | |
+| W1501 | a Python module without type stubs: its names are checked only at run time | |
+| W1502 | an argument whose type contradicts the parameter's stub annotation | |
 
 Warnings are reported only when a program has no errors, and never stop a build. A binding whose name starts with `_` is exempt from W0001.
 
@@ -2457,12 +3055,25 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | G004 | `@automatic Polchochu, Choopinchochu` on a record | run-pass |
 | G005 | `CopyKottochu` together with `Sardhukochu` | E0806 |
 | G006 | Method pro-drop `balance` → `naa.balance` | run-pass |
-| G007 | Closure with a borrowed capture, returned | E0415 |
+| G007 | Closure with a borrowed capture, returned | E0606 |
 | G008 | `theesuko` closure returned | run-pass |
 | G009 | Implementation missing a required method | E0802 |
 | G010 | Same trait implemented twice for a type | E0804 |
 | G011 | `@automatic` with a field lacking the trait | E0807 |
 | G012 | User trait with a default method, called generically | run-pass |
+| G013 | Generic record with a generic methods block and an associated function | expected stdout |
+| G014 | Recursive generic enum through `pette` | expected stdout |
+| G015 | Bounded generic implementation; user trait with a type parameter | expected stdout |
+| G016 | User `Okkokkati` type iterated owned and through adapters | expected stdout |
+| G017 | User iterator through `&maare` | expected stdout |
+| G018 | `?` converting the error with `NunchiRavochu.daani_nunchi` | expected stdout |
+| G019 | `NunchiRavochu` implemented without its method | E0802 |
+| G020 | Polymorphic recursion whose types grow forever | E0805 |
+| G021 | Copies of a closure share captures, dropped once after the last copy | expected stdout |
+| G022 | `theesuko` closure returned and used many times, also by an adapter | expected stdout |
+| G023 | Closure changing a captured variable | E0611 |
+| G024 | `theesuko` closure capturing a `&maare` reference | E0612 |
+| G025 | `@automatic` for every derivable trait | expected stdout |
 | N001 | Undefined name | E0301 |
 | N002 | Name used before its binding | E0306 |
 | N003 | Redefinition in the same scope | E0308 |
@@ -2501,8 +3112,38 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | TT001 | Appendix D.6 training step, built without `python` | links LibTorch only (torch level) |
 | TT002 | `x[_, -1]` on a 2-D tensor | last column (torch level) |
 | TT003 | Shape-mismatched matmul | T05; `torch.choosi` variant returns `thappu` (torch level) |
-| PY001 | Python exception | `thappu(PythonThappu)` (python level) |
+| PY001 | A Python call that raises | `thappu(PythonThappu)` with `peru` and traceback (python level) |
 | PY002 | `ga` label on a positional-only parameter | E0505 (python level) |
+| PY003 | Python import without `features.python` | E1501 (python level) |
+| PY004 | Misspelled name in a module with stubs (`np.zeross`) | E1503 (python level) |
+| PY005 | numpy: `arange`, a mask `a[a > 5]`, `.sum()` | stdout matches (python level, numpy) |
+| PY006 | numpy slicing: `lopu` ranges, `_`, `python.slice` with a step, on 2-D arrays | stdout matches (python level, numpy) |
+| PY007 | `nunchi … varaku` in a Python index | E1508 (python level) |
+| PY008 | `varusa_ga[amsam64]` on float64 and on float32 arrays | the values; then `thappu(TypeError)` (python level, numpy) |
+| PY009 | `python.array_ga` moves a `varusa` in, numpy changes it, `varusa_ga` copies it back | stdout matches; clean under a memory checker (python level, numpy) |
+| PY010 | `mukka_ga` outside `naa_risk` | E1001 (python level) |
+| PY011 | Shape-mismatched `+` on arrays; then `python.choosi.kalupu` | T13 with a shape hint (P.12.4); then `thappu` (python level, numpy) |
+| PY012 | pandas: read a CSV from the package, filter with a mask, `groupby().mean()`, `.loc` assignment | stdout matches (python level, pandas) |
+| PY013 | scipy `optimize.minimize` with an `ikkade` callback that borrows two vectors | result matches to 1e-6 (python level, scipy) |
+| PY014 | A scoped callback kept by Python and called after `ikkade` returned | `thappu` with `RuntimeError` (python level) |
+| PY015 | A borrowing closure given to `python.function_ga` | E1505 (python level) |
+| PY016 | A trap inside a callback | exit 101 with the trap message (python level) |
+| PY017 | matplotlib `savefig` with no display | a PNG file is written (python level, matplotlib) |
+| PY018 | OpenCV: `imread` of a missing file is `None`; `cvtColor` of a fixture image gives the expected shape | stdout matches (python level, opencv) |
+| PY019 | `python.with_lo` on a `sqlite3` connection whose body gives `thappu` | the row is rolled back (python level) |
+| PY020 | Three tasks each `aagu` an `asyncio.sleep(0.2)` | total time below 0.4 s (python level, services) |
+| PY021 | An OpenAI client pointed at a local mock server: a call, a streamed response, a 429 told apart with `idhenaa` | stdout matches; no network (python level, openai) |
+| PY022 | Hugging Face `pipeline` with a tiny local model fixture; `datasets.map(num_proc=2)` with a function from `python/` | stdout matches; no network (python level, transformers, datasets) |
+| PY023 | "Ante" print, Python print, "Ante" print | in that order on stdout (python level) |
+| PY024 | Python code calling `sys.exit(3)` | `thappu` with `peru` `SystemExit`; the program goes on (python level) |
+| PY025 | Two tasks running numpy work at once | both results correct (python level, numpy, services) |
+| PY026 | `python.chadhuvu[Record]` from a `dict` and from a Pydantic model; a dict with an unknown key | the records; then `ChadhuvuThappu.Theliyani` (python level, services) |
+| PY027 | A `Rahasyam` passed to a Python call | E1504 (python level, services) |
+| PY028 | scikit-learn: k-nearest neighbours on iris with a fixed `random_state` | the accuracy printed (python level, scikit-learn) |
+| PY029 | The same built program run with a GIL CPython and a free-threaded one (3.15t) | identical output (python level, numpy) |
+| PY030 | `torch.Tensor` from Annex T to Python and back | same storage, no copy (torch and python levels) |
+
+Python-level seeds name the packages they need; the suite pins them in its own `ante.lock`, and none of them uses the network.
 | KK001 | Two tasks sum halves of a range (§24.2 example) | stdout matches (services level) |
 | KK002 | `pampu` with a closure capturing a raw pointer | E1302 (services level) |
 | KK003 | Task captures `&maare x` while the parent reads `x` | borrow error (services level) |
@@ -2753,20 +3394,28 @@ The recommended architecture: Rust, a hand-written lexer and recursive-descent p
 | M19 | **The official website**, written in "Ante" and deployed with `antec web`: home page, a browser playground (the reference compiler built for `wasm32`, running fully on the client), the spec and docs, and the learning track below | Lighthouse accessibility 100; every W.14 header; works without a server for `Mundhe` pages |
 | M20 | `@twaraga`, `lekkalu.dot` vectorization, performance benchmarks | T017/T018 |
 | M21 | Annex T (LibTorch shim generated from `Declarations.yaml`) | TT-series |
-| M22 | Annex P (CPython embedding, `.pyi` stubs) | PY-series |
+| M22 | Annex P: `antec python` and the environment, `edhaina`, bindings from stubs, calls, attributes, indexing and operators, conversions and buffers, errors and learner hints, iteration, context managers, callbacks, the asyncio loop, task and GIL integration, bundling (P.3–P.21) | PY-series |
 | M23 | Annex N: native desktop and mobile user interfaces for the same pages (W.27) | to be defined with the annex |
+| M24 | `antec repl` and the Jupyter kernel (§23.7) | session cases: bindings across entries, a trap keeps the session, E0601 across entries; a pandas table and a matplotlib figure shown inline |
 
-Core 1.0 is complete at M11, Services 1.0 at M14, Web 1.0 at M18. M20–M22 are independent of the web track and can proceed in parallel with it.
+Core 1.0 is complete at M11, Services 1.0 at M14, Web 1.0 at M18. M20–M22 are independent of the web track and can proceed in parallel with it. M22 needs M12 (tasks, for P.16–P.17) and M13 (the data tree, for P.10.3). M24 needs only M10, and gains inline Python display after M22.
 
 **Learning track** ("Ante" lo DSA). The algorithms of [cp-algorithms](https://cp-algorithms.com) — about 160 articles in algebra, data structures, dynamic programming, graphs, strings, geometry, combinatorics, game theory, linear algebra, numerical methods and sequences — are implemented in "Ante" in a `learn/` folder of the repository, each with tests and an explanation in colloquial Tinglish, and published on the website. cp-algorithms' articles are licensed CC BY-SA 4.0: explanations adapted from them are published under CC BY-SA 4.0 with attribution, in a folder with its own license file, separate from the MIT/Apache-2.0 compiler code. Implementations are written independently from the algorithm descriptions.
 
 | Stage | Needs | Content |
 |---|---|---|
+| L0 | M10 | computer fundamentals: how numbers live in bits (`ankam8` overflow is T01, `aasajeevi` never goes negative), text as bytes (`byte_mukka`), memory, the stack and the heap (`pette`), ownership and borrowing shown step by step, files and processes |
 | L1 | M10 | arithmetic and number theory (binary exponentiation, Euclid, sieve, modular inverse), sorting and searching, prefix sums, two pointers, basic data structures (stack, queue, deque, heap) |
 | L2 | M10 | graphs (BFS, DFS, Dijkstra, Bellman-Ford, Floyd–Warshall, MST, topological sort, SCC, bridges), disjoint-set union, segment and Fenwick trees, sparse tables |
 | L3 | M10 | dynamic programming, strings (prefix function, Z-function, hashing, suffix array, Aho–Corasick), combinatorics, game theory |
 | L4 | M10 (M20 for speed) | geometry, linear algebra, numerical methods, flows and matchings, advanced trees; benchmarks against C++ references |
 | L5 | M19 | every algorithm runnable and steppable in the website playground, with visualisations drawn with `web.chitram` |
+| L6 | M22, M24 | data basics in notebooks: numpy arrays, pandas tables, plots with matplotlib, images with OpenCV |
+| L7 | M22 | classical machine learning with scikit-learn: regression, classification, clustering, evaluation; each model also written from scratch in "Ante" (linear regression, k-nearest neighbours, k-means, decision trees) and checked against scikit-learn |
+| L8 | M21, M22 | deep learning: a small automatic-differentiation engine written in "Ante" to show how training works, then the same networks with Annex T (PyTorch), then Hugging Face models |
+| L9 | M17, M22 | generative AI applications: calling model APIs (OpenAI, Hugging Face), streaming, retrieval over your own documents, and a full-stack chat web app with Annex W whose server functions call the model |
+
+The tracks are written for Telugu-speaking beginners: every lesson is in colloquial Tinglish, runs in `antec repl` or a notebook, and shows the Python library's own documentation side by side, so learners can keep using it after the course.
 
 ---
 
@@ -2788,7 +3437,8 @@ These are reserved and rejected with E1201 where syntax exists:
 - `kitiki` strided views;
 - a native tensor type and MLIR codegen;
 - the locative receiver form (`account lo 500 ni jama()`);
-- constant function calls.
+- constant function calls;
+- the Python features listed in Annex P.22.
 
 ---
 
@@ -2798,6 +3448,8 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r10 | `antec` 0.1.1 | Closures settled while implementing M9 (§10.7): no mutable captures (E0611), no raw-pointer captures and no `&maare` moved into a `theesuko` closure (E0612); `pani` isn't `CopyKottochu` but a place is shared, not moved, with captures dropped after the last handle (§10.7.4); every `pani` is `Pampochu` and `Panchukovochu`. `NunchiRavochu`'s method is `daani_nunchi` (`nunchi` is a keyword, so the method couldn't be written). G007 is E0606; seed cases G013–G025. |
+| r9 | `antec` 0.1.1 | Annex P rewritten in detail (P.1–P.22): the Python environment and `antec python`, imports and package-local Python, `edhaina` (now a type keyword, §4.4.2), bindings from stubs, calls, attributes, indexing, operators, conversions, arrays and buffers, errors with learner hints, iteration, context managers, callbacks, async Python, threads and the GIL, output and processes, bundling, notes for numpy, pandas, matplotlib, OpenCV, scipy, scikit-learn, OpenAI, Hugging Face and PyTorch, security; traps T13 and T14; E1501–E1508, W1501–W1502; interactive use (§23.7, `antec repl`, Jupyter); seed cases PY001–PY030; roadmap M22 detailed and M24 added; learning stages L0 and L6–L9. |
 | r8 | `antec` 0.1.1 | Ownership details settled while writing the borrow checker (M8): a `&maare` place passed as a phrase is reborrowed, not moved (§11.3); moving a field out of a value whose type implements `Sardhukochu` is E0603 (§15.1.2); partially moved values drop only their remaining fields, and assigning to a moved place drops nothing (§19.3); seed cases O021–O031. |
 | r7 | `antec` 0.1.1 | Vocabulary review against how Telugu is actually typed (rule R7, Appendix A.1): `@vegam` → `@twaraga`, `Sheshamochu`/`shesham` → `Migulochu`/`migulu`, `Hasher.mugimpu` → `chaalu`, `byte_bhaagam` → `byte_mukka`, parameters `itharam` → `inkokati` and `sandesham` → `message` (the old names stay accepted with W0100 for one release); in Part IX and Annex W: `raksha` → `bhadram`, `Rasheedu` → `Token`, `Chevi` → `Key`, `Tedhi`/`Velu`/`Pradesham` → `Date`/`Time`/`Zone`, `Pravesham` → `Raaka`, `Aakaaram` → `Shape`, `Rangu` → `Color`, `shaatham` → `percent`, `Madhyama` → `Medium`, `nilva_*` → `save_cheyyi`/`saved_thechu`/`saved_theesey`, `alankaram` → `design_kosam`, guard `kaavali` → `kaapala`, `Anumathi_Ledhu` → `PermissionLedhu`, `sthanam` → `ekkada`, `Raayakam`/`Chadhuvakam` → `Raasevaadu`/`Chadhivevaadu`, `@kotthadhi_unte_dhaatu` → `@lekapothe_kotthadhi`, `web.mata` → `web.maata`. |
 | r6 | `antec` 0.1.1 | "Ante" becomes an all-round language: new conformance levels Services and Web (§1.2); Part IX (tasks and sharing, bytes and data formats, time, cryptography, networking and HTTP, email, storage, logs, configuration) and Annex W (web applications); `panchukunna` is now a type; annotations on fields and variants, and module paths in annotation arguments (§5.1); the `sql"…"` literal (§4.5); traps T11 and T12; diagnostics E13xx, E14xx and W14xx; roadmap milestones M12–M23 and the learning track (Appendix E); seed cases KK, DT, NW, DB and WB. |
@@ -2819,6 +3471,12 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 - `tch-rs` (Rust LibTorch bindings): https://github.com/LaurentMazare/tch-rs
 - PyTorch C++ API: https://pytorch.org/cppdocs/
 - DLPack: https://dmlc.github.io/dlpack/latest/
+- CPython C API, Stable ABI and Limited API: https://docs.python.org/3/c-api/stable.html
+- PEP 3118 (buffer protocol), PEP 561 (distributing type information), PEP 703 and PEP 779 (free-threaded CPython), PEP 803 (Stable ABI for free-threaded builds), PEP 734 (multiple interpreters): https://peps.python.org/
+- typeshed: https://github.com/python/typeshed
+- PyO3 (prior art for embedding CPython from a compiled language): https://pyo3.rs
+- pandas 3.0 release notes (copy-on-write, Arrow PyCapsule interface): https://pandas.pydata.org/docs/whatsnew/v3.0.0.html
+- Jupyter messaging and display protocol: https://jupyter-client.readthedocs.io/
 - Web Content Accessibility Guidelines (WCAG) 2.2: https://www.w3.org/TR/WCAG22/
 - WAI-ARIA Authoring Practices Guide: https://www.w3.org/WAI/ARIA/apg/
 - OWASP Top 10:2025: https://owasp.org/Top10/2025/

@@ -1,0 +1,22 @@
+# category: compile-fail
+# expect-error: E0802 @ 14:1
+# level: core
+# `NunchiRavochu` needs its `daani_nunchi` method; it isn't a marker (§13.5).
+edho_okati NaaThappu ante:
+    Chinna(padham)
+
+NaaThappu ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        naa batti:
+            NaaThappu.Chinna(s) aithe:
+                f"naa thappu: {s}" icchey
+
+NaaThappu ki NunchiRavochu[ankam] gunam undhi
+
+paniki_raadhu() -> sare_thappu[ankam, ankam] ante:
+    thappu(42) icchey
+
+modhalu() -> sare_thappu[khali, NaaThappu] ante:
+    x ante paniki_raadhu()?
+    x ni choopinchu()
+    sare(()) icchey

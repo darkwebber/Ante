@@ -449,6 +449,7 @@ fn planned_features_are_e1202() {
     assert_eq!(check("rakam U ante:\n    @peru \"a\"\n    id: ankam\n"), ["E1202"]);
     assert_eq!(check("rakam U ante:\n    @pariksha\n    id: ankam\n"), ["E1307"]);
     assert_eq!(errs("x: panchukunna[ankam] ante 1\n").first().map(|e| &e[..5]), Some("E1202"));
+    assert_eq!(errs("x: edhaina ante 1\n").first().map(|e| &e[..5]), Some("E1202"));
 }
 
 /// Words renamed in spec r7 still work for one release, with W0100.

@@ -9,7 +9,7 @@
 
 Simple ga cheppalante: amma ki explain chesinattu code raayochu, kaani adhi C laaga fast ga run avthundhi. 😎
 
-> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi! 🎉 Generics and traits (M9) next. 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
+> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8), generics, traits and closures (M9) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi! 🎉 Standard library (M10) next. 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
 
 ## "Ante" Sundharaniki! 🎬
 
@@ -86,7 +86,8 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 
 - **Telugu vaallaki natural ga untundhi.** Words dictionary nunchi theesukoledhu, manam roju WhatsApp lo maatlade Tinglish nunchi theesukunnam.
 - **Safe and fast.** Ownership, borrow checking, bounds checks, checked arithmetic, inka LLVM tho native code. Segfaults ki tata bye bye. 👋
-- **ML ready (planned).** PyTorch ki native LibTorch binding vasthundhi, dhaaniki Python install avasaram ledhu. Migatha Python libraries kosam oka bridge untundhi.
+- **Beginners kosame.** Programming modhati saari nerchukune Telugu vaallaki best language avvali ane goal: computer fundamentals, DSA, full-stack web apps, ML, GenAI, anni okate language lo, Tinglish lessons tho.
+- **ML and GenAI ready (planned).** numpy, pandas, scikit-learn, matplotlib, OpenCV, Hugging Face, OpenAI: Python libraries anni "Ante" nunchi direct ga vaadochu ([spec Annex P](spec/ante_language_spec_1_0.md#annex-p--python-bridge-ante-python-10)). Python errors kuda `sare_thappu` ga vasthayi, Tinglish hints tho. PyTorch ki native LibTorch binding kuda vasthundhi, dhaaniki Python avasaram ledhu.
 - **Self-hosting goal.** First compiler ni Rust lo raasthunnam. Taruvatha "Ante" compiler ni "Ante" lone raasthaam, C laaga.
 - **Errors kuda friendly ga.** Compiler mee meeda arustundhi kaani, Tinglish lo, preminchi. 💛
   ```text
@@ -105,13 +106,15 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 | M6 | MIR and interpreter: programs run avthayi! (`antec run`) | ✅ done |
 | M7 | LLVM codegen: native binaries (`antec build`) | ✅ done |
 | M8 | Borrow checker | ✅ done |
-| M9–M11 | Generics/traits polish, full stdlib, FFI | 🔜 |
+| M9 | Generics, traits, closures | ✅ done |
+| M10–M11 | Full stdlib, FFI | 🔜 |
 | M12–M14 | Services: tasks, JSON, crypto, HTTP, SQL (spec Part IX) | 🔜 |
 | M15–M18 | Web apps "Ante" lone: pages, styles, routes, server functions, `antec web` deploy (spec Annex W) | 🔜 |
 | M19 | Official website, "Ante" lone raasindhi: playground, docs, learn | 🔜 |
-| M20–M22 | `@twaraga` performance, PyTorch binding, Python bridge | 🔜 |
+| M20–M22 | `@twaraga` performance, PyTorch binding, Python bridge (numpy, pandas, Hugging Face, OpenAI…) | 🔜 |
 | M23 | Native desktop, mobile apps | 🔭 |
-| Learn | cp-algorithms lo unna algorithms anni "Ante" lo, Tinglish explanations tho | 🔜 (M10 tharvatha) |
+| M24 | `antec repl` and Jupyter notebooks | 🔜 |
+| Learn | Computer fundamentals, cp-algorithms lo unna algorithms anni, inka ML/DL/GenAI track: anni "Ante" lo, Tinglish explanations tho | 🔜 (M10 tharvatha) |
 | Later | Self-hosting ("Ante" lo raasina `antec`) | 🔭 |
 
 Full details kosam spec lo [Appendix E](spec/ante_language_spec_1_0.md#appendix-e--implementation-roadmap-for-antec) inka [Appendix I](spec/ante_language_spec_1_0.md#appendix-i--self-hosting-readiness) choodandi.

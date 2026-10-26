@@ -232,10 +232,10 @@ impl<'g, 'a> Fx<'g, 'a> {
         }
         if let Some(caps) = closure_caps {
             let cap_tys: Vec<Ty> = self.locals[1..=caps].to_vec();
-            let env_ty = self.ll(&Ty::Tuple(cap_tys.clone()));
+            let env_ty = self.ll(&env_ty(&cap_tys));
             for (k, t) in cap_tys.iter().enumerate() {
                 let lt = self.ll(t);
-                let p = self.gep(&env_ty, "%env", &["0".into(), k.to_string()]);
+                let p = self.gep(&env_ty, "%env", &["0".into(), (k + 2).to_string()]);
                 let v = self.load(&lt, &p);
                 self.emit(format!("store {lt} {v}, ptr %l{}", k + 1));
             }
@@ -467,6 +467,11 @@ impl<'g, 'a> Fx<'g, 'a> {
                     if let Some(f) = self.flags.get(&p.local).cloned() {
                         self.emit(format!("store i1 false, ptr {f}"));
                     }
+                } else if matches!(pr.ty, Ty::Fn(..)) {
+                    // Copying a `pani` adds a reference to its environment.
+                    let env = self.r();
+                    self.emit(format!("{env} = extractvalue %pani {v}, 1"));
+                    self.emit(format!("call void @ante_pani_inc(ptr {env})"));
                 }
                 self.coerce(&v, &pr.ty, want)
             }
@@ -749,15 +754,21 @@ impl<'g, 'a> Fx<'g, 'a> {
                 };
                 let cbody = &self.gen.prog.bodies[*body as usize];
                 let cap_tys: Vec<Ty> = cbody.locals[1..=caps].iter().map(|l| self.subst(&l.ty)).collect();
-                let env_ty = Ty::Tuple(cap_tys.clone());
-                let et = self.ll(&env_ty);
-                let (size, _) = self.gen.size_align(&env_ty);
+                let full = env_ty(&cap_tys);
+                let et = self.ll(&full);
+                let (size, _) = self.gen.size_align(&full);
                 let env = self.r();
                 self.emit(format!("{env} = call ptr @ante_alloc(i64 {size})"));
+                // The header: one reference, and how to drop the captures.
+                let rc = self.gep(&et, &env, &["0".into(), "0".into()]);
+                self.emit(format!("store i64 1, ptr {rc}"));
+                let dropper = self.gen.item(Item::EnvDrop(cap_tys.clone()));
+                let dp = self.gep(&et, &env, &["0".into(), "1".into()]);
+                self.emit(format!("store ptr {dropper}, ptr {dp}"));
                 for (k, (o, t)) in ops.iter().zip(&cap_tys).enumerate() {
                     let v = self.operand(o, t);
                     let ct = self.ll(t);
-                    let p = self.gep(&et, &env, &["0".into(), k.to_string()]);
+                    let p = self.gep(&et, &env, &["0".into(), (k + 2).to_string()]);
                     self.emit(format!("store {ct} {v}, ptr {p}"));
                 }
                 let f = self.gen.item(Item::Body(*body, self.tys.clone()));
@@ -1161,7 +1172,14 @@ impl<'g, 'a> Fx<'g, 'a> {
                     self.gen.error("native backend: call of a non-function");
                     return ("undef".into(), dest_ty.clone());
                 };
-                let f = self.operand(op, &fty);
+                // Calling reads the closure; it doesn't copy it.
+                let f = match op {
+                    Operand::Copy(p) | Operand::Move(p) => {
+                        let pr = self.place(p);
+                        self.load("%pani", &pr.ptr)
+                    }
+                    Operand::Const(_) => self.operand(op, &fty),
+                };
                 let fp = self.r();
                 self.emit(format!("{fp} = extractvalue %pani {f}, 0"));
                 let env = self.r();
@@ -1262,4 +1280,12 @@ fn fcmp(op: BinOp) -> &'static str {
         BinOp::Gt => "ogt",
         _ => "oge",
     }
+}
+
+/// A closure environment: a reference count and a drop function, then the
+/// captures (`ante_closure_env` in the runtime).
+pub fn env_ty(caps: &[Ty]) -> Ty {
+    let mut items = vec![Ty::ANKAM, Ty::Ptr(false, Box::new(Ty::Unit))];
+    items.extend(caps.iter().cloned());
+    Ty::Tuple(items)
 }

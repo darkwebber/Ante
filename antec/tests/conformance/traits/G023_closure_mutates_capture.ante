@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0611 @ 7:23
+# level: core
+# A closure can't change a variable it captured (§10.7.2).
+modhalu() -> khali ante:
+    maare v ante [1]
+    f ante () => 2 ni v.cherchu()
+    f()

@@ -1,0 +1,28 @@
+# category: run-pass
+# expect-stdout: a
+# expect-stdout: a
+# expect-stdout: a
+# expect-stdout: body end
+# expect-stdout: a sardhu
+# level: core
+# Copies of a closure share its captures, which are dropped once, after the last copy (§10.7.4).
+rakam Gadi ante:
+    peru: padham
+
+Gadi ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"{peru} sardhu" ni choopinchu()
+
+chesko(g: Gadi ni) -> pani[() -> padham] ante:
+    theesuko () => g.peru.xerox() icchey
+
+rendu_saarlu(f: pani[() -> padham] ni) -> khali ante:
+    f() ni choopinchu()
+    f() ni choopinchu()
+
+modhalu() -> khali ante:
+    f ante Gadi{peru: "a"} ni chesko()
+    f ni rendu_saarlu()
+    g ante f
+    g() ni choopinchu()
+    "body end" ni choopinchu()

@@ -55,6 +55,8 @@ enum Item {
     Next(Ty),
     /// An adapter's `i1 next(ptr state, ptr out)` (§21.4.2).
     Adapter(Adapter, Vec<Ty>),
+    /// `void drop(ptr env)` for a closure environment with these captures.
+    EnvDrop(Vec<Ty>),
 }
 
 /// The lazy iteration adapters with native support.
@@ -66,6 +68,8 @@ pub(crate) enum Adapter {
     Filter,
     Zip,
     Enumerate,
+    /// A user type implementing `Okkokkati[I]`: calls its `tharvatha`.
+    User,
 }
 
 pub struct Gen<'a> {
@@ -173,6 +177,8 @@ declare void @ante_vec_push(ptr, ptr, i64)
 declare void @ante_buf_free(ptr)
 declare void @ante_str_append(ptr, ptr)
 declare void @free(ptr)
+declare void @ante_pani_inc(ptr)
+declare void @ante_pani_dec(ptr)
 declare void @ante_vec_extend(ptr, ptr, i64, i64)
 declare void @ante_sort(ptr, i64, i64, ptr, ptr)
 declare void @ante_str_concat(ptr, ptr, ptr)
@@ -238,6 +244,7 @@ impl<'a> Gen<'a> {
             Item::SortBy(_) => "sortby".into(),
             Item::Next(_) => "next".into(),
             Item::Adapter(..) => "adapter".into(),
+            Item::EnvDrop(_) => "envdrop".into(),
         };
         let name = format!("@\"{}\"", self.fresh(&base));
         self.items.insert(item.clone(), name.clone());
@@ -255,6 +262,7 @@ impl<'a> Gen<'a> {
             Item::Cmp(t) => glue::cmp(self, &name, t),
             Item::Xerox(t) => glue::xerox(self, &name, t),
             Item::Drop(t) => glue::drop_glue(self, &name, t),
+            Item::EnvDrop(caps) => glue::env_drop(self, &name, caps),
             Item::SortCmp(t) => glue::sort_cmp(self, &name, t),
             Item::SortBy(t) => glue::sort_by(self, &name, t),
             Item::Next(t) => native::next_fn(self, &name, t),
