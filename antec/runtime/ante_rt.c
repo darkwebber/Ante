@@ -302,12 +302,22 @@ void *ante_alloc(int64_t size) {
     return p;
 }
 
+/* Frees a `padham` or `varusa` buffer. `cap == 0` means it owns nothing
+   (an empty value, or a literal in static memory). */
+void ante_buf_free(ante_str *b) {
+    if (b->cap) free(b->ptr);
+    b->ptr = 0;
+    b->len = 0;
+    b->cap = 0;
+}
+
 /* Appends one element of `size` bytes to a vector. */
 void ante_vec_push(ante_vec *v, const void *elem, int64_t size) {
     if (v->len == v->cap) {
         int64_t cap = grow_cap(v->cap, size_add(v->len, 1), 4);
         uint8_t *p = (uint8_t *)ante_alloc(size_mul(cap, size));
         if (v->len) memcpy(p, v->ptr, (size_t)size_mul(v->len, size));
+        if (v->cap) free(v->ptr);
         v->ptr = p;
         v->cap = cap;
     }
@@ -450,6 +460,19 @@ void ante_str_concat(ante_str *out, const ante_str *a, const ante_str *b) {
     ante_buf_push(&r, a->ptr, a->len);
     ante_buf_push(&r, b->ptr, b->len);
     *out = r;
+}
+
+/* `s += t`: appends in place. `t` may be `s` itself or point into it. */
+void ante_str_append(ante_str *s, const ante_str *t) {
+    int64_t n = t->len;
+    if (n <= 0) return;
+    const uint8_t *src = t->ptr;
+    int inside = s->len > 0 && src >= s->ptr && src < s->ptr + s->len;
+    int64_t off = inside ? (int64_t)(src - s->ptr) : 0;
+    buf_grow(s, n);
+    if (inside) src = s->ptr + off;
+    memcpy(s->ptr + s->len, src, (size_t)n);
+    s->len += n;
 }
 
 void ante_str_copy(ante_str *out, const ante_str *s) {

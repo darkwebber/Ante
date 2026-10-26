@@ -145,6 +145,7 @@ pub struct FnDecl {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Field {
+    pub annotations: Vec<Annotation>,
     pub public: bool,
     pub name: Ident,
     pub ty: Type,
@@ -159,6 +160,7 @@ pub struct RecordDecl {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Variant {
+    pub annotations: Vec<Annotation>,
     pub name: Ident,
     pub fields: Vec<Type>,
 }
@@ -358,7 +360,7 @@ impl Expr {
             | ExprKind::Unit
             | ExprKind::Hole
             | ExprKind::Path(_) => Vec::new(),
-            ExprKind::FStr(parts) => parts
+            ExprKind::FStr(parts) | ExprKind::Sql(parts) => parts
                 .iter()
                 .filter_map(|p| match p {
                     FStrPart::Expr(e) => Some(e),
@@ -438,6 +440,8 @@ pub enum ExprKind {
     Str(String),
     Char(char),
     FStr(Vec<FStrPart>),
+    /// `sql"…"` (Services, §29.3.1).
+    Sql(Vec<FStrPart>),
     Bool(bool),
     /// The absence literal `ledhu`.
     Ledhu,

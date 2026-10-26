@@ -1,0 +1,12 @@
+# category: compile-fail
+# expect-error: E0606 @ 7:5
+# level: core
+# A reference to a local can't outlive the function (§15.4.5).
+okati_ekkuva(a: &ankam ni) -> &ankam ante:
+    x ante *a + 1
+    &x icchey
+
+modhalu() -> khali ante:
+    n ante 1
+    y ante &n ni okati_ekkuva()
+    y ni choopinchu()

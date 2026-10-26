@@ -632,6 +632,19 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                 }
                 Ty::Str
             }
+            ExprKind::Sql(parts) => {
+                for part in parts {
+                    if let FStrPart::Expr(x) = part {
+                        self.check_expr(x, None);
+                    }
+                }
+                self.error(
+                    "E1202",
+                    e.span,
+                    "`sql\"…\"` spec lo undhi (§29.3.1) kaani `antec` lo inka raaledhu (M14)",
+                );
+                Ty::Error
+            }
             ExprKind::Ledhu => {
                 let inner = match &expected {
                     Some(Ty::App(Con::Undochu, args)) => args[0].clone(),
@@ -1135,7 +1148,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                     Sub => "Theeseyochu",
                     Mul => "Guninchochu",
                     Div => "Panchochu",
-                    _ => "Sheshamochu",
+                    _ => "Migulochu",
                 };
                 self.oblige(&l, tr, span, "E0407");
             }
@@ -1237,7 +1250,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                 self.error(
                     "E0413",
                     span,
-                    "`padham` ni index cheyyalem (UTF-8 kada). `s.aksharaalu()` leka `a ni, b tho s.byte_bhaagam()` vaadandi",
+                    "`padham` ni index cheyyalem (UTF-8 kada). `s.aksharaalu()` leka `a ni, b tho s.byte_mukka()` vaadandi",
                 );
                 Ty::Error
             }
@@ -1324,6 +1337,22 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             return Ty::App(con, parts);
         }
         let Some((d, variant)) = self.variant_of(path) else {
+            // `s.enni(1)` or `lekkalu.chuttu_kalupu(a, b)`: a call written
+            // like a constructor (D10). Unknown names and bad variants were
+            // already reported by the resolver or `variant_of`.
+            let lower = Lower { g: self.g, diags: &mut self.diags };
+            let names_type =
+                lower.path_def(self.file, path).is_some_and(|(d, _)| self.g.adts.contains_key(&d));
+            if !names_type && self.res_at(path.segments[0].span).is_some() {
+                let text = path.segments.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(".");
+                self.error(
+                    "E0204",
+                    path.span,
+                    format!(
+                        "`{text}(…)` laaga call cheyyalem. Arguments verb mundhu raayandi: `x ni {text}()`"
+                    ),
+                );
+            }
             for a in args {
                 self.check_expr(a, None);
             }

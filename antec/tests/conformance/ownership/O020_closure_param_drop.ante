@@ -1,0 +1,18 @@
+# category: run-pass
+# expect-stdout: kotha sardhu
+# expect-stdout: 5
+# expect-stdout: ayyindhi
+# level: core
+# A value passed to a closure by value is dropped when the call ends.
+rakam Gadi ante:
+    peru: padham
+
+Gadi ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"{peru} sardhu" ni choopinchu()
+
+modhalu() -> khali ante:
+    tinu ante (g: Gadi ni) => g.peru.enni()
+    n ante Gadi{peru: "kotha"} ni tinu()
+    n ni choopinchu()
+    "ayyindhi" ni choopinchu()

@@ -1,0 +1,25 @@
+# category: run-pass
+# expect-stdout: abab
+# expect-stdout: abx
+# expect-stdout: ab1
+# expect-stdout: ab3
+# expect-stdout: ab2
+# level: core
+# Assigning to a moved place re-initializes it without dropping the old value twice (§15.1.3).
+rakam Jatha ante:
+    a: padham
+    b: padham
+
+modhalu() -> khali ante:
+    a ante "ab"
+    maare s ante a + a
+    t ante s
+    s lo (a + "x") pettu
+    t ni choopinchu()
+    s ni choopinchu()
+    maare j ante Jatha{a: a + "1", b: a + "2"}
+    x ante j.a
+    j.a lo (a + "3") pettu
+    x ni choopinchu()
+    j.a ni choopinchu()
+    j.b ni choopinchu()

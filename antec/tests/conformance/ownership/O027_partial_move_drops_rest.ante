@@ -1,0 +1,21 @@
+# category: run-pass
+# expect-stdout: body
+# expect-stdout: a sardhu
+# expect-stdout: b sardhu
+# level: core
+# After a partial move, the fields left behind are still dropped (§19.3).
+rakam Gadi ante:
+    peru: padham
+
+Gadi ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"{peru} sardhu" ni choopinchu()
+
+rakam Jatha ante:
+    a: Gadi
+    b: Gadi
+
+modhalu() -> khali ante:
+    j ante Jatha{a: Gadi{peru: "a"}, b: Gadi{peru: "b"}}
+    x ante j.a
+    "body" ni choopinchu()

@@ -690,7 +690,7 @@ pub(super) fn trait_call(
         | "Theeseyochu.theesey"
         | "Guninchochu.guninchu"
         | "Panchochu.panchu"
-        | "Sheshamochu.shesham" => {
+        | "Migulochu.migulu" => {
             let pa = fx.operand(&args[0], &r);
             let pb = fx.operand(&args[1], &r);
             let lt = fx.ll(&ty);
@@ -759,6 +759,7 @@ pub(super) fn std_call(
             let fd = if key == "prelude.gola_pettu" { 2 } else { 1 };
             let nl = i32::from(key != "prelude.cheppu");
             fx.emit(format!("call void @ante_write(i32 {fd}, ptr {buf}, i32 {nl})"));
+            fx.emit(format!("call void @ante_buf_free(ptr {buf})"));
             unit()
         }
         "prelude.nijame" => {

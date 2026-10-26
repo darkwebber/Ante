@@ -141,6 +141,9 @@ type Cache = Rc<RefCell<HashMap<Ty, bool>>>;
 
 struct Frame<'a> {
     drops: Vec<(Local, Ty)>,
+    /// Locals whose storage ends with the frame and that `drops` doesn't
+    /// cover (§15.4.5).
+    dead: Vec<Local>,
     defers: Vec<(Local, &'a ast::Block)>,
     temps: bool,
 }
@@ -175,6 +178,8 @@ struct Builder<'a, 'p> {
     loops: Vec<LoopCx>,
     /// Flags of `vellagane` blocks, cleared on entry.
     defer_flags: Vec<Local>,
+    /// The source span statements are emitted for.
+    span: Span,
 }
 
 impl<'a, 'p> Builder<'a, 'p> {
@@ -199,7 +204,7 @@ impl<'a, 'p> Builder<'a, 'p> {
                 file: Some(file),
                 locals: Vec::new(),
                 params: 0,
-                blocks: vec![Block { stmts: Vec::new(), term: Term::Unreachable }],
+                blocks: vec![Block::new()],
             },
             cur: 0,
             vars: HashMap::new(),
@@ -208,6 +213,7 @@ impl<'a, 'p> Builder<'a, 'p> {
             frames: Vec::new(),
             loops: Vec::new(),
             defer_flags: Vec::new(),
+            span: Span::default(),
         }
     }
 
@@ -217,7 +223,9 @@ impl<'a, 'p> Builder<'a, 'p> {
             .iter()
             .map(|&f| Stmt::Assign(Place::local(f), Rvalue::Use(Operand::Const(Const::Bool(false)))))
             .collect();
+        let spans = vec![Span::default(); inits.len()];
         self.body.blocks[0].stmts.splice(0..0, inits);
+        self.body.blocks[0].spans.splice(0..0, spans);
         self.body
     }
 
@@ -229,12 +237,20 @@ impl<'a, 'p> Builder<'a, 'p> {
     }
 
     fn new_block(&mut self) -> BlockId {
-        self.body.blocks.push(Block { stmts: Vec::new(), term: Term::Unreachable });
+        self.body.blocks.push(Block::new());
         (self.body.blocks.len() - 1) as BlockId
     }
 
     fn emit(&mut self, s: Stmt) {
-        self.body.blocks[self.cur as usize].stmts.push(s);
+        let b = &mut self.body.blocks[self.cur as usize];
+        b.stmts.push(s);
+        b.spans.push(self.span);
+    }
+
+    fn set_term(&mut self, t: Term) {
+        let b = &mut self.body.blocks[self.cur as usize];
+        b.term = t;
+        b.term_span = self.span;
     }
 
     fn assign(&mut self, p: Place, rv: Rvalue) {
@@ -243,17 +259,17 @@ impl<'a, 'p> Builder<'a, 'p> {
 
     /// Ends the current block; code after this goes to a fresh, unreachable block.
     fn terminate(&mut self, t: Term) {
-        self.body.blocks[self.cur as usize].term = t;
+        self.set_term(t);
         self.cur = self.new_block();
     }
 
     fn goto(&mut self, target: BlockId) {
-        self.body.blocks[self.cur as usize].term = Term::Goto(target);
+        self.set_term(Term::Goto(target));
         self.cur = target;
     }
 
     fn jump(&mut self, target: BlockId) {
-        self.body.blocks[self.cur as usize].term = Term::Goto(target);
+        self.set_term(Term::Goto(target));
     }
 
     fn ty_of(&self, e: &Expr) -> Ty {
@@ -268,18 +284,26 @@ impl<'a, 'p> Builder<'a, 'p> {
         needs_drop(self.g, &self.generics, &self.cache, ty, &mut HashSet::new())
     }
 
+    /// Registers a named local with the innermost scope, which drops it
+    /// (or just ends its storage) on exit.
     fn register_drop(&mut self, l: Local, ty: &Ty) {
-        if self.needs_drop(ty) {
-            let frame = self.frames.iter_mut().rev().find(|f| !f.temps).expect("a scope frame");
+        let drop = self.needs_drop(ty);
+        let frame = self.frames.iter_mut().rev().find(|f| !f.temps).expect("a scope frame");
+        if drop {
             frame.drops.push((l, ty.clone()));
+        } else {
+            frame.dead.push(l);
         }
     }
 
     fn temp(&mut self, ty: Ty) -> Local {
         let l = self.new_local(ty.clone(), None);
-        if self.needs_drop(&ty) {
-            if let Some(f) = self.frames.last_mut() {
+        let drop = self.needs_drop(&ty);
+        if let Some(f) = self.frames.last_mut() {
+            if drop {
                 f.drops.push((l, ty));
+            } else {
+                f.dead.push(l);
             }
         }
         l
@@ -296,7 +320,7 @@ impl<'a, 'p> Builder<'a, 'p> {
     // ── frames and exits ───────────────────────────────────────────────────
 
     fn push_frame(&mut self, temps: bool) {
-        self.frames.push(Frame { drops: Vec::new(), defers: Vec::new(), temps });
+        self.frames.push(Frame { drops: Vec::new(), dead: Vec::new(), defers: Vec::new(), temps });
     }
 
     /// Emits the cleanup of frames `depth..` (innermost first) without popping them.
@@ -306,11 +330,11 @@ impl<'a, 'p> Builder<'a, 'p> {
             for (flag, block) in defers {
                 let run = self.new_block();
                 let after = self.new_block();
-                self.body.blocks[self.cur as usize].term = Term::Switch {
+                self.set_term(Term::Switch {
                     discr: Operand::Copy(Place::local(flag)),
                     targets: vec![(1, run)],
                     otherwise: after,
-                };
+                });
                 self.cur = run;
                 self.assign(Place::local(flag), Rvalue::Use(Operand::Const(Const::Bool(false))));
                 self.lower_block(block);
@@ -320,6 +344,9 @@ impl<'a, 'p> Builder<'a, 'p> {
             let drops: Vec<(Local, Ty)> = self.frames[i].drops.iter().rev().cloned().collect();
             for (l, ty) in drops {
                 self.emit(Stmt::Drop(Place::local(l), ty));
+            }
+            for l in self.frames[i].dead.clone().into_iter().rev() {
+                self.emit(Stmt::StorageDead(l));
             }
         }
     }
@@ -352,6 +379,12 @@ impl<'a, 'p> Builder<'a, 'p> {
     }
 
     fn lower_stmt(&mut self, stmt: &'a ast::Stmt) {
+        let saved = std::mem::replace(&mut self.span, stmt.span);
+        self.lower_stmt_inner(stmt);
+        self.span = saved;
+    }
+
+    fn lower_stmt_inner(&mut self, stmt: &'a ast::Stmt) {
         self.push_frame(true);
         let mut extend = false;
         match &stmt.kind {
@@ -405,8 +438,7 @@ impl<'a, 'p> Builder<'a, 'p> {
                     let c = self.lower_operand(cond);
                     let then = self.new_block();
                     let next = self.new_block();
-                    self.body.blocks[self.cur as usize].term =
-                        Term::Switch { discr: c, targets: vec![(1, then)], otherwise: next };
+                    self.set_term(Term::Switch { discr: c, targets: vec![(1, then)], otherwise: next });
                     self.cur = then;
                     self.lower_block(body);
                     self.jump(join);
@@ -423,8 +455,7 @@ impl<'a, 'p> Builder<'a, 'p> {
                 self.goto(head);
                 let c = self.lower_operand(cond);
                 let inner = self.new_block();
-                self.body.blocks[self.cur as usize].term =
-                    Term::Switch { discr: c, targets: vec![(1, inner)], otherwise: exit };
+                self.set_term(Term::Switch { discr: c, targets: vec![(1, inner)], otherwise: exit });
                 self.cur = inner;
                 self.loops.push(LoopCx { brk: exit, cont: head, depth: self.frames.len() });
                 self.lower_block(body);
@@ -464,6 +495,7 @@ impl<'a, 'p> Builder<'a, 'p> {
             let temps = self.frames.pop().expect("temp frame");
             let scope = self.frames.iter_mut().rev().find(|f| !f.temps).expect("a scope frame");
             scope.drops.extend(temps.drops);
+            scope.dead.extend(temps.dead);
         } else {
             self.pop_frame();
         }
@@ -485,6 +517,12 @@ impl<'a, 'p> Builder<'a, 'p> {
         let v = self.scalar_operand(value);
         match op_ty(&pt) {
             Some(t) => {
+                // Text operators only read their operands; a temporary stays
+                // owned by the statement and is dropped at its end.
+                let v = match v {
+                    Operand::Move(tp) if t == OpTy::Str => Operand::Copy(tp),
+                    v => v,
+                };
                 let span = place.span;
                 self.assign(p.clone(), Rvalue::Binary(op, t, Operand::Copy(p), v, span));
             }
@@ -542,11 +580,11 @@ impl<'a, 'p> Builder<'a, 'p> {
         let d = self.new_local(Ty::ANKAM, None);
         self.assign(Place::local(d), Rvalue::Discriminant(Place::local(next)));
         let inner = self.new_block();
-        self.body.blocks[self.cur as usize].term = Term::Switch {
+        self.set_term(Term::Switch {
             discr: Operand::Copy(Place::local(d)),
             targets: vec![(0, inner)],
             otherwise: exit,
-        };
+        });
         self.cur = inner;
         self.loops.push(LoopCx { brk: exit, cont: head, depth: self.frames.len() });
         self.push_frame(false);
@@ -599,8 +637,7 @@ impl<'a, 'p> Builder<'a, 'p> {
 
     fn branch_if(&mut self, cond: Operand, fail: BlockId) {
         let ok = self.new_block();
-        self.body.blocks[self.cur as usize].term =
-            Term::Switch { discr: cond, targets: vec![(1, ok)], otherwise: fail };
+        self.set_term(Term::Switch { discr: cond, targets: vec![(1, ok)], otherwise: fail });
         self.cur = ok;
     }
 
@@ -638,11 +675,11 @@ impl<'a, 'p> Builder<'a, 'p> {
                 let d = self.new_local(Ty::ANKAM, None);
                 self.assign(Place::local(d), Rvalue::Discriminant(place.clone()));
                 let ok = self.new_block();
-                self.body.blocks[self.cur as usize].term = Term::Switch {
+                self.set_term(Term::Switch {
                     discr: Operand::Copy(Place::local(d)),
                     targets: vec![(variant as i128, ok)],
                     otherwise: fail,
-                };
+                });
                 self.cur = ok;
                 let inner = place.project(Proj::Variant(variant));
                 for (i, sub) in args.iter().flatten().enumerate() {
@@ -914,13 +951,19 @@ impl<'a, 'p> Builder<'a, 'p> {
 
     fn call(&mut self, callee: Callee, args: Vec<Operand>, dest: Place, span: Span) {
         let next = self.new_block();
-        self.body.blocks[self.cur as usize].term = Term::Call { callee, args, dest, next, span };
+        self.set_term(Term::Call { callee, args, dest, next, span });
         self.cur = next;
     }
 
     // ── expressions ────────────────────────────────────────────────────────
 
     fn lower_into(&mut self, e: &'a Expr, dest: Place) {
+        let saved = std::mem::replace(&mut self.span, e.span);
+        self.lower_into_inner(e, dest);
+        self.span = saved;
+    }
+
+    fn lower_into_inner(&mut self, e: &'a Expr, dest: Place) {
         let ty = self.ty_of(e);
         let id = expr_id(self.file, e.span);
         match &e.kind {
@@ -932,6 +975,7 @@ impl<'a, 'p> Builder<'a, 'p> {
                 let c = float_const(text, &ty);
                 self.assign(dest, Rvalue::Use(Operand::Const(c)));
             }
+            ExprKind::Sql(_) => self.unsupported("sql", dest, e.span),
             ExprKind::FStr(parts) => {
                 let mut texts = vec![String::new()];
                 let mut tys = Vec::new();
@@ -1109,8 +1153,11 @@ impl<'a, 'p> Builder<'a, 'p> {
         self.assign(Place::local(d), Rvalue::Discriminant(value.clone()));
         let ok = self.new_block();
         let err = self.new_block();
-        self.body.blocks[self.cur as usize].term =
-            Term::Switch { discr: Operand::Copy(Place::local(d)), targets: vec![(0, ok)], otherwise: err };
+        self.set_term(Term::Switch {
+            discr: Operand::Copy(Place::local(d)),
+            targets: vec![(0, ok)],
+            otherwise: err,
+        });
         self.cur = err;
         let (ok_ty, err_ty) = match ty {
             Ty::App(Con::SareThappu, a) => (a[0].clone(), a[1].clone()),
@@ -1206,7 +1253,7 @@ impl<'a, 'p> Builder<'a, 'p> {
             BinOp::Sub => ("Theeseyochu", "theesey"),
             BinOp::Mul => ("Guninchochu", "guninchu"),
             BinOp::Div => ("Panchochu", "panchu"),
-            BinOp::Rem => ("Sheshamochu", "shesham"),
+            BinOp::Rem => ("Migulochu", "migulu"),
             BinOp::MatMul => ("MatmulCheyochu", "matmul"),
             BinOp::Eq | BinOp::Ne => ("Polchochu", "okateyna"),
             _ => ("VarusaPettochu", "polchu"),
@@ -1255,11 +1302,11 @@ impl<'a, 'p> Builder<'a, 'p> {
             let rhs_bb = self.new_block();
             let join = self.new_block();
             let (on_true, on_false) = if op == BinOp::And { (rhs_bb, join) } else { (join, rhs_bb) };
-            self.body.blocks[self.cur as usize].term = Term::Switch {
+            self.set_term(Term::Switch {
                 discr: Operand::Copy(dest.clone()),
                 targets: vec![(1, on_true)],
                 otherwise: on_false,
-            };
+            });
             self.cur = rhs_bb;
             let b = self.lower_operand(rhs);
             self.assign(dest, Rvalue::Use(b));
@@ -1341,6 +1388,11 @@ impl<'a, 'p> Builder<'a, 'p> {
             let v = if wants_place.contains(&eid) {
                 let p = self.place_of(e);
                 Val::Place(p, ty)
+            } else if let (Ty::Ref(true, inner), true) = (&ty, is_place(e)) {
+                // A `&maare` place passed on is reborrowed, not moved (§11.3).
+                let p = self.place_of(e).deref();
+                let inner = (**inner).clone();
+                Val::Op(self.ref_to(p, &inner, true), ty)
             } else {
                 let op = self.lower_operand(e);
                 Val::Op(self.stable_move(op, ty.clone()), ty)
@@ -1508,6 +1560,7 @@ impl<'a, 'p> Builder<'a, 'p> {
             };
         }
         match val {
+            Val::Place(p, Ty::Ref(true, inner)) => self.ref_to(p.deref(), &inner, true),
             Val::Place(p, ty) => self.by_type(p, &ty),
             Val::Op(o, _) => o,
         }
@@ -1580,6 +1633,7 @@ impl<'a, 'p> Builder<'a, 'p> {
             for (p, ty) in params.iter().zip(&param_tys) {
                 let l = b.new_local(ty.clone(), Some(p.name.name.clone()));
                 b.vars.insert(p.name.span.start, l);
+                b.register_drop(l, ty);
             }
             b.body.params = b.body.locals.len() as u32 - 1;
             b.push_frame(true);
@@ -1587,7 +1641,37 @@ impl<'a, 'p> Builder<'a, 'p> {
             b.pop_frame();
             b.emit_cleanup(0);
             b.terminate(Term::Return);
+            // A closure can run many times, and copies of it share its
+            // captures, so a captured value can't be moved out (§15.1.2,
+            // like moving through a reference).
+            let owned: Vec<(Local, Option<usize>)> = if moves {
+                caps.iter().enumerate().map(|(k, (u, _))| (k as Local + 1, *u)).collect()
+            } else {
+                Vec::new()
+            };
             let built = b.into_body();
+            let moved = built.moved_locals();
+            for (l, u) in owned {
+                if moved.contains(&l) {
+                    let name = match u {
+                        Some(decl) => {
+                            self.vars.get(&decl).and_then(|&v| self.body.locals[v as usize].name.clone())
+                        }
+                        None => Some("naa".into()),
+                    }
+                    .unwrap_or_else(|| "capture".into());
+                    self.prog.errors.push((
+                        file,
+                        crate::diag::Diagnostic::error(
+                            "E0603",
+                            e.span,
+                            format!(
+                                "closure capture chesina `{name}` ni bayatiki move cheyyalem (closure malli malli run avvochu); `{name}.xerox()` vaadandi"
+                            ),
+                        ),
+                    ));
+                }
+            }
             self.prog.bodies.push(built);
             (self.prog.bodies.len() - 1) as BodyId
         };
@@ -1781,7 +1865,9 @@ pub fn needs_drop_ty(g: &Globals, generics: &[Generic], cache: &RefCell<HashMap<
     needs_drop(g, generics, cache, ty, &mut HashSet::new())
 }
 
-/// Whether dropping a value of this type can run a destructor (`Sardhukochu`).
+/// Whether dropping a value of this type does anything: runs a destructor
+/// (`Sardhukochu`) or frees memory the value owns (`padham`, `varusa`,
+/// `pette`, `jodi`, `gumpu`).
 pub fn needs_drop(
     g: &Globals,
     generics: &[Generic],
@@ -1810,6 +1896,8 @@ pub fn needs_drop(
             visiting.remove(d);
             r
         }
+        Ty::Str => true,
+        Ty::App(Con::Varusa | Con::Pette | Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => true,
         Ty::App(_, args) | Ty::Tuple(args) => {
             args.iter().any(|a| needs_drop(g, generics, cache, a, visiting))
         }

@@ -6,6 +6,7 @@ use super::results::{expr_id, ArgPlan, ArgRef, ArgSrc, CallPlan, RecvPlan, Targe
 use super::solve::{self, Solver};
 use super::{FnId, FnOrigin, Formal, Head, RecvMode, TraitRef};
 use crate::ast::*;
+use crate::diag::Diagnostic;
 use crate::resolve::{DefKind, Res};
 use crate::source::Span;
 use crate::types::{Con, Ty, VarKind};
@@ -507,6 +508,17 @@ impl BodyCx<'_, '_> {
         }
         if let Some(&fid) = g.adapters.get(&name.name) {
             return Some(Pick::Adapter(fid));
+        }
+        if let Some(new) = crate::stdlib::renamed(&name.name) {
+            let renamed = Ident { name: new.to_string(), span: name.span };
+            let errors = self.diags.len();
+            let pick = self.lookup_method(recv_ty, &renamed);
+            if pick.is_some() {
+                let message = crate::stdlib::renamed_message(&name.name, new);
+                self.diags.push((self.file, Diagnostic::warning("W0100", name.span, message)));
+                return pick;
+            }
+            self.diags.truncate(errors);
         }
         let shown = self.show(recv_ty);
         self.error("E0406", name.span, format!("`{shown}` ki `{}` ane method ledhu", name.name));

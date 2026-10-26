@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E0609 @ 10:5
+# level: core
+# A value moved on only one path can't be used after the paths join (§15.1.3).
+modhalu() -> khali ante:
+    s ante "ab" + "cd"
+    n ante 3
+    n > 2 aithe:
+        t ante s
+    s ni choopinchu()

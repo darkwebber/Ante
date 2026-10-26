@@ -127,13 +127,18 @@ impl Keyword {
         )
     }
 
+    /// Words of this edition that `antec` doesn't implement yet (E1202):
+    /// `panchukunna` (§24.4).
+    pub fn is_planned(self) -> bool {
+        matches!(self, Keyword::Panchukunna)
+    }
+
     /// Words reserved for later editions; using them is E1201.
     pub fn is_reserved_for_later(self) -> bool {
         matches!(
             self,
             Keyword::Edhaina
                 | Keyword::Kitiki
-                | Keyword::Panchukunna
                 | Keyword::Gurinchi
                 | Keyword::Async
                 | Keyword::Await
@@ -167,6 +172,9 @@ pub enum TokenKind {
     Str(String),
     Char(char),
     FStr(Vec<FPart>),
+    /// `sql"…"`: lexed like an f-string; its interpolations are query
+    /// parameters (Services, §29.3.1).
+    SqlStr(Vec<FPart>),
     Underscore,
 
     Plus,
@@ -317,8 +325,8 @@ impl fmt::Display for TokenKind {
                 f.write_str("char:")?;
                 write_quoted(f, c.encode_utf8(&mut [0; 4]), '\'')
             }
-            TokenKind::FStr(parts) => {
-                f.write_str("fstr[")?;
+            TokenKind::FStr(parts) | TokenKind::SqlStr(parts) => {
+                f.write_str(if matches!(self, TokenKind::FStr(_)) { "fstr[" } else { "sqlstr[" })?;
                 for (i, part) in parts.iter().enumerate() {
                     if i > 0 {
                         f.write_str(" ")?;

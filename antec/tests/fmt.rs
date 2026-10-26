@@ -91,6 +91,22 @@ fn literals_keep_their_spelling() {
 }
 
 #[test]
+fn reference_to_reference_keeps_its_space() {
+    // `&&` is the "and" operator, so `& &T` must not lose its space.
+    let text = "rakam H ante:\n    r: & &ankam\n\nmodhalu() -> khali ante:\n    x ante 1\n    y ante &(&x)\n";
+    assert_eq!(format(text), text);
+}
+
+#[test]
+fn parenthesized_literal_receivers_stay_put() {
+    // The span of `(0.5)` covers its parentheses; they must not double up.
+    let text = "modhalu() -> khali ante:\n    x ante (0.5).padham_ga()\n    y ante (12).padham_ga()\n";
+    assert_eq!(format(text), text);
+    let messy = "modhalu() -> khali ante:\n    x ante ((0.5)).padham_ga()\n";
+    assert_eq!(format(messy), text.lines().take(2).collect::<Vec<_>>().join("\n") + "\n");
+}
+
+#[test]
 fn long_signatures_wrap() {
     let text = "f(aaaaaaaaaaaa: ankam ni, bbbbbbbbbbbbbbbb: ankam tho, cccccccccccccccc: varusa[padham] lo, dddd: ankam kosam) -> ankam ante:\n    aaaaaaaaaaaa icchey\n";
     let want = "f(\n    aaaaaaaaaaaa: ankam ni,\n    bbbbbbbbbbbbbbbb: ankam tho,\n    cccccccccccccccc: varusa[padham] lo,\n    dddd: ankam kosam,\n) -> ankam ante:\n    aaaaaaaaaaaa icchey\n";

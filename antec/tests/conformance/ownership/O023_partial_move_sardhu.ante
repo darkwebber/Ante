@@ -1,0 +1,15 @@
+# category: compile-fail
+# expect-error: E0603 @ 14:12
+# level: core
+# A field can't be moved out of a value whose type has `sardhu` (§15.1.2).
+rakam Gadi ante:
+    peru: padham
+
+Gadi ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        "sardhu" ni choopinchu()
+
+modhalu() -> khali ante:
+    g ante Gadi{peru: "a" + "b"}
+    p ante g.peru
+    p ni choopinchu()

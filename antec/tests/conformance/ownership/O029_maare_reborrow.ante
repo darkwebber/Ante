@@ -1,0 +1,13 @@
+# category: run-pass
+# expect-stdout: 3
+# level: core
+# A `&maare` place passed to a call is reborrowed, so it can be passed again (§11.3).
+penchu(x: &maare ankam ni) -> khali ante:
+    *x += 1
+
+modhalu() -> khali ante:
+    maare a ante 1
+    r ante &maare a
+    r ni penchu()
+    r ni penchu()
+    a ni choopinchu()

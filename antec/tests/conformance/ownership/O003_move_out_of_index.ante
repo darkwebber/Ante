@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0603 @ 7:12
+# level: core
+# Moving a non-Copy element out of `xs[0]` (§15.1.2).
+modhalu() -> khali ante:
+    v ante ["a" + "b", "c" + "d"]
+    x ante v[0]
+    x ni choopinchu()

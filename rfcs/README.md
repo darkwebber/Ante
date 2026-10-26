@@ -16,4 +16,4 @@ Oka chinna word change ki RFC avasaram ledhu. [Vocabulary proposal issue](https:
 
 | RFC | Title | Status |
 |---|---|---|
-| — | inka emi levu | — |
+| [0000-all-rounder-web](0000-all-rounder-web.md) | "Ante" all-rounder: Services (spec Part IX) and Web (spec Annex W) | proposed; spec r6 lo draft ga undhi |

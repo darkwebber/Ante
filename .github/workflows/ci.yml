@@ -70,6 +70,28 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
 
+  # Every native test program again, built with AddressSanitizer and UBSan:
+  # a double free, use after free or overflow in generated code or the
+  # runtime fails the test. Leak checking is off while closure environments
+  # are still never freed.
+  sanitizers:
+    name: native (ASan + UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: clang with sanitizers
+        run: |
+          printf '#!/bin/sh\nexec clang -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g "$@"\n' > "$RUNNER_TEMP/asan-cc"
+          chmod +x "$RUNNER_TEMP/asan-cc"
+          echo "ANTE_CC=$RUNNER_TEMP/asan-cc" >> "$GITHUB_ENV"
+      - run: cargo test --release --test native
+        env:
+          ANTE_REQUIRE_NATIVE: "1"
+          # The runtime turns a stack overflow into T08 itself.
+          ASAN_OPTIONS: handle_segv=0:handle_sigbus=0:detect_leaks=0
+
   editor:
     name: editor grammar
     runs-on: ubuntu-latest
@@ -91,7 +113,7 @@ jobs:
   ci-ok:
     name: CI ok
     if: always()
-    needs: [fmt, clippy, test, msrv, editor]
+    needs: [fmt, clippy, test, msrv, sanitizers, editor]
     runs-on: ubuntu-latest
     steps:
       - run: |

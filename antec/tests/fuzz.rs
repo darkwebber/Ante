@@ -1,7 +1,7 @@
 //! Robustness: no input makes `antec` panic or overflow its stack (spec M2:
 //! "fuzzing finds no panics"). Deterministic mutations of every conformance
-//! program and example go through the checker and the formatter; deeply
-//! nested inputs must be rejected with E0216, not crash.
+//! program and example go through the checker, code generation and the
+//! formatter; deeply nested inputs must be rejected with E0216, not crash.
 
 use std::fs;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -105,6 +105,10 @@ const PIECES: &[&str] = &[
     "a ni f()",
     "...",
     "@",
+    "@peru \"x\"\n    ",
+    "sql\"",
+    "sql\"{",
+    "@automatic web.Daari\n",
     "-",
     "+",
 ];
@@ -113,7 +117,8 @@ const PIECES: &[&str] = &[
 fn exercise(name: &str, text: &str) -> Option<String> {
     let src = SourceFile::new(name, text);
     let result = catch_unwind(AssertUnwindSafe(|| {
-        let _ = antec::check_source(&src);
+        // Checking builds MIR; valid programs go on to LLVM IR too.
+        let _ = antec::package::emit_llvm_source(&src);
         if let Err(antec::fmt::FmtError::Bug(why)) = antec::fmt::format_source(&src) {
             panic!("fmt bug: {why}");
         }
@@ -131,10 +136,13 @@ fn mutated_programs_never_panic() {
     let files = sources();
     assert!(!files.is_empty());
     let originals: Vec<String> = files.iter().map(|p| fs::read_to_string(p).unwrap_or_default()).collect();
+    // Longer runs: `ANTE_FUZZ_ROUNDS=100000 ANTE_FUZZ_SEED=7 cargo test --test fuzz`.
+    let env = |k: &str, d: u64| std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d);
+    let (rounds, seed) = (env("ANTE_FUZZ_ROUNDS", 600), env("ANTE_FUZZ_SEED", 0x5eed_a17e).max(1));
     let failures = antec::on_big_stack(|| {
-        let mut rng = Rng(0x5eed_a17e);
+        let mut rng = Rng(seed);
         let mut failures = Vec::new();
-        for round in 0..600 {
+        for round in 0..rounds {
             let k = rng.below(originals.len());
             let mut chars: Vec<char> = originals[k].chars().collect();
             for _ in 0..1 + rng.below(5) {
@@ -157,6 +165,11 @@ fn mutated_programs_never_panic() {
                 }
             }
             let text: String = chars.into_iter().collect();
+            // A crash that aborts (stack overflow) can't be caught: keep the
+            // input on disk so it can be found afterwards.
+            if let Ok(path) = std::env::var("ANTE_FUZZ_DUMP") {
+                let _ = fs::write(path, &text);
+            }
             if let Some(why) = exercise("fuzz.ante", &text) {
                 failures.push(format!("round {round} (from {}): {why}\n{text}", files[k].display()));
             }

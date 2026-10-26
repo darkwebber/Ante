@@ -111,7 +111,7 @@ fn describe(kind: &TokenKind) -> String {
         TokenKind::Ident(name) => format!("`{name}`"),
         TokenKind::Keyword(kw) => format!("`{}`", kw.as_str()),
         TokenKind::Int(_) | TokenKind::Float(_) => "number".into(),
-        TokenKind::Str(_) | TokenKind::FStr(_) => "string".into(),
+        TokenKind::Str(_) | TokenKind::FStr(_) | TokenKind::SqlStr(_) => "string".into(),
         TokenKind::Char(_) => "character".into(),
         TokenKind::Newline => "line end".into(),
         TokenKind::Indent => "extra indentation".into(),
@@ -220,6 +220,12 @@ impl<'a> Parser<'a> {
                             "`{}` ee edition lo ledhu, taruvatha editions kosam reserve chesam",
                             kw.as_str()
                         ),
+                    ));
+                } else if kw.is_planned() {
+                    p.diags.push(Diagnostic::error(
+                        "E1202",
+                        tok.span,
+                        format!("`{}` spec lo undhi kaani `antec` lo inka raaledhu (M12)", kw.as_str()),
                     ));
                 }
             }
@@ -482,6 +488,18 @@ impl<'a> Parser<'a> {
         Module { items }
     }
 
+    /// `name` or `module.Name` in an annotation argument, kept as one
+    /// identifier spelled with its dots.
+    fn annotation_path(&mut self) -> PResult<Ident> {
+        let mut id = self.expect_ident("trait peru")?;
+        while self.eat(&TokenKind::Dot) {
+            let next = self.expect_ident("peru")?;
+            id.name = format!("{}.{}", id.name, next.name);
+            id.span = join(id.span, next.span);
+        }
+        Ok(id)
+    }
+
     fn parse_annotations(&mut self) -> PResult<Vec<Annotation>> {
         let mut annotations = Vec::new();
         while self.at(&TokenKind::At) {
@@ -493,9 +511,9 @@ impl<'a> Parser<'a> {
                     AnnotationArg::Str(s)
                 }
                 TokenKind::Ident(_) => {
-                    let mut names = vec![self.expect_ident("trait peru")?];
+                    let mut names = vec![self.annotation_path()?];
                     while self.eat(&TokenKind::Comma) {
-                        names.push(self.expect_ident("trait peru")?);
+                        names.push(self.annotation_path()?);
                     }
                     AnnotationArg::Names(names)
                 }
@@ -548,7 +566,7 @@ impl<'a> Parser<'a> {
             _ => {
                 let reserved = line
                     .iter()
-                    .any(|t| matches!(t.kind, TokenKind::Keyword(kw) if kw.is_reserved_for_later()));
+                    .any(|t| matches!(t.kind, TokenKind::Keyword(kw) if kw.is_reserved_for_later() || kw.is_planned()));
                 if reserved {
                     // Already reported as E1201; one error per line is enough.
                 } else if !annotations.is_empty() {
@@ -752,12 +770,13 @@ impl<'a> Parser<'a> {
             if self.eat(&TokenKind::Newline) {
                 continue;
             }
+            let annotations = self.parse_annotations()?;
             let public = self.eat_kw(Keyword::Andhariki);
             let fname = self.expect_ident("field peru")?;
             self.expect(&TokenKind::Colon, "`:` and type")?;
             let ty = self.parse_type()?;
             self.expect_newline()?;
-            fields.push(Field { public, name: fname, ty });
+            fields.push(Field { annotations, public, name: fname, ty });
         }
         self.close_suite()?;
         Ok(RecordDecl { name, generics, fields })
@@ -773,6 +792,7 @@ impl<'a> Parser<'a> {
             if self.eat(&TokenKind::Newline) {
                 continue;
             }
+            let annotations = self.parse_annotations()?;
             let vname = self.expect_ident("variant peru")?;
             let mut fields = Vec::new();
             if self.eat(&TokenKind::LParen) {
@@ -785,7 +805,7 @@ impl<'a> Parser<'a> {
                 self.expect(&TokenKind::RParen, "`)`")?;
             }
             self.expect_newline()?;
-            variants.push(Variant { name: vname, fields });
+            variants.push(Variant { annotations, name: vname, fields });
         }
         self.close_suite()?;
         Ok(EnumDecl { name, generics, variants })
@@ -1280,7 +1300,8 @@ impl<'a> Parser<'a> {
             | TokenKind::Float(_)
             | TokenKind::Str(_)
             | TokenKind::Char(_)
-            | TokenKind::FStr(_) => i,
+            | TokenKind::FStr(_)
+            | TokenKind::SqlStr(_) => i,
             TokenKind::LParen | TokenKind::LBracket => self.matching_close(i)?,
             _ => return None,
         };
@@ -1298,6 +1319,7 @@ impl<'a> Parser<'a> {
             | TokenKind::Str(_)
             | TokenKind::Char(_)
             | TokenKind::FStr(_)
+            | TokenKind::SqlStr(_)
             | TokenKind::LParen
             | TokenKind::LBracket
             | TokenKind::LBrace
@@ -1458,7 +1480,11 @@ impl<'a> Parser<'a> {
         }
         self.expect(&TokenKind::RParen, "`)`")?;
         self.expect(&TokenKind::FatArrow, "`=>`")?;
-        let body = self.parse_pipe_expr()?;
+        // `?` in a closure leaves the closure, not an enclosing `vellagane`.
+        let saved = std::mem::take(&mut self.defer_depth);
+        let body = self.parse_pipe_expr();
+        self.defer_depth = saved;
+        let body = body?;
         Ok(mk(ExprKind::Closure { moves, params, body: Box::new(body) }, self.since(start)))
     }
 
@@ -1559,6 +1585,7 @@ impl<'a> Parser<'a> {
                             | TokenKind::Str(_)
                             | TokenKind::Char(_)
                             | TokenKind::FStr(_)
+                            | TokenKind::SqlStr(_)
                             | TokenKind::Minus
                             | TokenKind::Keyword(Keyword::Avunu | Keyword::Kaadhu)
                     ) {
@@ -1633,7 +1660,10 @@ impl<'a> Parser<'a> {
                     expr = mk(ExprKind::Ctor { path, args }, self.since(start));
                 }
                 TokenKind::Question => {
-                    self.advance();
+                    let span = self.advance().span;
+                    if self.defer_depth > 0 {
+                        self.error("E0214", span, "`vellagane` block lo `?` vaadakoodadhu");
+                    }
                     expr = mk(ExprKind::Try(Box::new(expr)), self.since(start));
                 }
                 _ => break,
@@ -1745,6 +1775,10 @@ impl<'a> Parser<'a> {
             TokenKind::FStr(parts) => {
                 self.advance();
                 ExprKind::FStr(self.parse_fstring_parts(parts))
+            }
+            TokenKind::SqlStr(parts) => {
+                self.advance();
+                ExprKind::Sql(self.parse_fstring_parts(parts))
             }
             TokenKind::Keyword(Keyword::Avunu) => {
                 self.advance();

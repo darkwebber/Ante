@@ -1,0 +1,16 @@
+# category: compile-fail
+# expect-error: E0214 @ 12:14
+# level: core
+# `?` inside `vellagane`, even in a nested block, is E0214 (§19.4).
+edho_okati Thappu ante:
+    Chedindhi
+
+pani_cheyyi(x: ankam ni) -> sare_thappu[khali, Thappu] ante:
+    vellagane:
+        x > 1 aithe:
+            y: sare_thappu[khali, Thappu] ante thappu(Thappu.Chedindhi)
+            y?
+    sare(()) icchey
+
+modhalu() -> khali ante:
+    1 ni pani_cheyyi() |> choopinchu()
