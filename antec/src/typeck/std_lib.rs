@@ -80,22 +80,16 @@ impl Collector<'_> {
             let module = if file.module == "prelude" { 0 } else { self.res().module_by_name[file.module] };
             self.load_std_items(module, &file.ast);
         }
-        // Marker traits.
-        for (name, params) in [("CopyKottochu", 0)] {
-            if let Some(&def) = self.globals.std_traits.get(name) {
-                let mut generics = vec![Generic { name: "idhi".into(), bounds: Vec::new(), is_const: false }];
-                if params == 1 {
-                    generics.push(Generic { name: "F".into(), bounds: Vec::new(), is_const: false });
-                }
-                self.globals.traits.entry(def).or_insert(super::Trait {
-                    name: name.into(),
-                    generics,
-                    methods: Vec::new(),
-                    defaults: Default::default(),
-                    module: 0,
-                    file: None,
-                });
-            }
+        // The marker trait.
+        if let Some(&def) = self.globals.std_traits.get("CopyKottochu") {
+            self.globals.traits.entry(def).or_insert(super::Trait {
+                name: "CopyKottochu".into(),
+                generics: vec![Generic { name: "idhi".into(), bounds: Vec::new(), is_const: false }],
+                methods: Vec::new(),
+                defaults: Default::default(),
+                module: 0,
+                file: None,
+            });
         }
     }
 
