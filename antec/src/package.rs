@@ -328,9 +328,14 @@ fn private_temp_dir() -> Result<PathBuf, String> {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
         let seed = format!("{}-{nanos}-{attempt}-{:p}", std::process::id(), &last);
         let dir = base.join(format!("antec-{:016x}", fnv1a(seed.as_bytes())));
-        let mut builder = fs::DirBuilder::new();
         #[cfg(unix)]
-        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        let builder = {
+            let mut b = fs::DirBuilder::new();
+            std::os::unix::fs::DirBuilderExt::mode(&mut b, 0o700);
+            b
+        };
+        #[cfg(not(unix))]
+        let builder = fs::DirBuilder::new();
         match builder.create(&dir) {
             Ok(()) => return Ok(dir),
             Err(e) => last = e.to_string(),
