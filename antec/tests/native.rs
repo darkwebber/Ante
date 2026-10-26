@@ -48,7 +48,10 @@ fn clang_available() -> bool {
 #[test]
 fn native_matches_expectations() {
     if !clang_available() {
-        assert!(std::env::var_os("ANTE_REQUIRE_NATIVE").is_none(), "ANTE_REQUIRE_NATIVE set, kaani clang ledhu");
+        assert!(
+            std::env::var_os("ANTE_REQUIRE_NATIVE").is_none(),
+            "ANTE_REQUIRE_NATIVE set, kaani clang ledhu"
+        );
         eprintln!("note: clang dorakaledhu, native tests skip chesthunnam");
         return;
     }
