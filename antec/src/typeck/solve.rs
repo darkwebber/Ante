@@ -226,7 +226,7 @@ impl Solver<'_, '_> {
                 }
             }
             // Arithmetic on the built-in numbers, and `padham + padham` (§10.5.2).
-            "Kalupochu" | "Theeseyochu" | "Guninchochu" | "Panchochu" | "Sheshamochu" | "Thippochu" => {
+            "Kalupochu" | "Theeseyochu" | "Guninchochu" | "Panchochu" | "Migulochu" | "Thippochu" => {
                 let builtin = match name {
                     "Kalupochu" => matches!(ty, Ty::Int(_) | Ty::Float(_) | Ty::Str),
                     "Thippochu" => matches!(ty, Ty::Int(IntTy { signed: true, .. }) | Ty::Float(_)),

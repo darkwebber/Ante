@@ -1,0 +1,15 @@
+# category: compile-fail
+# expect-error: E0601 @ 15:5
+# level: core
+# After a partial move the value can't be used as a whole (§15.1.2).
+rakam Jodu ante:
+    a: padham
+    b: padham
+
+chupinchu(j: Jodu ni) -> khali ante:
+    j.b ni choopinchu()
+
+modhalu() -> khali ante:
+    j ante Jodu{a: "x", b: "y"}
+    x ante j.a
+    j ni chupinchu()

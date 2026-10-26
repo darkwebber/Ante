@@ -1,0 +1,26 @@
+# category: run-pass
+# expect-stdout: got x
+# expect-stdout: x sardhu
+# expect-stdout: end
+# expect-stdout: y sardhu
+# level: core
+# An arm that moves one field leaves the rest to be dropped with the scrutinee (§19.3).
+rakam Gadi ante:
+    peru: padham
+
+Gadi ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"{peru} sardhu" ni choopinchu()
+
+edho_okati Pani ante:
+    Rendu(Gadi, Gadi)
+    Okati(Gadi)
+
+modhalu() -> khali ante:
+    p ante Pani.Rendu(Gadi{peru: "x"}, Gadi{peru: "y"})
+    p batti:
+        Pani.Rendu(a, _) aithe:
+            f"got {a.peru}" ni choopinchu()
+        Pani.Okati(g) aithe:
+            g.peru ni choopinchu()
+    "end" ni choopinchu()

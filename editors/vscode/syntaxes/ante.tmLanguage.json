@@ -43,7 +43,7 @@
       "patterns": [
         {
           "name": "string.quoted.double.interpolated.ante",
-          "begin": "\\b(f)(\")",
+          "begin": "\\b(f|sql)(\")",
           "beginCaptures": {
             "1": { "name": "storage.type.string.ante" },
             "2": { "name": "punctuation.definition.string.begin.ante" }
@@ -126,7 +126,7 @@
         { "name": "variable.language.ante", "match": "\\b(naa|idhi)\\b" },
         {
           "name": "invalid.deprecated.reserved.ante",
-          "match": "\\b(edhaina|kitiki|panchukunna|gurinchi|async|await|yield)\\b"
+          "match": "\\b(edhaina|kitiki|gurinchi|async|await|yield)\\b"
         }
       ]
     },
@@ -134,7 +134,7 @@
       "patterns": [
         {
           "name": "support.type.builtin.ante",
-          "match": "\\b(ankam(?:8|16|32|64)?|aasajeevi|amsam(?:32|64)?|ato_ito|padham|aksharam|jatha|jodi|undochu|varusa|mukka|sare_thappu|pani|pette|khali|raadhu|gumpu|gajibiji_jodi)\\b"
+          "match": "\\b(ankam(?:8|16|32|64)?|aasajeevi|amsam(?:32|64)?|ato_ito|padham|aksharam|jatha|jodi|undochu|varusa|mukka|sare_thappu|pani|pette|khali|raadhu|gumpu|gajibiji_jodi|panchukunna)\\b"
         },
         { "name": "entity.name.type.ante", "match": "\\b[A-Z][A-Za-z0-9_]*\\b" }
       ]

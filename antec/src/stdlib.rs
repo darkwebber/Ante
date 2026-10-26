@@ -75,14 +75,47 @@ pub const PRELUDE_TRAITS: &[&str] = &[
     "Theeseyochu",
     "Guninchochu",
     "Panchochu",
-    "Sheshamochu",
+    "Migulochu",
     "Thippochu",
     "MatmulCheyochu",
     "NunchiRavochu",
 ];
 
 /// Annotations the compiler knows (§13.6, §18.3, §22, §23.3).
-pub const ANNOTATIONS: &[&str] = &["pariksha", "vegam", "automatic", "bayata", "C"];
+pub const ANNOTATIONS: &[&str] = &["pariksha", "twaraga", "automatic", "bayata", "C"];
+
+/// Renamed words (old, new) that still work with warning W0100 for one
+/// minor release (§23.5, docs/VERSIONING.md). Spec r7 replaced these
+/// with the words people actually say.
+pub const RENAMED: &[(&str, &str)] = &[
+    ("vegam", "twaraga"),
+    ("byte_bhaagam", "byte_mukka"),
+    ("mugimpu", "chaalu"),
+    ("Sheshamochu", "Migulochu"),
+    ("shesham", "migulu"),
+];
+
+/// The new spelling of a renamed word.
+pub fn renamed(old: &str) -> Option<&'static str> {
+    RENAMED.iter().find(|(o, _)| *o == old).map(|(_, n)| *n)
+}
+
+/// W0100's message.
+pub fn renamed_message(old: &str, new: &str) -> String {
+    format!("`{old}` peru maarindhi, ippudu `{new}` ani raayandi (`{old}` next release lo pothundhi)")
+}
+
+/// Item annotations the spec defines that `antec` doesn't implement yet
+/// (E1202): Part IX and Annex W.
+pub const PLANNED_ANNOTATIONS: &[&str] = &["server", "theliyanivi_vadhiley"];
+
+/// Field and variant annotations (§25.2.3, Annex W.10), not implemented yet.
+pub const PLANNED_MEMBER_ANNOTATIONS: &[&str] =
+    &["peru", "lekapothe_kotthadhi", "dhaachu", "daari", "dorakaledhu"];
+
+/// Standard traits of Part IX and Annex W that `@automatic` will derive.
+pub const PLANNED_TRAITS: &[&str] =
+    &["Raayochu", "Chadhavochu", "Kotthadhi", "Pampochu", "Panchukovochu", "web.Daari"];
 
 pub struct StdModule {
     pub name: &'static str,

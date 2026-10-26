@@ -1,0 +1,11 @@
+# category: run-pass
+# expect-stdout: 2
+# expect-stdout: [1, 2, 3]
+# level: core
+# A shared loan ends at its last use, not at the end of the block (§15.4.2).
+modhalu() -> khali ante:
+    maare v ante [1, 2]
+    r ante &v
+    r.enni() ni choopinchu()
+    3 ni v.cherchu()
+    v ni choopinchu()

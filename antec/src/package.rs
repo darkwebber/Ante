@@ -161,6 +161,12 @@ pub fn check_single(src: &SourceFile) -> Vec<Diagnostic> {
     compile(loaded, Action::Check).diagnostics.into_iter().map(|(_, d)| d).collect()
 }
 
+/// Checks a lone file and generates its LLVM IR (in `Checked::mir`).
+pub fn emit_llvm_source(src: &SourceFile) -> Checked {
+    let loaded = load_single(SourceFile::new(src.name.clone(), src.text.clone()));
+    compile(loaded, Action::EmitLlvm)
+}
+
 /// Checks and runs a lone file's `modhalu`, capturing its output.
 pub fn run_source(src: &SourceFile) -> Checked {
     let loaded = load_single(SourceFile::new(src.name.clone(), src.text.clone()));
@@ -194,7 +200,16 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
         diagnostics.retain(|(_, d)| d.is_error());
         return finish(sources, diagnostics, None, None);
     }
-    let program = crate::mir::build_program(&modules, &tc);
+    let mut program = crate::mir::build_program(&modules, &tc);
+    diagnostics.extend(program.errors.iter().cloned());
+    if failed(&diagnostics) {
+        return finish(sources, diagnostics, None, None);
+    }
+    diagnostics.extend(crate::mir::borrow_check(&program, &tc.globals, &sources));
+    if failed(&diagnostics) {
+        return finish(sources, diagnostics, None, None);
+    }
+    crate::mir::elaborate_drops(&mut program, &tc.globals);
     diagnostics.extend(crate::interp::eval_consts(&program, &tc, &sources));
     if failed(&diagnostics) {
         diagnostics.retain(|(_, d)| d.is_error());

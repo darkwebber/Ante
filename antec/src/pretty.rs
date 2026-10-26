@@ -107,8 +107,8 @@ fn sig(s: &FnSig) -> String {
     )
 }
 
-fn write_item(out: &mut String, item: &Item, depth: usize) {
-    for a in &item.annotations {
+fn write_annotations(out: &mut String, annotations: &[Annotation], depth: usize) {
+    for a in annotations {
         let arg = match &a.arg {
             AnnotationArg::None => String::new(),
             AnnotationArg::Str(s) => format!(" {}", quote(s, '"')),
@@ -118,6 +118,10 @@ fn write_item(out: &mut String, item: &Item, depth: usize) {
         };
         line(out, depth, &format!("@{}{}", a.name.name, arg));
     }
+}
+
+fn write_item(out: &mut String, item: &Item, depth: usize) {
+    write_annotations(out, &item.annotations, depth);
     let public = if item.public { "andhariki " } else { "" };
     match &item.kind {
         ItemKind::Import(imp) => {
@@ -139,6 +143,7 @@ fn write_item(out: &mut String, item: &Item, depth: usize) {
         ItemKind::Record(r) => {
             line(out, depth, &format!("({public}rakam {}{}", r.name.name, generics(&r.generics)));
             for f in &r.fields {
+                write_annotations(out, &f.annotations, depth + 1);
                 let p = if f.public { "andhariki " } else { "" };
                 line(out, depth + 1, &format!("({p}{} {})", f.name.name, ty(&f.ty)));
             }
@@ -147,6 +152,7 @@ fn write_item(out: &mut String, item: &Item, depth: usize) {
         ItemKind::Enum(e) => {
             line(out, depth, &format!("({public}edho_okati {}{}", e.name.name, generics(&e.generics)));
             for v in &e.variants {
+                write_annotations(out, &v.annotations, depth + 1);
                 if v.fields.is_empty() {
                     line(out, depth + 1, &v.name.name);
                 } else {
@@ -324,6 +330,16 @@ pub fn expr(e: &Expr) -> String {
                 })
                 .collect();
             format!("(fstr {})", parts.join(" "))
+        }
+        ExprKind::Sql(parts) => {
+            let parts: Vec<String> = parts
+                .iter()
+                .map(|p| match p {
+                    FStrPart::Text(t) => quote(t, '"'),
+                    FStrPart::Expr(e) => expr(e),
+                })
+                .collect();
+            format!("(sql {})", parts.join(" "))
         }
         ExprKind::Bool(true) => "avunu".into(),
         ExprKind::Bool(false) => "kaadhu".into(),

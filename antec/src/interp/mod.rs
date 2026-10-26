@@ -629,6 +629,12 @@ impl<'a> Machine<'a> {
                 let ty = self.subst(ty);
                 self.drop_value(old, &ty)?;
             }
+            Stmt::FreeBox(p, _) => {
+                // The contents were moved out; only the box itself goes.
+                let a = self.addr(p)?;
+                *self.read_mut(&a) = Value::Uninit;
+            }
+            Stmt::StorageDead(_) => {}
         }
         Ok(())
     }
@@ -846,7 +852,8 @@ impl<'a> Machine<'a> {
                         return Err(self.trap("T02", "sunna (0) tho bhaagham cheyyalem", span));
                     }
                     if it.signed && b == -1 && a == it.range().0 {
-                        return Err(self.overflow(it, format_args!("{a} / -1"), span));
+                        let sym = if op == Div { "/" } else { "%" };
+                        return Err(self.overflow(it, format_args!("{a} {sym} -1"), span));
                     }
                     Value::Int(if op == Div { a / b } else { a % b })
                 }

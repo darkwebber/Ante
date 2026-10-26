@@ -33,22 +33,65 @@ fn names(line: &str) -> Vec<(usize, usize)> {
     out
 }
 
-/// `%x = load T, ptr %l` → (`%x`, `T`, `%l`).
-fn as_load(line: &str) -> Option<(&str, &str, &str)> {
-    let (dest, rest) = line.trim().split_once(" = load ")?;
-    let (ty, ptr) = rest.rsplit_once(", ptr ")?;
-    (!ptr.contains(' ') && !ty.contains("volatile")).then_some((dest, ty, ptr))
+/// One line of a function, classified once.
+#[derive(Clone, Copy)]
+enum Line<'a> {
+    /// `%x = load T, ptr %l`
+    Load {
+        dest: &'a str,
+        ty: &'a str,
+        ptr: &'a str,
+    },
+    /// `store T v, ptr %l` (`typed` is `T v`)
+    Store {
+        typed: &'a str,
+        ptr: &'a str,
+    },
+    /// `%l = alloca T`
+    Alloca {
+        name: &'a str,
+        ty: &'a str,
+    },
+    Label,
+    Other,
 }
 
-/// `store T v, ptr %l` → (`T v`, `%l`).
-fn as_store(line: &str) -> Option<(&str, &str)> {
-    let rest = line.trim().strip_prefix("store ")?;
-    let (typed, ptr) = rest.rsplit_once(", ptr ")?;
-    (!ptr.contains(' ') && !typed.contains("volatile")).then_some((typed, ptr))
+/// `%x = load T, ptr %l` and friends. Plain prefix checks: this runs on
+/// every line of every function, so no substring searching.
+fn classify(line: &str) -> Line<'_> {
+    if !line.starts_with(' ') {
+        return if line.ends_with(':') { Line::Label } else { Line::Other };
+    }
+    let t = line.trim();
+    if let Some(rest) = t.strip_prefix("store ") {
+        if let Some((typed, ptr)) = split_last_ptr(rest) {
+            if !typed.starts_with("volatile") {
+                return Line::Store { typed, ptr };
+            }
+        }
+        return Line::Other;
+    }
+    if t.starts_with('%') {
+        let Some(eq) = t.find(" = ") else { return Line::Other };
+        let (dest, rest) = (&t[..eq], &t[eq + 3..]);
+        if let Some(rest) = rest.strip_prefix("load ") {
+            if let Some((ty, ptr)) = split_last_ptr(rest) {
+                if !ty.starts_with("volatile") {
+                    return Line::Load { dest, ty, ptr };
+                }
+            }
+        } else if let Some(ty) = rest.strip_prefix("alloca ") {
+            return Line::Alloca { name: dest, ty };
+        }
+    }
+    Line::Other
 }
 
-fn is_label(line: &str) -> bool {
-    !line.starts_with(' ') && line.ends_with(':')
+/// `X, ptr %p` → (`X`, `%p`) when the pointer is a plain name.
+fn split_last_ptr(rest: &str) -> Option<(&str, &str)> {
+    let i = rest.rfind(", ptr ")?;
+    let ptr = &rest[i + 6..];
+    (ptr.starts_with('%') && !ptr.contains(' ')).then_some((&rest[..i], ptr))
 }
 
 /// Splits `T v` into the type and the value, where the type may itself
@@ -59,31 +102,41 @@ fn split_typed<'l>(typed: &'l str, ty: &str) -> Option<&'l str> {
 
 pub(super) fn optimize(func: &str) -> String {
     let lines: Vec<&str> = func.lines().collect();
+    let kinds: Vec<Line> = lines.iter().map(|l| classify(l)).collect();
     // Slots: `%lN = alloca T` / `%fN = alloca i1`.
     let mut slot_ty: HashMap<&str, &str> = HashMap::new();
-    for l in &lines {
-        if let Some((name, ty)) = l.trim().split_once(" = alloca ") {
+    for k in &kinds {
+        if let Line::Alloca { name, ty } = *k {
             if name.starts_with("%l") || name.starts_with("%f") {
                 slot_ty.insert(name, ty);
             }
         }
     }
+    if slot_ty.is_empty() {
+        let mut out = func.to_string();
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        return out;
+    }
     // A slot escapes if it's used any other way than as a load/store pointer.
     let mut escaped: HashSet<&str> = HashSet::new();
-    for l in &lines {
+    for (l, k) in lines.iter().zip(&kinds) {
+        let target = match *k {
+            Line::Alloca { .. } | Line::Label => continue,
+            Line::Load { ptr, .. } | Line::Store { ptr, .. } => Some(ptr),
+            Line::Other => None,
+        };
         let t = l.trim();
-        if t.contains(" = alloca ") {
-            continue;
-        }
-        let ptr_use = as_load(t).map(|(_, _, p)| p).or_else(|| as_store(t).map(|(_, p)| p));
         let toks = names(t);
-        for &(a, b) in &toks {
+        for (i, &(a, b)) in toks.iter().enumerate() {
             let n = &t[a..b];
             if slot_ty.contains_key(n) {
-                // The pointer of a plain load/store is the line's last token.
-                let uses = toks.iter().filter(|&&(x, y)| &t[x..y] == n).count();
-                let is_target = ptr_use == Some(n) && b == t.len() && uses == 1;
-                if !is_target {
+                // The pointer of a plain load/store is the line's last token,
+                // and it appears nowhere else on the line.
+                let last = i + 1 == toks.len() && b == t.len();
+                let once = toks.iter().filter(|&&(x, y)| &t[x..y] == n).count() == 1;
+                if !(target == Some(n) && last && once) {
                     escaped.insert(n);
                 }
             }
@@ -91,65 +144,52 @@ pub(super) fn optimize(func: &str) -> String {
     }
     let simple = |n: &str| slot_ty.contains_key(n) && !escaped.contains(n);
 
-    // Forward stores to loads within a block.
-    let mut rename: HashMap<String, String> = HashMap::new();
-    let resolve = |rename: &HashMap<String, String>, v: &str| -> String {
-        let mut v = v.to_string();
-        while let Some(next) = rename.get(&v) {
-            v = next.clone();
-        }
-        v
-    };
+    // Forward stores to loads within a block. Renames are resolved when
+    // they're recorded, so every value maps straight to its final name.
+    let mut rename: HashMap<&str, &str> = HashMap::new();
     let mut drop_line = vec![false; lines.len()];
-    let mut known: HashMap<&str, (String, String)> = HashMap::new();
-    for (i, l) in lines.iter().enumerate() {
-        if is_label(l) {
-            known.clear();
-            continue;
-        }
-        if let Some((typed, ptr)) = as_store(l) {
-            if simple(ptr) {
+    let mut known: HashMap<&str, (&str, &str)> = HashMap::new();
+    for (i, k) in kinds.iter().enumerate() {
+        match *k {
+            Line::Label => known.clear(),
+            Line::Store { typed, ptr } if simple(ptr) => {
                 let ty = slot_ty[ptr];
                 match split_typed(typed, ty) {
                     Some(v) => {
-                        known.insert(ptr, (ty.to_string(), resolve(&rename, v)));
+                        let v = rename.get(v).copied().unwrap_or(v);
+                        known.insert(ptr, (ty, v));
                     }
                     None => {
                         known.remove(ptr);
                     }
                 }
             }
-        } else if let Some((dest, ty, ptr)) = as_load(l) {
-            if simple(ptr) {
-                if let Some((sty, v)) = known.get(ptr) {
+            Line::Load { dest, ty, ptr } if simple(ptr) => {
+                if let Some(&(sty, v)) = known.get(ptr) {
                     if sty == ty {
-                        rename.insert(dest.to_string(), v.clone());
+                        rename.insert(dest, v);
                         drop_line[i] = true;
                     }
                 }
             }
+            _ => {}
         }
     }
 
     // Slots never loaded any more: their stores and allocas go.
     let mut loaded: HashSet<&str> = HashSet::new();
-    for (i, l) in lines.iter().enumerate() {
-        if !drop_line[i] {
-            if let Some((_, _, p)) = as_load(l) {
-                loaded.insert(p);
+    for (i, k) in kinds.iter().enumerate() {
+        if let Line::Load { ptr, .. } = *k {
+            if !drop_line[i] {
+                loaded.insert(ptr);
             }
         }
     }
-    for (i, l) in lines.iter().enumerate() {
-        let t = l.trim();
-        let dead = |p: &str| simple(p) && !loaded.contains(p);
-        if as_store(t).is_some_and(|(_, p)| dead(p)) {
-            drop_line[i] = true;
-        }
-        if let Some((name, _)) = t.split_once(" = alloca ") {
-            if dead(name) {
-                drop_line[i] = true;
-            }
+    let dead = |p: &str| simple(p) && !loaded.contains(p);
+    for (i, k) in kinds.iter().enumerate() {
+        match *k {
+            Line::Store { ptr, .. } | Line::Alloca { name: ptr, .. } if dead(ptr) => drop_line[i] = true,
+            _ => {}
         }
     }
 
@@ -158,14 +198,14 @@ pub(super) fn optimize(func: &str) -> String {
         if drop_line[i] {
             continue;
         }
-        if rename.is_empty() {
+        if rename.is_empty() || !l.contains('%') {
             out.push_str(l);
         } else {
             let mut last = 0;
             for (a, b) in names(l) {
                 if let Some(v) = rename.get(&l[a..b]) {
                     out.push_str(&l[last..a]);
-                    out.push_str(&resolve(&rename, v));
+                    out.push_str(v);
                     last = b;
                 }
             }

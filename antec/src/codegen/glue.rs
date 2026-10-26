@@ -738,16 +738,21 @@ fn drop_into(fx: &mut Fx, ty: &Ty, v: &str) {
                 call_drop(fx, t, p);
             }
         }
+        Ty::Str => fx.emit(format!("call void @ante_buf_free(ptr {v})")),
         Ty::Array(..) | Ty::App(Con::Varusa, _) => {
             if let Some((data, len, elem)) = seq_at(fx, ty, v) {
                 if fx.needs_drop(&elem) {
                     each(fx, &data, &len, &elem, &mut |fx, p, _| call_drop(fx, &elem, p));
                 }
             }
+            if matches!(ty, Ty::App(..)) {
+                fx.emit(format!("call void @ante_buf_free(ptr {v})"));
+            }
         }
         Ty::App(Con::Pette, a) => {
             let p = fx.load("ptr", v);
             call_drop(fx, &a[0], &p);
+            fx.emit(format!("call void @free(ptr {p})"));
         }
         Ty::App(Con::Undochu | Con::SareThappu | Con::Adt(_), _) => {
             if !fx.gen.is_enum(ty) {

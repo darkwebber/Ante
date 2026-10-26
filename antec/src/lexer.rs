@@ -164,7 +164,10 @@ impl<'a> Scanner<'a> {
         }
         let word = &text[start..self.pos];
         if word == "f" && self.peek() == Some(b'"') {
-            return TokenKind::FStr(self.scan_fstring());
+            return TokenKind::FStr(self.scan_fstring(1));
+        }
+        if word == "sql" && self.peek() == Some(b'"') {
+            return TokenKind::SqlStr(self.scan_fstring(3));
         }
         if word == "_" {
             return TokenKind::Underscore;
@@ -389,9 +392,10 @@ impl<'a> Scanner<'a> {
     }
 
     /// Scans an f-string; `self.pos` is at the `"` after the `f`.
-    fn scan_fstring(&mut self) -> Vec<FPart> {
+    /// An f-string (or `sql"…"`) whose `prefix`-byte prefix was just read.
+    fn scan_fstring(&mut self, prefix: usize) -> Vec<FPart> {
         let text_src = self.text;
-        let start = self.pos - 1;
+        let start = self.pos - prefix;
         self.pos += 1;
         let mut parts = Vec::new();
         let mut text = String::new();

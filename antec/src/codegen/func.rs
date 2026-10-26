@@ -537,6 +537,14 @@ impl<'g, 'a> Fx<'g, 'a> {
 
     fn stmt(&mut self, s: &Stmt) {
         match s {
+            // `s += t` on text appends in place (amortized growth) instead
+            // of building a new text every time.
+            Stmt::Assign(p, Rvalue::Binary(BinOp::Add, OpTy::Str, Operand::Copy(lhs), b, _)) if lhs == p => {
+                let y = self.operand(b, &Ty::Str);
+                let py = self.spill("%str", &y);
+                let pr = self.place(p);
+                self.emit(format!("call void @ante_str_append(ptr {}, ptr {py})", pr.ptr));
+            }
             Stmt::Assign(p, rv) => {
                 let want = self.place_ty(p);
                 let v = self.rvalue(rv, &want);
@@ -585,6 +593,13 @@ impl<'g, 'a> Fx<'g, 'a> {
                     _ => self.emit(format!("call void {d}(ptr {})", pr.ptr)),
                 }
             }
+            Stmt::FreeBox(p, _) => {
+                // The contents were moved out; only the allocation goes.
+                let pr = self.place(p);
+                let b = self.load("ptr", &pr.ptr);
+                self.emit(format!("call void @free(ptr {b})"));
+            }
+            Stmt::StorageDead(_) => {}
         }
     }
 

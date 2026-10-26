@@ -614,14 +614,64 @@ impl Resolver {
 
     // ── pass 4: items and bodies ───────────────────────────────────────────
 
+    /// Annotations on record fields and enum variants: all of them belong to
+    /// features that this compiler doesn't implement yet (Part IX, Annex W).
+    fn check_member_annotations(&mut self, annotations: &[Annotation]) {
+        for a in annotations {
+            let name = a.name.name.as_str();
+            if stdlib::PLANNED_MEMBER_ANNOTATIONS.contains(&name) {
+                self.not_yet(a.name.span, &format!("`@{name}`"));
+            } else if stdlib::ANNOTATIONS.contains(&name) || stdlib::PLANNED_ANNOTATIONS.contains(&name) {
+                self.error(
+                    "E1307",
+                    a.name.span,
+                    format!("`@{name}` ikkada raayakoodadhu, declaration mundhu matrame"),
+                );
+            } else {
+                self.error("E0301", a.name.span, format!("`@{name}` ane annotation ledhu"));
+            }
+        }
+    }
+
+    /// E1202: defined by the spec, not implemented by `antec` yet.
+    fn not_yet(&mut self, span: Span, what: &str) {
+        self.error(
+            "E1202",
+            span,
+            format!("{what} spec lo undhi kaani `antec` lo inka raaledhu (Appendix E roadmap choodandi)"),
+        );
+    }
+
     fn check_annotations(&mut self, annotations: &[Annotation]) {
         for a in annotations {
+            let renamed = stdlib::renamed(&a.name.name).filter(|n| stdlib::ANNOTATIONS.contains(n));
+            if let Some(new) = renamed {
+                let message = stdlib::renamed_message(&a.name.name, new);
+                self.diags.push((self.file, Diagnostic::warning("W0100", a.name.span, message)));
+                continue;
+            }
+            if stdlib::PLANNED_ANNOTATIONS.contains(&a.name.name.as_str()) {
+                self.not_yet(a.name.span, &format!("`@{}`", a.name.name));
+                continue;
+            }
+            if stdlib::PLANNED_MEMBER_ANNOTATIONS.contains(&a.name.name.as_str()) {
+                self.error(
+                    "E1307",
+                    a.name.span,
+                    format!("`@{}` field leka variant mundhu matrame raayali", a.name.name),
+                );
+                continue;
+            }
             if !stdlib::ANNOTATIONS.contains(&a.name.name.as_str()) {
                 self.error("E0301", a.name.span, format!("`@{}` ane annotation ledhu", a.name.name));
                 continue;
             }
             if let AnnotationArg::Names(names) = &a.arg {
                 for n in names {
+                    if stdlib::PLANNED_TRAITS.contains(&n.name.as_str()) {
+                        self.not_yet(n.span, &format!("`{}` gunam", n.name));
+                        continue;
+                    }
                     match self.lookup_type(&n.name) {
                         Some(d) if self.defs[d].kind.is_trait() => self.record(n.span, Res::Def(d)),
                         Some(_) => self.error("E0301", n.span, format!("`{}` gunam (trait) kaadhu", n.name)),
@@ -650,6 +700,7 @@ impl Resolver {
                 ItemKind::Record(r) => {
                     self.push_generics(&r.generics);
                     for field in &r.fields {
+                        self.check_member_annotations(&field.annotations);
                         self.public_sig = item.public && field.public;
                         self.resolve_type(&field.ty);
                     }
@@ -660,6 +711,7 @@ impl Resolver {
                     self.push_generics(&e.generics);
                     self.public_sig = item.public;
                     for v in &e.variants {
+                        self.check_member_annotations(&v.annotations);
                         for t in &v.fields {
                             self.resolve_type(t);
                         }
@@ -911,7 +963,7 @@ impl Resolver {
             | ExprKind::BareSare
             | ExprKind::Unit
             | ExprKind::Hole => {}
-            ExprKind::FStr(parts) => {
+            ExprKind::FStr(parts) | ExprKind::Sql(parts) => {
                 for part in parts {
                     if let FStrPart::Expr(e) = part {
                         self.resolve_expr(e);
@@ -1133,7 +1185,14 @@ impl Resolver {
                 return;
             }
         }
-        let Some(d) = self.lookup_type(name) else {
+        let found = self.lookup_type(name).or_else(|| {
+            let new = stdlib::renamed(name)?;
+            let d = self.lookup_type(new)?;
+            let message = stdlib::renamed_message(name, new);
+            self.diags.push((self.file, Diagnostic::warning("W0100", first.span, message)));
+            Some(d)
+        });
+        let Some(d) = found else {
             self.error(
                 "E0301",
                 first.span,

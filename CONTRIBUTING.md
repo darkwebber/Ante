@@ -71,6 +71,18 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+Parser, codegen leka runtime maaristhe, konchem lothuga test cheyyandi. Long fuzz run (seed maaristhe kottha inputs):
+
+```bash
+ANTE_FUZZ_ROUNDS=100000 ANTE_FUZZ_SEED=7 cargo test --release --test fuzz
+```
+
+Native programs ni AddressSanitizer tho (CI lo kuda idhe run avthundhi). `asan-cc` ane chinna script lo `exec clang -fsanitize=address,undefined -g "$@"` raasi:
+
+```bash
+ANTE_CC=./asan-cc ASAN_OPTIONS=handle_segv=0:detect_leaks=0 cargo test --release --test native
+```
+
 > **External drive (exFAT) meedha unte:** Cargo "hard linking" warning isthundhi. Adhi harmless. Vaddhu anukunte `CARGO_TARGET_DIR` ni internal disk lo oka folder ki set cheyyandi.
 
 ## Workflow

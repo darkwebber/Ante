@@ -767,7 +767,7 @@ impl Machine<'_> {
                     "Theeseyochu.theesey" => crate::ast::BinOp::Sub,
                     "Guninchochu.guninchu" => crate::ast::BinOp::Mul,
                     "Panchochu.panchu" => crate::ast::BinOp::Div,
-                    "Sheshamochu.shesham" => crate::ast::BinOp::Rem,
+                    "Migulochu.migulu" => crate::ast::BinOp::Rem,
                     "Thippochu.thippu" => {
                         let x = self.target(&arg(0)).clone();
                         let t = crate::mir::build_op_ty(&ty);
@@ -958,7 +958,7 @@ impl Machine<'_> {
                     Err(e) => Value::err(thappu_record(format!("UTF-8 kaadhu: {e}"))),
                 })
             }
-            "padham.byte_bhaagam" => {
+            "padham.byte_mukka" => {
                 let s = self.arg_str(&arg(0));
                 let (a, b) = (arg(1).int(), arg(2).int());
                 let part = (a >= 0 && b >= a).then(|| s.get(a as usize..b as usize)).flatten();
@@ -1232,7 +1232,7 @@ impl Machine<'_> {
                 self.hash_into(&arg(0), &k);
                 Ok(Value::Unit)
             }
-            "Hasher.mugimpu" => Ok(match self.target(&arg(0)) {
+            "Hasher.chaalu" => Ok(match self.target(&arg(0)) {
                 Value::Adt(_, fs) => fs.first().cloned().unwrap_or(Value::Int(0)),
                 _ => Value::Int(0),
             }),

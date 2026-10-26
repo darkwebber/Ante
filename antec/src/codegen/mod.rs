@@ -170,6 +170,9 @@ declare void @ante_trap_shift(i64, i32, ptr) noreturn
 declare void @ante_trap_code(i32, ptr) noreturn
 declare ptr @ante_alloc(i64)
 declare void @ante_vec_push(ptr, ptr, i64)
+declare void @ante_buf_free(ptr)
+declare void @ante_str_append(ptr, ptr)
+declare void @free(ptr)
 declare void @ante_vec_extend(ptr, ptr, i64, i64)
 declare void @ante_sort(ptr, i64, i64, ptr, ptr)
 declare void @ante_str_concat(ptr, ptr, ptr)

@@ -3,13 +3,17 @@
 //! Appendix E). The interpreter (`crate::interp`) runs it; later milestones
 //! borrow-check it (M8) and generate LLVM IR from it (M7).
 
+mod borrowck;
 mod build;
+mod elaborate;
 
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
+pub use borrowck::check as borrow_check;
 pub use build::{build_program, needs_drop_ty, op_ty as build_op_ty};
+pub use elaborate::elaborate_drops;
 
 use crate::ast::{BinOp, UnOp};
 use crate::resolve::{DefId, FileId};
@@ -29,6 +33,8 @@ pub struct Program {
     pub bodies: Vec<Body>,
     pub fn_bodies: HashMap<FnId, BodyId>,
     pub const_bodies: HashMap<DefId, BodyId>,
+    /// Errors found while lowering (moves out of closure captures).
+    pub errors: Vec<(FileId, crate::diag::Diagnostic)>,
 }
 
 #[derive(Clone, Debug)]
@@ -107,7 +113,22 @@ pub struct LocalDecl {
 
 pub struct Block {
     pub stmts: Vec<Stmt>,
+    /// The source span of each statement, for diagnostics.
+    pub spans: Vec<Span>,
     pub term: Term,
+    pub term_span: Span,
+}
+
+impl Block {
+    pub fn new() -> Self {
+        Block { stmts: Vec::new(), spans: Vec::new(), term: Term::Unreachable, term_span: Span::default() }
+    }
+}
+
+impl Default for Block {
+    fn default() -> Self {
+        Block::new()
+    }
 }
 
 pub enum Stmt {
@@ -117,6 +138,11 @@ pub enum Stmt {
     /// Runs the destructor of the value at the place, if it is initialized
     /// (§19.3), and leaves the place uninitialized.
     Drop(Place, Ty),
+    /// The local's scope ends: references to it must be dead by now (§15.4.5).
+    StorageDead(Local),
+    /// Frees a `pette`'s memory without dropping its contents, which were
+    /// moved out (`*b`).
+    FreeBox(Place, Ty),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -269,7 +295,47 @@ impl Term {
     }
 }
 
+impl Rvalue {
+    pub fn operands(&self) -> Vec<&Operand> {
+        match self {
+            Rvalue::Use(o) | Rvalue::Unary(_, _, o, _) => vec![o],
+            Rvalue::Binary(_, _, a, b, _) | Rvalue::Range(a, b, _, _) => vec![a, b],
+            Rvalue::Slice { lo, hi, .. } => vec![lo, hi],
+            Rvalue::Aggregate(_, ops) => ops.iter().collect(),
+            Rvalue::Ref(..) | Rvalue::Discriminant(_) => Vec::new(),
+        }
+    }
+}
+
 impl Body {
+    /// The locals that some operand moves out of (wholly or partly).
+    pub fn moved_locals(&self) -> std::collections::HashSet<Local> {
+        let mut out = std::collections::HashSet::new();
+        let mut note = |o: &Operand| {
+            if let Operand::Move(p) = o {
+                out.insert(p.local);
+            }
+        };
+        for b in &self.blocks {
+            for s in &b.stmts {
+                if let Stmt::Assign(_, rv) | Stmt::Replace(_, rv, _) = s {
+                    rv.operands().into_iter().for_each(&mut note);
+                }
+            }
+            match &b.term {
+                Term::Switch { discr, .. } => note(discr),
+                Term::Call { callee, args, .. } => {
+                    if let Callee::Value(o) = callee {
+                        note(o);
+                    }
+                    args.iter().for_each(&mut note);
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
     /// Which blocks can run, starting from the entry block.
     pub fn reachable(&self) -> Vec<bool> {
         let mut seen = vec![false; self.blocks.len()];
@@ -281,6 +347,84 @@ impl Body {
             }
         }
         seen
+    }
+}
+
+// ── place types ────────────────────────────────────────────────────────────
+
+/// The field types of each variant of a type: one entry for a record, tuple
+/// or range, two for `undochu`/`sare_thappu`, one per variant for an enum.
+pub fn variant_fields(g: &crate::typeck::Globals, ty: &Ty) -> Vec<Vec<Ty>> {
+    use crate::typeck::AdtKind;
+    use crate::types::Con;
+    match ty {
+        Ty::Tuple(items) => vec![items.clone()],
+        Ty::App(Con::Paridhi, a) => vec![vec![a[0].clone(), a[0].clone(), Ty::Bool]],
+        Ty::App(Con::Undochu, a) => vec![vec![a[0].clone()], vec![]],
+        Ty::App(Con::SareThappu, a) => vec![vec![a[0].clone()], vec![a[1].clone()]],
+        Ty::App(Con::Adt(d), args) => match g.adts.get(d).map(|a| &a.kind) {
+            Some(AdtKind::Enum(vs)) => {
+                vs.iter().map(|v| v.fields.iter().map(|f| f.subst(args)).collect()).collect()
+            }
+            Some(AdtKind::Record(fs)) => vec![fs.iter().map(|f| f.ty.subst(args)).collect()],
+            None => vec![Vec::new()],
+        },
+        _ => vec![Vec::new()],
+    }
+}
+
+/// Whether values of the type are one of several variants.
+pub fn is_enum(g: &crate::typeck::Globals, ty: &Ty) -> bool {
+    use crate::types::Con;
+    match ty {
+        Ty::App(Con::Undochu | Con::SareThappu, _) => true,
+        Ty::App(Con::Adt(d), _) => {
+            matches!(g.adts.get(d).map(|a| &a.kind), Some(crate::typeck::AdtKind::Enum(_)))
+        }
+        _ => false,
+    }
+}
+
+/// The type of the value at a place.
+pub fn place_ty(g: &crate::typeck::Globals, body: &Body, p: &Place) -> Ty {
+    use crate::types::Con;
+    let mut ty = body.locals[p.local as usize].ty.clone();
+    let mut variant = None;
+    for proj in &p.proj {
+        ty = match proj {
+            Proj::Variant(v) => {
+                variant = Some(*v as usize);
+                continue;
+            }
+            Proj::Field(i) => {
+                let vs = variant_fields(g, &ty);
+                let fields = vs.get(variant.take().unwrap_or(0)).cloned().unwrap_or_default();
+                fields.get(*i as usize).cloned().unwrap_or(Ty::Error)
+            }
+            Proj::Deref => match ty {
+                Ty::Ref(_, inner) | Ty::Ptr(_, inner) => *inner,
+                Ty::App(Con::Pette, a) => a[0].clone(),
+                _ => Ty::Error,
+            },
+            Proj::Index(..) => match ty {
+                Ty::Array(e, _) => *e,
+                Ty::App(Con::Varusa | Con::Mukka, a) => a[0].clone(),
+                _ => Ty::Error,
+            },
+        };
+    }
+    ty
+}
+
+/// Whether a type is reference-carrying (§9.3.1): a value of it may hold
+/// borrows.
+pub fn is_rc(ty: &Ty) -> bool {
+    use crate::types::Con;
+    match ty {
+        Ty::Ref(..) | Ty::Fn(..) => true,
+        Ty::App(Con::Mukka | Con::Pravaham, _) => true,
+        Ty::App(Con::Undochu | Con::SareThappu, args) | Ty::Tuple(args) => args.iter().any(is_rc),
+        _ => false,
     }
 }
 
@@ -357,6 +501,8 @@ impl Body {
                     Stmt::Assign(p, r) => format!("{p} = {r}"),
                     Stmt::Replace(p, r, _) => format!("replace {p} = {r}"),
                     Stmt::Drop(p, _) => format!("drop({p})"),
+                    Stmt::StorageDead(l) => format!("dead(_{l})"),
+                    Stmt::FreeBox(p, _) => format!("free_box({p})"),
                 };
                 out.push_str(&format!("    {line};\n"));
             }

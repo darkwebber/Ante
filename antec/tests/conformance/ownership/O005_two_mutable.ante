@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E0605 @ 8:12
+# level: core
+# Two `&maare` loans of the same place, both used later (§15.4.4).
+modhalu() -> khali ante:
+    maare x ante 1
+    a ante &maare x
+    b ante &maare x
+    *a += 1
+    *b += 1

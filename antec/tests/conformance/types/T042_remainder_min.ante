@@ -1,0 +1,10 @@
+# category: runtime-trap
+# expect-trap: T01 @ 10:5
+# level: core
+# `MIN % -1` overflows like `MIN / -1` (§18.1).
+id(x: ankam ni) -> ankam ante:
+    x icchey
+
+modhalu() -> khali ante:
+    x ante (-9223372036854775807 - 1) ni id()
+    (x % (-1 ni id())) ni choopinchu()

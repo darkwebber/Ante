@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0204 @ 7:5
+# level: core
+# `s.enni(1)` is the constructor form (D10), and `enni` isn't a variant.
+modhalu() -> khali ante:
+    s ante "abc"
+    s.enni(1) ni choopinchu()

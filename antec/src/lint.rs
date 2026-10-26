@@ -252,7 +252,7 @@ impl Walker<'_> {
                 self.expr(operand);
             }
             ExprKind::Unary { operand, .. } | ExprKind::Try(operand) => self.expr(operand),
-            ExprKind::FStr(parts) => {
+            ExprKind::FStr(parts) | ExprKind::Sql(parts) => {
                 for part in parts {
                     if let FStrPart::Expr(e) = part {
                         self.expr(e);

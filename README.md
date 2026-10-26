@@ -5,11 +5,11 @@
 
 **Telugu lo think cheyyi. Native speed lo run cheyyi.** 🚀
 
-"Ante" oka statically typed, natively compiled programming language. Syntax motham Telugu grammar style lo untundhi: verb last lo vasthundhi, prathi argument ki `ni`, `tho`, `ki` laanti case marker untundhi. Main focus: machine learning, general software, inka PyTorch laanti libraries tho direct ga work cheyyadam.
+"Ante" oka statically typed, natively compiled programming language. Syntax motham Telugu grammar style lo untundhi: verb last lo vasthundhi, prathi argument ki `ni`, `tho`, `ki` laanti case marker untundhi. Idhi all-rounder: systems programming, servers, **web apps** (HTML, CSS, JS okka line kuda raayakunda), machine learning, inka PyTorch laanti libraries tho direct ga work cheyyadam. Taruvatha desktop, mobile apps kuda.
 
 Simple ga cheppalante: amma ki explain chesinattu code raayochu, kaani adhi C laaga fast ga run avthundhi. 😎
 
-> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi! 🎉 Borrow checker (M8) inka raavali. 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
+> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi! 🎉 Generics and traits (M9) next. 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
 
 ## "Ante" Sundharaniki! 🎬
 
@@ -104,11 +104,14 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 | M5 | Call binding, automatic borrows, pipes | ✅ done (M4 tho paatu) |
 | M6 | MIR and interpreter: programs run avthayi! (`antec run`) | ✅ done |
 | M7 | LLVM codegen: native binaries (`antec build`) | ✅ done |
-| M8 | Borrow checker | ⏳ next |
+| M8 | Borrow checker | ✅ done |
 | M9–M11 | Generics/traits polish, full stdlib, FFI | 🔜 |
-| M12 | `@vegam` performance | 🔜 |
-| M13 | PyTorch binding | 🔜 |
-| M14 | Python bridge | 🔜 |
+| M12–M14 | Services: tasks, JSON, crypto, HTTP, SQL (spec Part IX) | 🔜 |
+| M15–M18 | Web apps "Ante" lone: pages, styles, routes, server functions, `antec web` deploy (spec Annex W) | 🔜 |
+| M19 | Official website, "Ante" lone raasindhi: playground, docs, learn | 🔜 |
+| M20–M22 | `@twaraga` performance, PyTorch binding, Python bridge | 🔜 |
+| M23 | Native desktop, mobile apps | 🔭 |
+| Learn | cp-algorithms lo unna algorithms anni "Ante" lo, Tinglish explanations tho | 🔜 (M10 tharvatha) |
 | Later | Self-hosting ("Ante" lo raasina `antec`) | 🔭 |
 
 Full details kosam spec lo [Appendix E](spec/ante_language_spec_1_0.md#appendix-e--implementation-roadmap-for-antec) inka [Appendix I](spec/ante_language_spec_1_0.md#appendix-i--self-hosting-readiness) choodandi.

@@ -1,0 +1,11 @@
+# category: compile-fail
+# expect-error: E0606 @ 10:14
+# level: core
+# A reference can't outlive the block its referent lives in (§15.4.5).
+modhalu() -> khali ante:
+    a ante 1
+    maare r ante &a
+    avunu aithe:
+        b ante 2
+        r lo &b pettu
+    r ni choopinchu()

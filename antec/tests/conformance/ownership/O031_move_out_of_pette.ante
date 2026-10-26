@@ -1,0 +1,8 @@
+# category: run-pass
+# expect-stdout: abcd
+# level: core
+# `*b` moves the contents out of a `pette` (§15.1.2).
+modhalu() -> khali ante:
+    b ante ("ab" + "cd") ni pette.kotthadhi()
+    s ante *b
+    s ni choopinchu()

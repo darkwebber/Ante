@@ -1,0 +1,25 @@
+# category: run-pass
+# expect-stdout: ababc
+# expect-stdout: ababcz
+# expect-stdout: 2000
+# expect-stdout: 0123456789
+# level: core
+# `+=` on text, including appending a text to itself and through `&maare`.
+dbl(s: &maare padham ni) -> khali ante:
+    *s += "z"
+
+modhalu() -> khali ante:
+    maare s ante "ab"
+    s += s
+    s += "c"
+    s ni choopinchu()
+    &maare s ni dbl()
+    s ni choopinchu()
+    maare t ante ""
+    0 nunchi 2000 lopu okko i ki:
+        t += f"{i % 10}"
+    t.byte_len() ni choopinchu()
+    maare w ante ""
+    0 nunchi 10 lopu okko i ki:
+        w lo (w + f"{i}") pettu
+    w ni choopinchu()

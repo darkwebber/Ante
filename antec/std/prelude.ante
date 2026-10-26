@@ -15,10 +15,10 @@ gunam Sardhukochu ante:
     sardhu(naa: &maare idhi) -> khali
 
 gunam Polchochu ante:
-    okateyna(naa: &idhi, itharam: &idhi ni) -> ato_ito
+    okateyna(naa: &idhi, inkokati: &idhi ni) -> ato_ito
 
 gunam VarusaPettochu ante:
-    polchu(naa: &idhi, itharam: &idhi ni) -> Kramam
+    polchu(naa: &idhi, inkokati: &idhi ni) -> Kramam
 
 gunam HashCheyochu ante:
     hash_cheyyi(naa: &idhi, h: &maare Hasher ni) -> khali
@@ -30,25 +30,25 @@ gunam Okkokkati[I] ante:
     tharvatha(naa: &maare idhi) -> undochu[I]
 
 gunam Kalupochu ante:
-    kalupu(naa: &idhi, itharam: &idhi ni) -> idhi
+    kalupu(naa: &idhi, inkokati: &idhi ni) -> idhi
 
 gunam Theeseyochu ante:
-    theesey(naa: &idhi, itharam: &idhi ni) -> idhi
+    theesey(naa: &idhi, inkokati: &idhi ni) -> idhi
 
 gunam Guninchochu ante:
-    guninchu(naa: &idhi, itharam: &idhi ni) -> idhi
+    guninchu(naa: &idhi, inkokati: &idhi ni) -> idhi
 
 gunam Panchochu ante:
-    panchu(naa: &idhi, itharam: &idhi ni) -> idhi
+    panchu(naa: &idhi, inkokati: &idhi ni) -> idhi
 
-gunam Sheshamochu ante:
-    shesham(naa: &idhi, itharam: &idhi ni) -> idhi
+gunam Migulochu ante:
+    migulu(naa: &idhi, inkokati: &idhi ni) -> idhi
 
 gunam Thippochu ante:
     thippu(naa: &idhi) -> idhi
 
 gunam MatmulCheyochu ante:
-    matmul(naa: &idhi, itharam: &idhi ni) -> idhi
+    matmul(naa: &idhi, inkokati: &idhi ni) -> idhi
 
 # ── prelude types ───────────────────────────────────────────────────────────
 
@@ -75,8 +75,8 @@ bayata "ante" ante:
     choopinchu[T: Choopinchochu](vishayam: &T ni) -> khali
     cheppu[T: Choopinchochu](vishayam: &T ni) -> khali
     gola_pettu[T: Choopinchochu](vishayam: &T ni) -> khali
-    nijame(sharathu: ato_ito, sandesham: padham ni = "") -> khali
-    kompa_munigindhi(sandesham: padham ni = "") -> raadhu
+    nijame(sharathu: ato_ito, message: padham ni = "") -> khali
+    kompa_munigindhi(message: padham ni = "") -> raadhu
     maarchu[T, S](vishayam: S ni) -> T
     kudhirithe_maarchu[T, S](vishayam: S ni) -> undochu[T]
     kolpothu_maarchu[T, S](vishayam: S ni) -> T
@@ -107,7 +107,7 @@ gunam padham_panulu ante:
     amsam_ga(naa: &padham) -> sare_thappu[amsam, ParseThappu]
     baitlu(naa: &padham) -> &mukka[aasajeevi ankam8]
     baitlu_nunchi(b: &mukka[aasajeevi ankam8] ni) -> sare_thappu[padham, Utf8Thappu]
-    byte_bhaagam(naa: &padham, a: ankam ni, b: ankam tho) -> sare_thappu[padham, Utf8Thappu]
+    byte_mukka(naa: &padham, a: ankam ni, b: ankam tho) -> sare_thappu[padham, Utf8Thappu]
 
 gunam varusa_panulu ante:
     kotthadhi[T]() -> varusa[T]
@@ -199,4 +199,4 @@ gunam Raatha_panulu ante:
 
 gunam Hasher_panulu ante:
     kalupu[T](naa: &maare Hasher, x: T ni) -> khali
-    mugimpu(naa: &maare Hasher) -> aasajeevi ankam64
+    chaalu(naa: &maare Hasher) -> aasajeevi ankam64

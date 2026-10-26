@@ -1,0 +1,9 @@
+# category: compile-fail
+# expect-error: E0601 @ 8:5
+# level: core
+# Use after move (§15.1.3).
+modhalu() -> khali ante:
+    a ante "ab" + "c"
+    b ante a
+    a ni choopinchu()
+    b ni choopinchu()

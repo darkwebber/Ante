@@ -1,0 +1,10 @@
+# category: run-pass
+# expect-stdout: abcd
+# level: core
+# In `r ante &f()` the temporary lives until the end of the block (§15.5).
+rendu() -> padham ante:
+    "ab" + "cd" icchey
+
+modhalu() -> khali ante:
+    r ante &rendu()
+    r ni choopinchu()

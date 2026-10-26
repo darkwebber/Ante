@@ -130,6 +130,16 @@ impl<'a> Printer<'a> {
         &self.text[span.start..span.end]
     }
 
+    /// A literal's spelling. A parenthesized literal's span covers its
+    /// parentheses (`(0.0).x`); the printer adds them back where needed.
+    fn literal(&self, span: Span) -> String {
+        let mut t = self.src(span).trim();
+        while let Some(inner) = t.strip_prefix('(').and_then(|r| r.strip_suffix(')')) {
+            t = inner.trim();
+        }
+        t.to_string()
+    }
+
     /// Is there an empty source line between `a` and `b`?
     fn gap(&self, a: usize, b: usize) -> bool {
         if a >= b {
@@ -233,8 +243,8 @@ impl<'a> Printer<'a> {
         }
     }
 
-    fn item(&mut self, item: &Item, depth: usize) {
-        for a in &item.annotations {
+    fn annotations(&mut self, annotations: &[Annotation], depth: usize) {
+        for a in annotations {
             let arg = match &a.arg {
                 AnnotationArg::None => String::new(),
                 // The string as written, so its escapes don't change.
@@ -243,6 +253,10 @@ impl<'a> Printer<'a> {
             };
             self.code(depth, &format!("@{}{arg}", a.name.name), a.span.start, a.span.end);
         }
+    }
+
+    fn item(&mut self, item: &Item, depth: usize) {
+        self.annotations(&item.annotations, depth);
         let public = if item.public { "andhariki " } else { "" };
         let start = item.span.start;
         match &item.kind {
@@ -267,6 +281,7 @@ impl<'a> Printer<'a> {
                 self.no_blank = true;
                 let col = r.fields.first().map(|f| self.col(f.name.span.start)).unwrap_or(0);
                 for f in &r.fields {
+                    self.annotations(&f.annotations, depth + 1);
                     let p = if f.public { "andhariki " } else { "" };
                     let text = format!("{p}{}: {}", f.name.name, self.ty(&f.ty));
                     self.code(depth + 1, &text, f.name.span.start, f.ty.span.end);
@@ -279,6 +294,7 @@ impl<'a> Printer<'a> {
                 self.no_blank = true;
                 let col = e.variants.first().map(|v| self.col(v.name.span.start)).unwrap_or(0);
                 for v in &e.variants {
+                    self.annotations(&v.annotations, depth + 1);
                     let text = if v.fields.is_empty() {
                         v.name.name.clone()
                     } else {
@@ -464,7 +480,10 @@ impl<'a> Printer<'a> {
                 format!("{}[{}]", path(p), a.join(", "))
             }
             TypeKind::Ref { mutable, inner } => {
-                format!("&{}{}", if *mutable { "maare " } else { "" }, self.ty(inner))
+                let inner = self.ty(inner);
+                // `& &T`, not `&&T`, which lexes as the `&&` operator.
+                let gap = if !*mutable && inner.starts_with('&') { " " } else { "" };
+                format!("&{}{gap}{inner}", if *mutable { "maare " } else { "" })
             }
             TypeKind::Ptr { mutable, inner } => {
                 format!("*{}{}", if *mutable { "maare " } else { "" }, self.ty(inner))
@@ -596,7 +615,8 @@ impl<'a> Printer<'a> {
             | ExprKind::Float(_)
             | ExprKind::Str(_)
             | ExprKind::Char(_)
-            | ExprKind::FStr(_) => self.src(e.span).to_string(),
+            | ExprKind::FStr(_)
+            | ExprKind::Sql(_) => self.literal(e.span),
             ExprKind::Bool(true) => "avunu".into(),
             ExprKind::Bool(false) => "kaadhu".into(),
             ExprKind::Ledhu => "ledhu".into(),
@@ -755,7 +775,7 @@ impl<'a> Printer<'a> {
     fn pattern(&self, p: &Pattern) -> String {
         match &p.kind {
             PatternKind::Wild => "_".into(),
-            PatternKind::Literal(e) => self.src(e.span).to_string(),
+            PatternKind::Literal(e) => self.literal(e.span),
             PatternKind::Range { lo, hi, inclusive } => format!(
                 "{} nunchi {} {}",
                 self.src(lo.span),

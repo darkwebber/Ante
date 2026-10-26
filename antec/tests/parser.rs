@@ -321,7 +321,7 @@ Point ki CopyKottochu gunam undhi
 bayata \"C\" ante:
     sqrt(x: amsam64) -> amsam64
 
-@vegam
+@twaraga
 dot[T, N: ankam](a: &mukka[T] ni, migathavi xs: ankam ni, peru: padham ni peru_thone = \"x\") -> pani[(ankam ni) -> ankam] ante:
     a icchey
 ";
@@ -349,7 +349,7 @@ dot[T, N: ankam](a: &mukka[T] ni, migathavi xs: ankam ni, peru: padham ni peru_t
 (impl Point ki CopyKottochu)
 (bayata \"C\"
   (sig sqrt ((x amsam64)) -> amsam64))
-@vegam
+@twaraga
 (fn dot[T, N: ankam] ((a &mukka[T] ni) (migathavi xs ankam ni) (peru padham ni peru_thone = \"x\")) -> pani[(ankam ni) -> ankam]
   (icchey a))
 "
@@ -421,4 +421,48 @@ fn pattern_errors() {
 #[test]
 fn errors_recover_at_the_next_line() {
     assert_eq!(body_errs("10 ni\nkalupu(1)\n20 ni"), ["E0202 @ 2:10", "E0204 @ 3:5", "E0202 @ 4:10"]);
+}
+
+/// Annotations on fields and variants, module paths in annotation arguments
+/// and `sql"…"` literals parse (spec r6, §5.1 and §4.5).
+#[test]
+fn services_and_web_syntax_parses() {
+    assert_eq!(
+        module("@automatic web.Daari\nedho_okati P ante:\n    @daari \"/u/{id}\"\n    User(ankam)\n"),
+        "@automatic web.Daari\n(edho_okati P\n  @daari \"/u/{id}\"\n  (User ankam))\n"
+    );
+    assert_eq!(
+        module("rakam U ante:\n    @peru \"user_id\"\n    andhariki id: ankam\n"),
+        "(rakam U\n  @peru \"user_id\"\n  (andhariki id ankam))\n"
+    );
+    assert_eq!(stmts("q ante sql\"SELECT {x}\""), "(let q (sql \"SELECT \" x))");
+}
+
+/// The checker refuses what the spec defines but `antec` doesn't do yet.
+#[test]
+fn planned_features_are_e1202() {
+    let check = |src: &str| -> Vec<&'static str> {
+        let file = SourceFile::new("t.ante", src);
+        antec::check_source(&file).iter().map(|d| d.code).collect()
+    };
+    assert_eq!(check("modhalu() -> khali ante:\n    x ante 1\n    q ante sql\"{x}\"\n"), ["E1202"]);
+    assert_eq!(check("rakam U ante:\n    @peru \"a\"\n    id: ankam\n"), ["E1202"]);
+    assert_eq!(check("rakam U ante:\n    @pariksha\n    id: ankam\n"), ["E1307"]);
+    assert_eq!(errs("x: panchukunna[ankam] ante 1\n").first().map(|e| &e[..5]), Some("E1202"));
+}
+
+/// Words renamed in spec r7 still work for one release, with W0100.
+#[test]
+fn renamed_words_warn_w0100() {
+    let codes = |src: &str| -> Vec<&'static str> {
+        let file = SourceFile::new("t.ante", src);
+        antec::check_source(&file).iter().map(|d| d.code).collect()
+    };
+    let old = "rakam D ante:\n    p: ankam\n\nD ki Sheshamochu gunam undhi:\n    migulu(naa: &idhi, inkokati: &idhi ni) -> idhi ante:\n        D{p: naa.p % inkokati.p} icchey\n\n@vegam\nf(x: ankam ni) -> ankam ante:\n    x icchey\n\nmodhalu() -> khali ante:\n    s ante \"abc\"\n    t ante 0 ni, 1 tho s.byte_bhaagam()\n    (D{p: 7} % D{p: 4}).p ni choopinchu()\n    (1 ni f()) ni choopinchu()\n    t.sareyaa() ni choopinchu()\n";
+    assert_eq!(codes(old), ["W0100", "W0100", "W0100"]);
+    let new = old
+        .replace("Sheshamochu", "Migulochu")
+        .replace("@vegam", "@twaraga")
+        .replace("byte_bhaagam", "byte_mukka");
+    assert!(codes(&new).is_empty(), "{:?}", codes(&new));
 }
