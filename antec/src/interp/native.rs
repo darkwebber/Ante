@@ -1241,21 +1241,26 @@ impl Machine<'_> {
             n if n.starts_with("lekkalu.") => self.lekkalu(&n["lekkalu.".len()..], tys, args, span),
 
             // ── file ──
-            "file.chadhuvu" => Ok(file_result(
-                std::fs::read_to_string(&*self.arg_str(&arg(0))).map(|s| Value::Str(Rc::from(s))),
-            )),
+            "file.chadhuvu" => {
+                let p = self.arg_str(&arg(0));
+                Ok(open_result(&p, std::fs::read_to_string(&*p).map(|s| Value::Str(Rc::from(s)))))
+            }
             "file.raayi" => {
                 let (p, t) = (self.arg_str(&arg(0)), self.arg_str(&arg(1)));
-                Ok(file_result(std::fs::write(&*p, t.as_bytes()).map(|_| Value::Unit)))
+                Ok(open_result(&p, std::fs::write(&*p, t.as_bytes()).map(|_| Value::Unit)))
             }
-            "file.baitlu_chadhuvu" => Ok(file_result(
-                std::fs::read(&*self.arg_str(&arg(0)))
-                    .map(|b| Value::Vec(b.into_iter().map(|x| Value::Int(i128::from(x))).collect())),
-            )),
+            "file.baitlu_chadhuvu" => {
+                let p = self.arg_str(&arg(0));
+                Ok(open_result(
+                    &p,
+                    std::fs::read(&*p)
+                        .map(|b| Value::Vec(b.into_iter().map(|x| Value::Int(i128::from(x))).collect())),
+                ))
+            }
             "file.baitlu_raayi" => {
                 let p = self.arg_str(&arg(0));
                 let bytes: Vec<u8> = self.seq(&arg(1)).iter().map(|v| v.int() as u8).collect();
-                Ok(file_result(std::fs::write(&*p, bytes).map(|_| Value::Unit)))
+                Ok(open_result(&p, std::fs::write(&*p, bytes).map(|_| Value::Unit)))
             }
             "file.undhaa" => Ok(bool_v(std::path::Path::new(&*self.arg_str(&arg(0))).exists())),
             "file.folderaa" => Ok(bool_v(std::path::Path::new(&*self.arg_str(&arg(0))).is_dir())),
@@ -1575,6 +1580,18 @@ fn file_result(r: std::io::Result<Value>) -> Value {
     match r {
         Ok(v) => Value::ok(v),
         Err(e) => Value::err(thappu_record(io_text(&e))),
+    }
+}
+
+/// Like `file_result`, for opening `path` as a file. Windows refuses to open a
+/// folder with "access denied" where POSIX says "is a directory"; both read as
+/// the folder error, the same as `open_error` in `ante_rt.c`.
+fn open_result(path: &str, r: std::io::Result<Value>) -> Value {
+    match r {
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied && std::path::Path::new(path).is_dir() => {
+            Value::err(thappu_record(io_text(&std::io::ErrorKind::IsADirectory.into())))
+        }
+        r => file_result(r),
     }
 }
 

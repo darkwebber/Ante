@@ -635,6 +635,22 @@ static void io_error(ante_str *err, int code) {
     }
 }
 
+/* Opening a folder as a file: POSIX says EISDIR, Windows says "access
+   denied". Both read as a folder error, the same as the interpreter. */
+static int is_folder(const char *p) {
+#ifdef _WIN32
+    DWORD a = GetFileAttributesA(p);
+    return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY);
+#else
+    struct stat st;
+    return stat(p, &st) == 0 && S_ISDIR(st.st_mode);
+#endif
+}
+
+static void open_error(ante_str *err, int code, const char *p) {
+    io_error(err, (code == EACCES || code == EPERM) && is_folder(p) ? EISDIR : code);
+}
+
 /* Is this valid UTF-8 (no overlongs, surrogates or values past U+10FFFF)? */
 static int utf8_valid(const uint8_t *s, int64_t n) {
     int64_t i = 0;
@@ -661,11 +677,12 @@ static int utf8_valid(const uint8_t *s, int64_t n) {
 int32_t ante_file_read(const ante_str *path, ante_str *out, ante_str *err) {
     char *p = cstr(path);
     FILE *f = fopen(p, "rb");
-    free(p);
     if (!f) {
-        io_error(err, errno);
+        open_error(err, errno, p);
+        free(p);
         return 0;
     }
+    free(p);
     ante_str r = {0, 0, 0};
     uint8_t chunk[8192];
     size_t n;
@@ -688,11 +705,12 @@ int32_t ante_file_read(const ante_str *path, ante_str *out, ante_str *err) {
 int32_t ante_file_write(const ante_str *path, const ante_str *text, ante_str *err) {
     char *p = cstr(path);
     FILE *f = fopen(p, "wb");
-    free(p);
     if (!f) {
-        io_error(err, errno);
+        open_error(err, errno, p);
+        free(p);
         return 0;
     }
+    free(p);
     size_t wrote = fwrite(text->ptr, 1, (size_t)text->len, f);
     int bad = wrote != (size_t)text->len ? errno : 0;
     if (fclose(f) != 0 && !bad) bad = errno;
