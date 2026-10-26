@@ -159,6 +159,9 @@ pub struct Results {
     pub pat_ctors: HashMap<ExprId, (AdtRef, u32)>,
     /// Binding modes by file and identifier offset.
     pub binds: HashMap<(FileId, usize), BindMode>,
+    /// `?` expressions whose error converts through `NunchiRavochu`: the
+    /// function's error type and the operand's.
+    pub try_converts: HashMap<ExprId, (Ty, Ty)>,
 }
 
 impl Results {
@@ -176,6 +179,7 @@ impl Results {
         self.pat_ty.extend(other.pat_ty);
         self.pat_ctors.extend(other.pat_ctors);
         self.binds.extend(other.binds);
+        self.try_converts.extend(other.try_converts);
     }
 
     /// Moves `other` in, resolving every type through `t`.
@@ -220,6 +224,9 @@ impl Results {
         }
         for (k, v) in other.pat_ty {
             self.pat_ty.insert(k, r(&v));
+        }
+        for (k, (f, e)) in other.try_converts {
+            self.try_converts.insert(k, (r(&f), r(&e)));
         }
         self.fields.extend(other.fields);
         self.index_derefs.extend(other.index_derefs);

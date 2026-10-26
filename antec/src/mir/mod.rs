@@ -6,6 +6,7 @@
 mod borrowck;
 mod build;
 mod elaborate;
+mod mono;
 
 use std::collections::HashMap;
 use std::fmt;
@@ -14,6 +15,7 @@ use std::rc::Rc;
 pub use borrowck::check as borrow_check;
 pub use build::{build_program, needs_drop_ty, op_ty as build_op_ty};
 pub use elaborate::elaborate_drops;
+pub use mono::check as mono_check;
 
 use crate::ast::{BinOp, UnOp};
 use crate::resolve::{DefId, FileId};

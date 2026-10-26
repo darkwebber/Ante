@@ -1,0 +1,25 @@
+# category: run-pass
+# expect-stdout: 1
+# level: core
+# A recursive generic enum through `pette`, walked by a generic function (§13.1).
+edho_okati Chettu[T] ante:
+    Aaku
+    Komma(pette[Chettu[T]], T, pette[Chettu[T]])
+
+lotu[T](c: &Chettu[T] ni) -> ankam ante:
+    c batti:
+        Chettu.Aaku aithe:
+            0 icchey
+        Chettu.Komma(l, _, r) aithe:
+            a ante l ni lotu()
+            b ante r ni lotu()
+            maare peddha ante a
+            b > a aithe:
+                peddha lo b pettu
+            peddha + 1 icchey
+
+modhalu() -> khali ante:
+    aaku ante Chettu.Aaku ni pette.kotthadhi()
+    c ante Chettu.Komma(aaku, "x" + "y", (Chettu.Aaku ni pette.kotthadhi()))
+    h ante &c ni lotu()
+    h ni choopinchu()

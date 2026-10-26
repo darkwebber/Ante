@@ -1,0 +1,12 @@
+# category: compile-fail
+# expect-error: E0606 @ 7:5
+# level: core
+# A closure that borrows a local can't be returned: the reference would outlive the local (§15.4.5).
+chesko(a: &ankam ni) -> pani[() -> ankam] ante:
+    x ante *a + 1
+    (() => x) icchey
+
+modhalu() -> khali ante:
+    n ante 1
+    f ante &n ni chesko()
+    f() ni choopinchu()

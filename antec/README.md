@@ -12,8 +12,9 @@
 | M6 MIR and interpreter (Part V) | ✅ done |
 | M7 LLVM code generation (native binaries) | ✅ done |
 | M8 Borrow checker (§15) | ✅ done |
-| M9 Generics, traits, closures (§13, §10.7) | ⏳ next |
-| M10–M23 | inka start avvaledhu (spec Appendix E) |
+| M9 Generics, traits, closures (§13, §10.7) | ✅ done |
+| M10 Standard library (§21) | ⏳ next |
+| M11–M24 | inka start avvaledhu (spec Appendix E) |
 
 ## Build and test
 
@@ -103,6 +104,7 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 | `src/mir/build.rs` | Body lowering: scopes, drops, `vellagane`, `?`, pattern matching, closures, calls |
 | `src/mir/borrowck.rs` | Borrow checker (§15): moves and initialization (E0601, E0603, E0609), NLL loans (E0604–E0606) |
 | `src/mir/elaborate.rs` | Drop elaboration: partial moves ki per-field drop flags, moved place ki assign chesthe double drop ledhu |
+| `src/mir/mono.rs` | Monomorphization check: generic instances anni reachable aa ani, types aagakunda perigithe E0805 |
 | `src/interp/mod.rs` | MIR interpreter: memory, frames, traps (T01–T10), drop order, constants (E1102) |
 | `src/interp/native.rs` | Runtime stdlib: prelude, `padham`, `varusa`, `jodi`, `lekkalu`, `file`, `system`, display, iterators |
 | `src/interp/value.rs` | Runtime values, addresses, insertion-order `jodi` |
@@ -170,7 +172,7 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 - **Traps** interpreter laage: same message, same `file:line:col`, exit 101. Overflow checks LLVM `*.with.overflow` intrinsics tho.
 - **Differential testing.** `tests/native.rs` prathi runtime conformance test ni native ga rendu optimization levels lo build chesi, interpreter expect chesina output tho compare chesthundhi.
 - **Ippatiki levu (native lo):** `jodi`/`gumpu` (M10 lo hash table tho), `bayata "C"` calls, pointers, `memory` (M11), `torch`/`python`, inka konni standard library functions: `padham.baitlu`/`baitlu_nunchi`/`byte_mukka`, `file.baitlu_chadhuvu`/`baitlu_raayi`/`folderaa`/`list_cheyyi`/`folder_cheyyi`/`theesey`, `file.path_*`, `system.nadupu`. Ivi vaadithe `antec build` clear error isthundhi; `antec run` lo anni pani chesthayi.
-- **Memory:** `padham`, `varusa`, `pette` values drop ayyinappudu vaati memory free avthundhi (literals static memory lo untayi, avi free avvavu). `s += t` text ni akkade append chesthundhi. Ippatiki free avvanivi: closure environments (`pani` values `CopyKottochu`, anduke evaru owner o theliyadhu) inka iterator adapter state, okkokkatiki konni bytes. Move ayyina value ni malli vaadithe borrow checker (E0601) compile time lone aapesthundhi, kaabatti native program freed memory ni eppudu chadavadhu.
+- **Memory:** `padham`, `varusa`, `pette` values drop ayyinappudu vaati memory free avthundhi (literals static memory lo untayi, avi free avvavu). `s += t` text ni akkade append chesthundhi. Closure environments reference count tho untayi: last copy poyinappudu captures drop ayyi memory free avthundhi. Ippatiki free avvanidhi: iterator adapter state (user `Okkokkati` loop state kuda), okkokkatiki konni bytes. Move ayyina value ni malli vaadithe borrow checker (E0601) compile time lone aapesthundhi, kaabatti native program freed memory ni eppudu chadavadhu.
 
 ## Implementation-defined choices (§20.6)
 

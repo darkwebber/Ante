@@ -206,6 +206,7 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
         return finish(sources, diagnostics, None, None);
     }
     diagnostics.extend(crate::mir::borrow_check(&program, &tc.globals, &sources));
+    diagnostics.extend(crate::mir::mono_check(&program, &tc.globals));
     if failed(&diagnostics) {
         return finish(sources, diagnostics, None, None);
     }

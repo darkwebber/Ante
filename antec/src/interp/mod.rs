@@ -720,6 +720,19 @@ impl<'a> Machine<'a> {
                     }
                 }
             }
+            Ty::Fn(..) => {
+                // The last copy of a closure drops its captures, last first (§10.7.4).
+                if let Value::Closure(c) = v {
+                    if let Ok(c) = Rc::try_unwrap(c) {
+                        let locals = &self.prog.bodies[c.body as usize].locals;
+                        let tys: Vec<Ty> =
+                            (1..=c.captures.len()).map(|i| locals[i].ty.subst(&c.tys)).collect();
+                        for (x, t) in c.captures.into_iter().zip(tys).rev() {
+                            self.drop_value(x, &t)?;
+                        }
+                    }
+                }
+            }
             _ => {}
         }
         Ok(())

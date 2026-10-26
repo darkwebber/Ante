@@ -311,6 +311,28 @@ void ante_buf_free(ante_str *b) {
     b->cap = 0;
 }
 
+/* A closure's environment starts with a reference count and a function
+   that drops the captured values (spec §10.7.4). A named function used as
+   a `pani` has no environment (NULL). Counts are atomic so tasks can share
+   closures. */
+typedef struct {
+    int64_t rc;
+    void (*drop)(void *env);
+} ante_closure_env;
+
+void ante_pani_inc(void *env) {
+    if (env) __atomic_fetch_add(&((ante_closure_env *)env)->rc, 1, __ATOMIC_RELAXED);
+}
+
+void ante_pani_dec(void *env) {
+    if (!env) return;
+    ante_closure_env *e = (ante_closure_env *)env;
+    if (__atomic_fetch_sub(&e->rc, 1, __ATOMIC_ACQ_REL) == 1) {
+        e->drop(env);
+        free(env);
+    }
+}
+
 /* Appends one element of `size` bytes to a vector. */
 void ante_vec_push(ante_vec *v, const void *elem, int64_t size) {
     if (v->len == v->cap) {

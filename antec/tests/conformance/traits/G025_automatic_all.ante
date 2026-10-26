@@ -1,0 +1,27 @@
+# category: run-pass
+# expect-stdout: [Rangu.Erupu, Rangu.Custom(2), Rangu.Custom(5)]
+# expect-stdout: avunu
+# expect-stdout: avunu
+# expect-stdout: Point{x: 1, y: 2} Point{x: 1, y: 2}
+# level: core
+# `@automatic` for every derivable trait (§13.6).
+@automatic Choopinchochu, XeroxTheeyochu, Polchochu, VarusaPettochu, HashCheyochu
+edho_okati Rangu ante:
+    Erupu
+    Custom(ankam)
+
+@automatic Choopinchochu, CopyKottochu, Polchochu
+rakam Point ante:
+    x: ankam
+    y: ankam
+
+modhalu() -> khali ante:
+    maare v ante [Rangu.Custom(5), Rangu.Erupu, Rangu.Custom(2)]
+    v.sort_cheyyi()
+    v ni choopinchu()
+    w ante v.xerox()
+    (v == w) ni choopinchu()
+    p ante Point{x: 1, y: 2}
+    q ante p
+    (p == q) ni choopinchu()
+    f"{p} {q}" ni choopinchu()

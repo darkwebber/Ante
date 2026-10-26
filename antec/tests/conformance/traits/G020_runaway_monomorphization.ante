@@ -1,0 +1,12 @@
+# category: compile-fail
+# expect-error: E0805 @ 8:5
+# level: core
+# Polymorphic recursion that never stops growing its types (§13.1).
+lothu[T: CopyKottochu](x: T ni, n: ankam tho) -> ankam ante:
+    n == 0 aithe:
+        0 icchey
+    (x, x) ni, n - 1 tho lothu() icchey
+
+modhalu() -> khali ante:
+    r ante 1 ni, 3 tho lothu()
+    r ni choopinchu()

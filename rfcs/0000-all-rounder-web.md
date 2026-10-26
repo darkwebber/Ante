@@ -135,7 +135,7 @@ cp-algorithms (CC BY-SA 4.0, ~160 articles) lo unna algorithms anni "Ante" lo, T
 
 ## Unresolved questions
 
-1. `pani` values `CopyKottochu`, kaabatti closure environments ni free cheyyalem (ippudu leak). Move closures ni non-Copy cheyyala? M8/M9 lo decide cheyyali.
+1. ~~`pani` values `CopyKottochu`, kaabatti closure environments ni free cheyyalem.~~ Spec r10 lo decide chesam: `pani` copies environment ni panchukuntayi (reference count), last copy poyinappudu captures drop avthayi (§10.7.4).
 2. Live mode reconnect: state session lo automatic ga save cheyyala, leka ippatilaage restart?
 3. Annex N (native desktop/mobile) ki e back ends: platform toolkits leka mana own renderer?
 4. Package registry, signing (supply chain) ki separate RFC kavali.

@@ -67,6 +67,7 @@ const cases = [
   ['    q ante sql"SELECT * FROM t WHERE id = {id}"', "sql", "storage.type.string.ante"],
   ['    q ante sql"SELECT * FROM t WHERE id = {id}"', "id", "meta.interpolation.ante"],
   ["    x: panchukunna[ankam]", "panchukunna", "support.type.builtin.ante"],
+  ["    e: edhaina", "edhaina", "support.type.builtin.ante"],
   ['    t ante "Telugu lo \\u{C24}\\n"', "\\u{C24}", "constant.character.escape.ante"],
   ['    t ante "Telugu lo \\u{C24}\\n"', "\\n", "constant.character.escape.ante"],
   ["    c ante 'త'", "'త'", "constant.character.ante"],

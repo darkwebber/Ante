@@ -1,0 +1,23 @@
+# category: run-pass
+# expect-stdout: 21 22
+# expect-stdout: 3
+# expect-stdout: [11, 12, 13]
+# level: core
+# A `theesuko` closure returned and used many times, also by an adapter (§10.7).
+penchedhi(n: ankam ni) -> pani[(ankam ni) -> ankam] ante:
+    theesuko (x) => x + n icchey
+
+rendu_saarlu(f: pani[(ankam ni) -> ankam] ni, x: ankam tho) -> ankam ante:
+    (x ni f()) ni f() icchey
+
+modhalu() -> khali ante:
+    p ante 10 ni penchedhi()
+    y ante p ni, 1 tho rendu_saarlu()
+    z ante p ni, 2 tho rendu_saarlu()
+    f"{y} {z}" ni choopinchu()
+    s ante "ab" + "c"
+    g ante theesuko () => s.byte_len()
+    g() ni choopinchu()
+    xs ante [1, 2, 3]
+    ys ante xs |> p ni prathi_dhaaniki() |> varusa_ga()
+    ys ni choopinchu()

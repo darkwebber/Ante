@@ -52,6 +52,8 @@ fn is_type_keyword(kw: Keyword) -> bool {
             | Khali
             | Raadhu
             | Idhi
+            | Panchukunna
+            | Edhaina
     )
 }
 
@@ -221,11 +223,11 @@ impl<'a> Parser<'a> {
                             kw.as_str()
                         ),
                     ));
-                } else if kw.is_planned() {
+                } else if let Some(m) = kw.planned_milestone() {
                     p.diags.push(Diagnostic::error(
                         "E1202",
                         tok.span,
-                        format!("`{}` spec lo undhi kaani `antec` lo inka raaledhu (M12)", kw.as_str()),
+                        format!("`{}` spec lo undhi kaani `antec` lo inka raaledhu ({m})", kw.as_str()),
                     ));
                 }
             }

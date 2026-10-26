@@ -46,6 +46,8 @@ pub(super) struct BodyCx<'s, 'g> {
     /// One flag per enclosing loop: has it seen an `aapey`?
     pub loops: Vec<bool>,
     pub unsafe_depth: u32,
+    /// The closures being checked, innermost last.
+    pub closures: Vec<Span>,
     /// Decisions recorded for MIR lowering, resolved by `finish`.
     pub out: Results,
 }
@@ -176,6 +178,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             expr_types: HashMap::new(),
             loops: Vec::new(),
             unsafe_depth: 0,
+            closures: Vec::new(),
             out: Results::default(),
         }
     }
@@ -501,6 +504,13 @@ impl<'s, 'g> BodyCx<'s, 'g> {
 
     /// Reports `code` (E0602 or E0607) unless `e` is a place that may change.
     pub fn require_mutable(&mut self, e: &Expr, code: &'static str) {
+        if let Some(name) = self.captured_root(e) {
+            return self.error(
+                "E0611",
+                e.span,
+                format!("closure lopala bayati `{name}` ni maarchalem; `&maare {name}` ni closure ki parameter ga pampandi"),
+            );
+        }
         if let Err((name, span)) = self.place_mutable(e) {
             let msg = if code == "E0607" {
                 format!(
@@ -510,6 +520,29 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                 format!("`{name}` maare kaadhu, maarchalevu.")
             };
             self.error(code, span, msg);
+        }
+    }
+
+    /// Inside a closure, the captured variable a place expression starts
+    /// from, if it starts from one (§10.7.2).
+    fn captured_root(&self, e: &Expr) -> Option<String> {
+        let closure = *self.closures.last()?;
+        match &e.kind {
+            ExprKind::Path(p) => {
+                let first = &p.segments[0];
+                match self.res_at(first.span) {
+                    Some(Res::Local(decl)) if decl.start < closure.start || decl.start >= closure.end => {
+                        Some(first.name.clone())
+                    }
+                    Some(Res::SelfMember) => Some(first.name.clone()),
+                    _ => None,
+                }
+            }
+            ExprKind::Field { base, .. }
+            | ExprKind::TupleIndex { base, .. }
+            | ExprKind::Index { base, .. } => self.captured_root(base),
+            ExprKind::Unary { op: UnOp::Deref, operand } => self.captured_root(operand),
+            _ => None,
         }
     }
 
@@ -734,7 +767,12 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                 self.require_int(&lt, lo.span, "E0401");
                 Ty::App(Con::Paridhi, vec![lt])
             }
-            ExprKind::Closure { params, body, .. } => self.check_closure(params, body, expected.as_ref()),
+            ExprKind::Closure { params, body, .. } => {
+                self.closures.push(e.span);
+                let t = self.check_closure(params, body, expected.as_ref());
+                self.closures.pop();
+                t
+            }
             ExprKind::Ctor { path, args } => self.check_ctor(path, args, e.span, expected.as_ref()),
             ExprKind::Record { path, fields } => self.check_record(path, fields, e.span, expected.as_ref()),
             ExprKind::Tuple(items) => {
@@ -852,7 +890,10 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                             self.infer.rollback_to(snap);
                             let tr = self.std_bound("NunchiRavochu", vec![err.clone()]);
                             let converts = tr.is_some_and(|tr| self.implements(&rargs[1], &tr));
-                            if !converts {
+                            if converts {
+                                let id = expr_id(self.file, span);
+                                self.out.try_converts.insert(id, (rargs[1].clone(), err.clone()));
+                            } else {
                                 let (f, e) = (self.show(&rargs[1]), self.show(&err));
                                 self.error(
                                     "E0412",

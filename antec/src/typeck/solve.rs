@@ -191,8 +191,9 @@ impl Solver<'_, '_> {
         let answer = match name {
             "CopyKottochu" => match ty {
                 _ if scalar => true,
-                Ty::Ref(false, _) | Ty::Ptr(..) | Ty::Fn(..) => true,
-                Ty::Ref(true, _) | Ty::Str => false,
+                Ty::Ref(false, _) | Ty::Ptr(..) => true,
+                // A `pani` shares its environment; copies are counted (§10.7.4).
+                Ty::Ref(true, _) | Ty::Str | Ty::Fn(..) => false,
                 Ty::Tuple(items) => all(t, items),
                 Ty::Array(e, _) => all(t, std::slice::from_ref(e)),
                 Ty::App(Con::Undochu | Con::SareThappu | Con::Paridhi, args) => all(t, args),
@@ -222,6 +223,7 @@ impl Solver<'_, '_> {
                         args,
                     ) => all(t, args),
                     Ty::App(Con::Adt(_), _) => return None,
+                    Ty::Fn(..) => name == "XeroxTheeyochu",
                     _ => false,
                 }
             }

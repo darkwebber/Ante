@@ -1,0 +1,24 @@
+# category: run-pass
+# expect-stdout: 10
+# expect-stdout: 20
+# expect-stdout: 30
+# expect-stdout: [60, 70]
+# level: core
+# A user type implementing `Okkokkati`, iterated owned and through adapters (§21.4).
+rakam Lekka ante:
+    ippudu: ankam
+    chivara: ankam
+
+Lekka ki Okkokkati[ankam] gunam undhi:
+    tharvatha(naa: &maare idhi) -> undochu[ankam] ante:
+        ippudu >= chivara aithe:
+            ledhu icchey
+        ippudu += 1
+        undhi(ippudu * 10) icchey
+
+modhalu() -> khali ante:
+    Lekka{ippudu: 0, chivara: 3} lo okko x ki:
+        x ni choopinchu()
+    l ante Lekka{ippudu: 5, chivara: 7}
+    ys ante l |> varusa_ga()
+    ys ni choopinchu()

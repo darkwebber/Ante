@@ -346,10 +346,26 @@ fn into_iter(fx: &mut Fx, v: &str, ty: &Ty, item: &Ty) -> String {
                     let _ = e;
                     make_iter(fx, 1, "0", "0", "0", &p, &n.unwrap_or(0).to_string())
                 }
-                _ => {
-                    let _ = item;
-                    unsupported(fx, "ee iterable (jodi, gumpu, Okkokkati)", ty).0
-                }
+                _ => match user_iterator(fx, ty, item) {
+                    Some(target) => {
+                        let (target_ty, ptr) = match ty {
+                            // `&maare it`: step the caller's iterator in place.
+                            Ty::Ref(_, inner) => ((**inner).clone(), v.to_string()),
+                            // An owned iterator moves to the heap with the loop.
+                            other => {
+                                let lt = fx.ll(other);
+                                let (size, _) = fx.gen.size_align(other);
+                                let p = fx.r();
+                                fx.emit(format!("{p} = call ptr @ante_alloc(i64 {size})"));
+                                fx.emit(format!("store {lt} {v}, ptr {p}"));
+                                (other.clone(), p)
+                            }
+                        };
+                        let _ = target;
+                        make_adapter(fx, Adapter::User, vec![target_ty, item.clone()], &[("ptr".into(), ptr)])
+                    }
+                    None => unsupported(fx, "ee iterable (jodi, gumpu)", ty).0,
+                },
             },
         },
     }
@@ -511,12 +527,28 @@ fn next_or(fx: &mut Fx, it: &str, item: &Ty, none: &str) -> String {
     fx.load(&il, &p)
 }
 
+/// The `tharvatha` body of a user iterator type (or a reference to one)
+/// yielding `item`.
+fn user_iterator(fx: &mut Fx, ty: &Ty, item: &Ty) -> Option<(crate::mir::BodyId, Vec<Ty>)> {
+    let target = match ty {
+        Ty::Ref(_, inner) => (**inner).clone(),
+        other => other.clone(),
+    };
+    let def = fx.gen.g.std_trait("Okkokkati")?;
+    let fid = fx.gen.g.traits.get(&def)?.methods.first()?.1;
+    match fx.gen.resolve(fid, &[target, item.clone()])? {
+        crate::mir::Resolved::Body(b, tys) => Some((b, tys)),
+        crate::mir::Resolved::Native(_) => None,
+    }
+}
+
 /// The state struct of an adapter: `{ ptr next, … }`.
 fn adapter_state(a: Adapter) -> &'static str {
     match a {
         Adapter::Take | Adapter::Skip | Adapter::Enumerate => "{ ptr, %iter, i64 }",
         Adapter::Map | Adapter::Filter => "{ ptr, %iter, %pani }",
         Adapter::Zip => "{ ptr, %iter, %iter }",
+        Adapter::User => "{ ptr, ptr }",
     }
 }
 
@@ -619,6 +651,29 @@ pub(super) fn adapter_fn(gen: &mut Gen, name: &str, a: Adapter, tys: &[Ty]) -> S
             let a2 = fx.r();
             fx.emit(format!("{a2} = insertvalue {pl} {a1}, {yl} {y}, 1"));
             fx.emit(format!("store {pl} {a2}, ptr %out"));
+        }
+        Adapter::User => {
+            let target = fx.load("ptr", &inner);
+            let Some((body, btys)) = user_iterator(&mut fx, &ty(0), &ty(1)) else {
+                fx.gen.error("native backend: `Okkokkati` implementation dorakaledhu");
+                return String::new();
+            };
+            let (r, opt) = fx.call_body_vals(body, &btys, &[target]);
+            let lt = fx.ll(&opt);
+            let slot = fx.spill(&lt, &r);
+            let tp = fx.gep(&lt, &slot, &["0".into(), "0".into()]);
+            let tag = fx.load("i32", &tp);
+            let has = fx.r();
+            fx.emit(format!("{has} = icmp eq i32 {tag}, 0"));
+            let go = fx.label();
+            fx.emit(format!("br i1 {has}, label %{go}, label %{none}"));
+            fx.start(&go);
+            let pay = fx.gep(&lt, &slot, &["0".into(), "1".into()]);
+            let stt = fx.ll(&Ty::Tuple(vec![ty(1)]));
+            let p = fx.gep(&stt, &pay, &["0".into(), "0".into()]);
+            let il = fx.ll(&ty(1));
+            let x = fx.load(&il, &p);
+            fx.emit(format!("store {il} {x}, ptr %out"));
         }
         Adapter::Enumerate => {
             let ip = fx.gep(st, "%s", &["0".into(), "2".into()]);

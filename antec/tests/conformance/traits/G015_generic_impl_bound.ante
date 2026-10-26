@@ -1,0 +1,29 @@
+# category: run-pass
+# expect-stdout: [[7]]
+# expect-stdout: [[7]]
+# expect-stdout: ankam 5!
+# level: core
+# A bounded generic implementation, and a user trait with a type parameter (§13.3).
+rakam Box2[T] ante:
+    lopala: T
+
+[T: Choopinchochu] Box2[T] ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        f"[{lopala}]" icchey
+
+gunam Maarchu[U] ante:
+    maarchu_ga(naa: &idhi) -> U
+
+ankam ki Maarchu[padham] gunam undhi:
+    maarchu_ga(naa: &idhi) -> padham ante:
+        f"ankam {naa}" icchey
+
+rendu[T: Maarchu[padham]](x: &T ni) -> padham ante:
+    x.maarchu_ga() + "!" icchey
+
+modhalu() -> khali ante:
+    b ante Box2{lopala: Box2{lopala: 7}}
+    b ni choopinchu()
+    f"{b}" ni choopinchu()
+    r ante &5 ni rendu()
+    r ni choopinchu()

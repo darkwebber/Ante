@@ -17,3 +17,4 @@ Oka chinna word change ki RFC avasaram ledhu. [Vocabulary proposal issue](https:
 | RFC | Title | Status |
 |---|---|---|
 | [0000-all-rounder-web](0000-all-rounder-web.md) | "Ante" all-rounder: Services (spec Part IX) and Web (spec Annex W) | proposed; spec r6 lo draft ga undhi |
+| [0000-python-bridge](0000-python-bridge.md) | Python bridge: numpy, pandas, scikit-learn, Hugging Face, OpenAI (spec Annex P) | proposed; spec r9 lo draft ga undhi |

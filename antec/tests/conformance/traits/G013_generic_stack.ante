@@ -1,0 +1,31 @@
+# category: run-pass
+# expect-stdout: undhi(cd)
+# expect-stdout: 1
+# expect-stdout: Stack{items: [ab, cd]}
+# level: core
+# A generic record with a generic methods block and an associated function (§13.1, §13.4).
+@automatic Choopinchochu, XeroxTheeyochu
+rakam Stack[T] ante:
+    items: varusa[T]
+
+[T] Stack[T] panulu ante:
+    kotthadhi() -> Stack[T] ante:
+        Stack{items: []} icchey
+
+    vey(naa: &maare idhi, x: T ni) -> khali ante:
+        x ni items.cherchu()
+
+    theesey(naa: &maare idhi) -> undochu[T] ante:
+        items.theesey() icchey
+
+    enni(naa: &idhi) -> ankam ante:
+        items.enni() icchey
+
+modhalu() -> khali ante:
+    maare s: Stack[padham] ante Stack.kotthadhi()
+    "a" + "b" ni s.vey()
+    "c" + "d" ni s.vey()
+    t ante s.xerox()
+    s.theesey() ni choopinchu()
+    s.enni() ni choopinchu()
+    t ni choopinchu()

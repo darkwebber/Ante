@@ -102,10 +102,10 @@ keywords! {
     Khali = "khali",
     Raadhu = "raadhu",
     Idhi = "idhi",
-    // Reserved for later editions
-    Edhaina = "edhaina",
-    Kitiki = "kitiki",
     Panchukunna = "panchukunna",
+    Edhaina = "edhaina",
+    // Reserved for later editions
+    Kitiki = "kitiki",
     Gurinchi = "gurinchi",
     Async = "async",
     Await = "await",
@@ -128,22 +128,23 @@ impl Keyword {
     }
 
     /// Words of this edition that `antec` doesn't implement yet (E1202):
-    /// `panchukunna` (§24.4).
+    /// `panchukunna` (§24.4) and `edhaina` (Annex P).
     pub fn is_planned(self) -> bool {
-        matches!(self, Keyword::Panchukunna)
+        self.planned_milestone().is_some()
+    }
+
+    /// The roadmap milestone (spec Appendix E) that implements a planned word.
+    pub fn planned_milestone(self) -> Option<&'static str> {
+        match self {
+            Keyword::Panchukunna => Some("M12"),
+            Keyword::Edhaina => Some("M22"),
+            _ => None,
+        }
     }
 
     /// Words reserved for later editions; using them is E1201.
     pub fn is_reserved_for_later(self) -> bool {
-        matches!(
-            self,
-            Keyword::Edhaina
-                | Keyword::Kitiki
-                | Keyword::Gurinchi
-                | Keyword::Async
-                | Keyword::Await
-                | Keyword::Yield
-        )
+        matches!(self, Keyword::Kitiki | Keyword::Gurinchi | Keyword::Async | Keyword::Await | Keyword::Yield)
     }
 }
 

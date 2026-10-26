@@ -1,0 +1,21 @@
+# category: run-pass
+# expect-stdout: 1
+# expect-stdout: 2
+# expect-stdout: 3
+# level: core
+# Iterating a user iterator through `&maare` (§21.4).
+rakam Lekka ante:
+    ippudu: ankam
+    chivara: ankam
+
+Lekka ki Okkokkati[ankam] gunam undhi:
+    tharvatha(naa: &maare idhi) -> undochu[ankam] ante:
+        ippudu >= chivara aithe:
+            ledhu icchey
+        ippudu += 1
+        undhi(ippudu) icchey
+
+modhalu() -> khali ante:
+    maare l ante Lekka{ippudu: 0, chivara: 3}
+    &maare l lo okko x ki:
+        x ni choopinchu()

@@ -1,0 +1,11 @@
+# category: compile-fail
+# expect-error: E0612 @ 6:5
+# level: core
+# A `theesuko` closure can't take a `&maare` reference: its copies would share it (§10.7.2).
+penchu(x: &maare ankam ni) -> pani[() -> ankam] ante:
+    theesuko () => *x icchey
+
+modhalu() -> khali ante:
+    maare a ante 1
+    f ante &maare a ni penchu()
+    f() ni choopinchu()
