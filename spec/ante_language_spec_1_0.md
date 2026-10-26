@@ -1730,7 +1730,7 @@ modhalu() -> khali ante:
 
 # Appendix E — Implementation roadmap for `antec`
 
-The recommended architecture: Rust, a hand-written lexer and recursive-descent parser (the D-rules need bounded lookahead and local backtracking, which suits hand-written code better than a generator), an arena AST, then HIR, then typed HIR, then MIR (a CFG of basic blocks with explicit places, moves, loans and drops), then LLVM via the `inkwell` crate. Keep a **MIR interpreter** alongside it, so the semantics can be tested before code generation exists.
+The recommended architecture: Rust, a hand-written lexer and recursive-descent parser (the D-rules need bounded lookahead and local backtracking, which suits hand-written code better than a generator), an arena AST, then HIR, then typed HIR, then MIR (a CFG of basic blocks with explicit places, moves, loans and drops), then LLVM. (`antec` emits textual LLVM IR and compiles it, together with a small C runtime, with `clang`; this keeps the compiler free of LLVM library dependencies.) Keep a **MIR interpreter** alongside it, so the semantics can be tested before code generation exists, and test the two against each other.
 
 | Milestone | Deliverable | Conformance gate |
 |---|---|---|

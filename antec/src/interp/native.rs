@@ -212,7 +212,7 @@ impl Machine<'_> {
                         items.push(v);
                     }
                 }
-                Ok(Value::Array(items))
+                Ok(Value::Vec(items))
             }
             Intrinsic::Const(def) => self.const_value(*def, span),
             Intrinsic::Unsupported(what) => Err(self.trap(

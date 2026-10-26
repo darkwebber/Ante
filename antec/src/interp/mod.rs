@@ -111,6 +111,12 @@ fn is_sare_thappu(t: &Ty) -> bool {
     matches!(t, Ty::App(Con::SareThappu, _))
 }
 
+/// The value of one module constant, if it evaluates without trapping.
+pub fn const_value(prog: &Program, tc: &Typeck, files: &[SourceFile], def: usize) -> Option<Value> {
+    let mut m = Machine::new(prog, tc, files);
+    m.const_value(def, Span::default()).ok()
+}
+
 /// Evaluates every module constant; a trap is E1102 (§16.3).
 pub fn eval_consts(
     prog: &Program,
@@ -304,6 +310,7 @@ impl<'a> Machine<'a> {
                     a.path.push(Elem::Index(start + i as usize));
                     Cursor::At(a)
                 }
+                (c, Proj::Variant(_)) => c,
                 (c, _) => c,
             };
         }
@@ -570,36 +577,10 @@ impl<'a> Machine<'a> {
         if let Some(d) = self.dispatch.get(&key) {
             return Ok(d.clone());
         }
-        let g = &self.tc.globals;
-        let Some((tdef, name)) = self.trait_of.get(&fid).cloned() else {
-            return Err(self.trap("T00", "antec bug: unknown trait method", span));
-        };
-        let tr = &g.traits[&tdef];
-        let ntrait = tr.generics.len();
-        let self_ty = tys.first().cloned().unwrap_or(Ty::Error);
-        let trait_args: Vec<Ty> = tys.iter().skip(1).take(ntrait.saturating_sub(1)).cloned().collect();
-        let own: Vec<Ty> = tys.iter().skip(ntrait).cloned().collect();
-        let solver = crate::typeck::solve::Solver { g, generics: &[] };
-        let mut table = crate::types::InferTable::default();
-        let tref = crate::typeck::TraitRef { def: tdef, args: trait_args };
-        let found = solver.find_impl(&mut table, &self_ty, &tref, 0);
-        let d = match found {
-            Some((idx, fresh)) => {
-                let imp = &g.impls[idx];
-                let impl_args: Vec<Ty> = fresh.iter().map(|t| table.resolve(t)).collect();
-                match imp.methods.get(&name).and_then(|m| self.prog.fn_bodies.get(m)) {
-                    Some(&body) => {
-                        let mut all = impl_args;
-                        all.extend(own);
-                        Dispatch::Body(body, Rc::from(all))
-                    }
-                    None => match self.prog.fn_bodies.get(&fid) {
-                        Some(&body) => Dispatch::Body(body, Rc::from(tys.to_vec())),
-                        None => Dispatch::Native(format!("{}.{name}", tr.name)),
-                    },
-                }
-            }
-            None => Dispatch::Native(format!("{}.{name}", tr.name)),
+        let d = match crate::mir::resolve_trait(self.prog, &self.tc.globals, fid, tys) {
+            Some(Resolved::Body(body, tys)) => Dispatch::Body(body, Rc::from(tys)),
+            Some(Resolved::Native(name)) => Dispatch::Native(name),
+            None => return Err(self.trap("T00", "antec bug: unknown trait method", span)),
         };
         self.dispatch.insert(key, d.clone());
         Ok(d)

@@ -135,7 +135,7 @@ modhalu() -> khali ante:
     10 ni, 20 tho kalupu() |> choopinchu()
 ```
 
-Prathi `# expect-stdout:` oka output line. `runtime-trap` ki `# expect-trap: T01 @ 7:12` (trap code + position), `# expect-exit:` default ga run-pass ki 0, runtime-trap ki 101.
+Prathi `# expect-stdout:` oka output line. Ee tests interpreter tho run avthayi, `clang` unte native binary ga kuda (`tests/native.rs`); rendintlo output same undali. `runtime-trap` ki `# expect-trap: T01 @ 7:12` (trap code + position), `# expect-exit:` default ga run-pass ki 0, runtime-trap ki 101.
 
 ID prefixes: `L` lexer, `S` syntax, `N` names, `PK` packages, `B` binding, `P` pipes, `T` types/arithmetic, `O` ownership, `M` match, `G` generics, `D` data, `W` warnings, `X` interop.
 
