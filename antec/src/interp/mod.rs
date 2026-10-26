@@ -39,8 +39,20 @@ pub enum Halt {
 
 type R<T> = Result<T, Halt>;
 
-/// The deepest call nesting before T08 (stack overflow).
+/// The deepest call nesting before T08 (stack overflow), for the default
+/// 8 MB `[build] stack`; a bigger stack allows proportionally more.
 const MAX_FRAMES: usize = 20_000;
+
+/// How `antec run` runs a program.
+#[derive(Clone, Debug, Default)]
+pub struct RunOptions {
+    /// Write stdout to the real stdout as it fills.
+    pub stream: bool,
+    /// `[build] stack` in bytes; 0 means the default.
+    pub stack: u64,
+    /// The program's arguments (`antec run path -- args`), for `system.args()`.
+    pub args: Vec<String>,
+}
 
 struct Frame {
     body: BodyId,
@@ -69,6 +81,8 @@ pub struct Machine<'a> {
     pub stderr: String,
     /// Write stdout to the real stdout as it fills (for `antec run`).
     pub stream: bool,
+    max_frames: usize,
+    pub args: Vec<String>,
     started: std::time::Instant,
 }
 
@@ -78,9 +92,14 @@ enum Dispatch {
     Native(String),
 }
 
-pub fn run(prog: &Program, tc: &Typeck, files: &[SourceFile], entry: FnId, stream: bool) -> RunOutput {
+pub fn run(prog: &Program, tc: &Typeck, files: &[SourceFile], entry: FnId, opts: &RunOptions) -> RunOutput {
     let mut m = Machine::new(prog, tc, files);
-    m.stream = stream;
+    m.stream = opts.stream;
+    m.args = opts.args.clone();
+    if opts.stack > 0 {
+        let scaled = MAX_FRAMES as u64 * opts.stack / crate::package::MIN_STACK;
+        m.max_frames = scaled.clamp(MAX_FRAMES as u64, 10_000_000) as usize;
+    }
     let result = m.call_fn(entry, Rc::from(Vec::new()), Vec::new(), Span::default());
     let mut out = RunOutput { stdout: String::new(), stderr: String::new(), exit_code: 0, trap: None };
     match result {
@@ -179,6 +198,8 @@ impl<'a> Machine<'a> {
             stdout: String::new(),
             stderr: String::new(),
             stream: false,
+            max_frames: MAX_FRAMES,
+            args: Vec::new(),
             started: std::time::Instant::now(),
         }
     }
@@ -421,7 +442,7 @@ impl<'a> Machine<'a> {
         dest: Option<Addr>,
         span: Span,
     ) -> R<()> {
-        if self.frames.len() >= MAX_FRAMES {
+        if self.frames.len() >= self.max_frames {
             return Err(self.trap("T08", "stack nindipoyindhi (chaala lothu recursion)", span));
         }
         let b = &self.prog.bodies[body as usize];

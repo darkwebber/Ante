@@ -91,11 +91,11 @@ fn run_test(path: &Path) -> Outcome {
     };
     let category = parse_header(&text).category;
     let action = if matches!(category.as_str(), "run-pass" | "runtime-trap") {
-        Action::Run { stream: false }
+        Action::Run { stream: false, args: Vec::new() }
     } else {
         Action::Check
     };
-    let checked = antec::package::process(path, action).expect("readable test");
+    let checked = antec::on_big_stack(|| antec::package::process(path, action)).expect("readable test");
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
     for (file, d) in &checked.diagnostics {
@@ -133,6 +133,15 @@ fn conformance_suite() {
                 for wanted in &expect.errors {
                     if !errors.contains(wanted) {
                         failures.push(format!("{name}: expected {wanted}, found {errors:?}"));
+                    }
+                }
+                // Every error must be expected: a stray one is a bug too.
+                for got in errors {
+                    if !expect.errors.contains(got) {
+                        failures.push(format!(
+                            "{name}: unexpected error {got} (expected only {:?})",
+                            expect.errors
+                        ));
                     }
                 }
             }
@@ -190,7 +199,8 @@ fn readme_welcome_output_matches() {
     let code = readme.split("```ante\n").nth(1).and_then(|r| r.split("```").next()).expect("an ante block");
     let expected =
         readme.split("```text\n").nth(1).and_then(|r| r.split("```").next()).expect("a text block");
-    let checked = antec::package::run_source(&antec::source::SourceFile::new("welcome.ante", code));
+    let src = antec::source::SourceFile::new("welcome.ante", code);
+    let checked = antec::on_big_stack(|| antec::package::run_source(&src));
     let errors: Vec<String> = checked.diagnostics.iter().map(|(_, d)| d.message.clone()).collect();
     let run = checked.run.unwrap_or_else(|| panic!("welcome program didn't run: {errors:?}"));
     assert_eq!(run.stdout, expected, "README output and real output differ");
@@ -216,7 +226,7 @@ fn examples_pass_implemented_stages() {
             failures.push(d.render(&src));
         }
         if src.text.contains("modhalu()") {
-            let checked = antec::package::run_source(&src);
+            let checked = antec::on_big_stack(|| antec::package::run_source(&src));
             if let Some(run) = checked.run {
                 if run.exit_code != 0 {
                     failures.push(format!(
@@ -348,4 +358,43 @@ fn truncated_examples_do_not_panic() {
             let _ = check_text(&name, &prefix[..cut]);
         }
     }
+}
+
+/// The spec's revision header matches the newest row of Appendix G.
+#[test]
+fn spec_revision_matches_history() {
+    let spec =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../spec/ante_language_spec_1_0.md"))
+            .expect("spec");
+    let header = spec
+        .lines()
+        .find(|l| l.starts_with("**Revision:**"))
+        .and_then(|l| l.split("draft ").nth(1))
+        .and_then(|r| r.split('.').next())
+        .expect("a `**Revision:** … draft rN.` header");
+    let history = spec.split("# Appendix G").nth(1).expect("Appendix G");
+    let newest = history.lines().find_map(|l| l.strip_prefix("| r")).and_then(|r| r.split(' ').next());
+    assert_eq!(Some(header.trim_start_matches('r')), newest, "spec header and Appendix G disagree");
+}
+
+/// Every conformance test is listed in Appendix C under its ID.
+#[test]
+fn every_test_is_in_appendix_c() {
+    let spec =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../spec/ante_language_spec_1_0.md"))
+            .expect("spec");
+    let appendix = spec.split("# Appendix C").nth(1).and_then(|r| r.split("# Appendix D").next()).expect("C");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/conformance");
+    let mut files = Vec::new();
+    collect(&root, &mut files);
+    let mut missing = Vec::new();
+    for f in files {
+        let name = f.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let id: String = name.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+        let id = id.trim_end_matches(|c: char| c.is_ascii_lowercase()).to_string();
+        if !appendix.contains(&format!("| {id} |")) {
+            missing.push(name.to_string());
+        }
+    }
+    assert!(missing.is_empty(), "not in spec Appendix C: {missing:?}");
 }

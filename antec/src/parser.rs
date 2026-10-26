@@ -22,6 +22,7 @@ pub struct ParseResult {
 pub fn parse(src: &SourceFile, tokens: Vec<Token>) -> ParseResult {
     let mut p = Parser::new(src, tokens);
     let module = p.parse_module();
+    p.diags.extend(p.deep.take());
     p.diags.sort_by_key(|d| d.span.start);
     ParseResult { module, diagnostics: p.diags }
 }
@@ -158,6 +159,15 @@ fn is_place(e: &Expr) -> bool {
     )
 }
 
+/// How deeply brackets, unary operators, blocks, types and patterns may
+/// nest. The compiler walks these recursively, so without a limit a
+/// hostile file could overflow its stack (implementation-defined, §20.6).
+const MAX_NESTING: usize = 512;
+
+/// How deep one expression's syntax tree may get, counting operator chains
+/// like `a + b + c` (each operator is one level).
+const MAX_EXPR_DEPTH: usize = 1000;
+
 struct Parser<'a> {
     src: &'a SourceFile,
     toks: Vec<Token>,
@@ -166,12 +176,40 @@ struct Parser<'a> {
     loop_depth: usize,
     defer_depth: usize,
     index_depth: usize,
+    /// Current recursion depth, against `MAX_NESTING`.
+    nesting: usize,
+    /// Nesting of `parse_pipe_expr_with`: the outermost checks the depth.
+    expr_level: usize,
+    /// The E0216 report, kept apart from `diags` so backtracking can't drop it.
+    deep: Option<Diagnostic>,
+    /// List elements that failed to parse, by (position, commas), with the
+    /// errors they reported: retrying them gives the same result, and without
+    /// this nested brackets would be retried exponentially often.
+    failed_elems: std::collections::HashMap<(usize, bool), Vec<Diagnostic>>,
+    /// Where to resume after an item error that already skipped its line.
+    resume: Option<usize>,
+    /// Set when the nesting limit is hit: everything fails fast until the
+    /// next line recovery, so alternatives aren't retried exponentially.
+    bail: bool,
 }
 
 impl<'a> Parser<'a> {
     fn new(src: &'a SourceFile, toks: Vec<Token>) -> Self {
-        let mut p =
-            Parser { src, toks, pos: 0, diags: Vec::new(), loop_depth: 0, defer_depth: 0, index_depth: 0 };
+        let mut p = Parser {
+            src,
+            toks,
+            pos: 0,
+            diags: Vec::new(),
+            loop_depth: 0,
+            defer_depth: 0,
+            index_depth: 0,
+            nesting: 0,
+            expr_level: 0,
+            deep: None,
+            failed_elems: Default::default(),
+            resume: None,
+            bail: false,
+        };
         for tok in &p.toks {
             if let TokenKind::Keyword(kw) = tok.kind {
                 if kw.is_reserved_for_later() {
@@ -187,6 +225,37 @@ impl<'a> Parser<'a> {
             }
         }
         p
+    }
+
+    /// Runs `f` one nesting level deeper, or reports E0216 at the limit.
+    fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> PResult<T>) -> PResult<T> {
+        if self.bail {
+            return Err(());
+        }
+        if self.nesting >= MAX_NESTING {
+            self.too_deep_here();
+            self.bail = true;
+            return Err(());
+        }
+        self.nesting += 1;
+        let result = f(self);
+        self.nesting -= 1;
+        result
+    }
+
+    fn too_deep_here(&mut self) {
+        let span = self.span();
+        self.report_deep(span, "code chaala lothuga nest ayyindhi");
+    }
+
+    fn report_deep(&mut self, span: Span, what: &str) {
+        if self.deep.is_none() {
+            self.deep = Some(Diagnostic::error(
+                "E0216",
+                span,
+                format!("{what} 🌀 Konchem chinna mukkalu ga vidagottandi (madhyalo variables pettandi)"),
+            ));
+        }
     }
 
     // ── token helpers ──────────────────────────────────────────────────────
@@ -363,6 +432,7 @@ impl<'a> Parser<'a> {
 
     /// Skips the rest of the logical line and, if a block follows, that block.
     fn recover_line(&mut self) {
+        self.bail = false;
         self.pos = self.line_end();
         self.eat(&TokenKind::Newline);
         if self.at(&TokenKind::Indent) {
@@ -403,6 +473,9 @@ impl<'a> Parser<'a> {
                 Err(()) => {
                     self.pos = start;
                     self.recover_line();
+                    if let Some(at) = self.resume.take() {
+                        self.pos = self.pos.max(at);
+                    }
                 }
             }
         }
@@ -473,8 +546,17 @@ impl<'a> Parser<'a> {
                 ItemKind::Fn(self.parse_fn_decl()?)
             }
             _ => {
-                if !annotations.is_empty() {
+                let reserved = line
+                    .iter()
+                    .any(|t| matches!(t.kind, TokenKind::Keyword(kw) if kw.is_reserved_for_later()));
+                if reserved {
+                    // Already reported as E1201; one error per line is enough.
+                } else if !annotations.is_empty() {
                     self.error("E0208", start, "annotation tharvatha function or type declaration raavali");
+                    // Skip the line under the annotation too, so it isn't
+                    // reported again as E0209.
+                    self.recover_line();
+                    self.resume = Some(self.pos);
                 } else {
                     let span = self.span();
                     self.error(
@@ -835,6 +917,10 @@ impl<'a> Parser<'a> {
 
     /// Parses `NEWLINE INDENT stmt+ DEDENT`; the caller has consumed the `:`.
     fn parse_block(&mut self) -> PResult<Block> {
+        self.nested(|p| p.parse_block_inner())
+    }
+
+    fn parse_block_inner(&mut self) -> PResult<Block> {
         let start = self.span();
         if !self.at(&TokenKind::Newline) {
             self.unexpected("line end (block `:` tharvatha next line lo start avvali)");
@@ -1122,6 +1208,22 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_pipe_expr_with(&mut self, commas: bool) -> PResult<Expr> {
+        self.expr_level += 1;
+        let result = self.parse_pipe_expr_inner(commas);
+        self.expr_level -= 1;
+        if self.expr_level == 0 {
+            if let Ok(e) = &result {
+                if e.depth() > MAX_EXPR_DEPTH {
+                    let span = e.span;
+                    self.report_deep(span, "ee expression chaala lothuga undhi");
+                    return Err(());
+                }
+            }
+        }
+        result
+    }
+
+    fn parse_pipe_expr_inner(&mut self, commas: bool) -> PResult<Expr> {
         let mut expr = self.parse_clause(commas)?;
         if count_holes(&expr) > 0 {
             self.error(
@@ -1167,6 +1269,25 @@ impl<'a> Parser<'a> {
             }
         }
         self.toks[i + 1].kind == TokenKind::LParen
+    }
+
+    /// If the next tokens are a literal or bracketed receiver followed by
+    /// `.name(`, as in `"ff".ankam_ga()`, the index of the `(`.
+    fn non_path_receiver_call(&self) -> Option<usize> {
+        let i = self.pos;
+        let last = match &self.toks[i].kind {
+            TokenKind::Int(_)
+            | TokenKind::Float(_)
+            | TokenKind::Str(_)
+            | TokenKind::Char(_)
+            | TokenKind::FStr(_) => i,
+            TokenKind::LParen | TokenKind::LBracket => self.matching_close(i)?,
+            _ => return None,
+        };
+        let dot = matches!(self.toks.get(last + 1)?.kind, TokenKind::Dot);
+        let name = matches!(self.toks.get(last + 2)?.kind, TokenKind::Ident(_));
+        let paren = matches!(self.toks.get(last + 3)?.kind, TokenKind::LParen);
+        (dot && name && paren).then_some(last + 3)
     }
 
     fn starts_expression(&self) -> bool {
@@ -1219,7 +1340,15 @@ impl<'a> Parser<'a> {
             }
         }
         let span = self.span();
-        if self.starts_expression() {
+        if let Some(end) = self.non_path_receiver_call() {
+            // `x ni "ff".f()`: a callee must be a path (D3), not a literal.
+            let span = join(span, self.toks[end].span);
+            self.error(
+                "E0202",
+                span,
+                "verb (callee) ga path matrame raavali, literal kaadhu. Mundhu variable lo pettandi: `s ante \"ff\"`, tharvatha `… s.method()`",
+            );
+        } else if self.starts_expression() {
             self.error("E0203", span, "phrases madhyalo `,` kavali, ex: `10 ni, 20 tho kalupu()`");
         } else {
             self.error("E0202", span, "verb ekkada? Arguments tharvatha function call (`kalupu()`) raavali");
@@ -1371,6 +1500,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_unary(&mut self) -> PResult<Expr> {
+        self.nested(|p| p.parse_unary_inner())
+    }
+
+    fn parse_unary_inner(&mut self) -> PResult<Expr> {
         let start = self.span();
         let op = match self.peek() {
             TokenKind::Minus => UnOp::Neg,
@@ -1418,6 +1551,29 @@ impl<'a> Parser<'a> {
                     }
                 }
                 TokenKind::LBracket if self.generic_call_ahead() => {
+                    // D7: `xs[0]()` reads as a generic call, and `0` isn't a type.
+                    if matches!(
+                        self.peek_at(1),
+                        TokenKind::Int(_)
+                            | TokenKind::Float(_)
+                            | TokenKind::Str(_)
+                            | TokenKind::Char(_)
+                            | TokenKind::FStr(_)
+                            | TokenKind::Minus
+                            | TokenKind::Keyword(Keyword::Avunu | Keyword::Kaadhu)
+                    ) {
+                        let close = self.matching_close(self.pos).unwrap_or(self.pos);
+                        let text = &self.src.text[expr.span.start..self.toks[close].span.end];
+                        let span = join(expr.span, self.toks[close + 1].span);
+                        self.error(
+                            "E0401",
+                            span,
+                            format!(
+                                "`{text}()` generic call laaga chadhuvuthundhi, `[…]` lo type kavali. Index chesi call cheyyalante `({text})()` ani raayandi"
+                            ),
+                        );
+                        return Err(());
+                    }
                     let type_args = self.parse_type_args()?;
                     self.expect(&TokenKind::LParen, "`()`")?;
                     if !self.at(&TokenKind::RParen) {
@@ -1497,13 +1653,27 @@ impl<'a> Parser<'a> {
     /// phrase list ends in a callee; otherwise it separates elements (D4).
     fn parse_list_elem(&mut self) -> PResult<Expr> {
         let snap = self.snapshot();
-        match self.parse_pipe_expr_with(true) {
+        match self.list_elem_attempt(true) {
             Ok(expr) => Ok(expr),
             Err(()) => {
                 self.restore(snap);
-                self.parse_pipe_expr_with(false)
+                self.list_elem_attempt(false)
             }
         }
+    }
+
+    fn list_elem_attempt(&mut self, commas: bool) -> PResult<Expr> {
+        let key = (self.pos, commas);
+        if let Some(diags) = self.failed_elems.get(&key) {
+            self.diags.extend(diags.iter().cloned());
+            return Err(());
+        }
+        let before = self.diags.len();
+        let result = self.parse_pipe_expr_with(commas);
+        if result.is_err() {
+            self.failed_elems.insert(key, self.diags[before..].to_vec());
+        }
+        result
     }
 
     /// Comma-separated elements up to (not including) `close`; returns
@@ -1549,6 +1719,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_primary(&mut self) -> PResult<Expr> {
+        self.nested(|p| p.parse_primary_inner())
+    }
+
+    fn parse_primary_inner(&mut self) -> PResult<Expr> {
         let tok = self.toks[self.pos].clone();
         let span = tok.span;
         let kind = match tok.kind {
@@ -1753,6 +1927,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type(&mut self) -> PResult<Type> {
+        self.nested(|p| p.parse_type_inner())
+    }
+
+    fn parse_type_inner(&mut self) -> PResult<Type> {
         let start = self.span();
         let tok = self.toks[self.pos].clone();
         let kind = match tok.kind {
@@ -1894,6 +2072,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_alt_pattern(&mut self) -> PResult<Pattern> {
+        self.nested(|p| p.parse_alt_pattern_inner())
+    }
+
+    fn parse_alt_pattern_inner(&mut self) -> PResult<Pattern> {
         let start = self.span();
         let kind = match self.peek().clone() {
             TokenKind::Underscore => {

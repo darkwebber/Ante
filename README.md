@@ -98,9 +98,10 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 | Milestone | Em untundhi | Status |
 |---|---|---|
 | M1 | Lexer and layout | ✅ done |
-| M2 | Parser and AST (`antec emit ast`) | ✅ done (`antec fmt` inka raavali) |
+| M2 | Parser and AST (`antec emit ast`), formatter (`antec fmt`) | ✅ done |
 | M3 | Names, modules, imports, visibility | ✅ done |
-| M4 | Type checker (call binding, pipes, patterns, traits kuda) | ✅ done |
+| M4 | Type checker (patterns, traits kuda) | ✅ done |
+| M5 | Call binding, automatic borrows, pipes | ✅ done (M4 tho paatu) |
 | M6 | MIR and interpreter: programs run avthayi! (`antec run`) | ✅ done |
 | M7 | LLVM codegen: native binaries (`antec build`) | ✅ done |
 | M8 | Borrow checker | ⏳ next |
@@ -144,6 +145,18 @@ cargo run -p antec -- build examples/ante_sundharaniki.ante -o sundharaniki
 ./sundharaniki
 ```
 
+Inka fast binary kavalante `--release` add cheyyandi (build konchem time theesukuntundhi, program chaala fast ga run avthundhi):
+
+```bash
+cargo run -p antec -- build examples/ante_sundharaniki.ante -o sundharaniki --release
+```
+
+Code ni neat ga, official style lo pettali ante:
+
+```bash
+cargo run -p antec -- fmt examples
+```
+
 Oka file ni tokens ga choodalante:
 
 ```bash
@@ -152,7 +165,7 @@ cargo run -p antec -- emit tokens antec/tests/conformance/lex/L003_line_joining.
 
 ## Editor support 🎨
 
-VS Code extension (syntax highlighting, snippets, smart indentation) [`editors/vscode/`](editors/vscode) lo undhi. Prathi release tho `.vsix` file vasthundhi. `antec check` built-in linter laaga kuda pani chesthundhi: vaadani variables, avasaram leni `maare`, run avvani code, vaadani imports gurinchi warnings isthundhi. Full details, roadmap (formatter, language server, tree-sitter) [docs/TOOLING.md](docs/TOOLING.md) lo.
+VS Code extension (syntax highlighting, snippets, smart indentation) [`editors/vscode/`](editors/vscode) lo undhi. Prathi release tho `.vsix` file vasthundhi. `antec check` built-in linter laaga kuda pani chesthundhi: vaadani variables, avasaram leni `maare`, run avvani code, vaadani imports gurinchi warnings isthundhi. `antec fmt` code ni official style lo pedathundhi. Full details, roadmap (language server, tree-sitter) [docs/TOOLING.md](docs/TOOLING.md) lo.
 
 ## Repo lo em undhi
 

@@ -11,6 +11,8 @@ use crate::token::{FPart, IntLit, Keyword, Token, TokenKind};
 pub struct LexResult {
     pub tokens: Vec<Token>,
     pub diagnostics: Vec<Diagnostic>,
+    /// Every `# …` comment, for `antec fmt`.
+    pub comments: Vec<Span>,
 }
 
 pub fn lex(src: &SourceFile) -> LexResult {
@@ -19,7 +21,7 @@ pub fn lex(src: &SourceFile) -> LexResult {
     let mut diagnostics = scanner.diags;
     let tokens = layout(lines, src.text.len(), &mut diagnostics);
     diagnostics.sort_by_key(|d| d.span.start);
-    LexResult { tokens, diagnostics }
+    LexResult { tokens, diagnostics, comments: scanner.comments }
 }
 
 /// A physical line that contains at least one token.
@@ -35,6 +37,7 @@ struct Scanner<'a> {
     diags: Vec<Diagnostic>,
     /// After a `.` token, digits lex as an integer so `t.0.1` is two indices.
     prev_dot: bool,
+    comments: Vec<Span>,
 }
 
 fn is_word_byte(b: u8) -> bool {
@@ -48,7 +51,14 @@ fn digit_group_ok(group: &str) -> bool {
 impl<'a> Scanner<'a> {
     fn new(text: &'a str) -> Self {
         let pos = if text.starts_with('\u{FEFF}') { '\u{FEFF}'.len_utf8() } else { 0 };
-        Scanner { text, bytes: text.as_bytes(), pos, diags: Vec::new(), prev_dot: false }
+        Scanner {
+            text,
+            bytes: text.as_bytes(),
+            pos,
+            diags: Vec::new(),
+            prev_dot: false,
+            comments: Vec::new(),
+        }
     }
 
     fn peek(&self) -> Option<u8> {
@@ -102,9 +112,11 @@ impl<'a> Scanner<'a> {
                     }
                     Some(b' ' | b'\t') => self.pos += 1,
                     Some(b'#') => {
+                        let start = self.pos;
                         while !self.at_line_end() {
                             self.pos += 1;
                         }
+                        self.comments.push(Span::new(start, self.pos));
                     }
                     Some(_) => {
                         if let Some(tok) = self.scan_token() {

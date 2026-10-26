@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E0213 @ 10:10
+# level: core
+# A pipe stage takes the piped value in one `_` only.
+theesey_(a: ankam ni, b: ankam tho) -> ankam ante:
+    (a - b) icchey
+
+modhalu() -> khali ante:
+    x ante 10
+    x |> _ ni, _ tho theesey_() |> choopinchu()

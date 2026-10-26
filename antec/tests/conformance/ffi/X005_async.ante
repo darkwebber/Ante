@@ -1,0 +1,6 @@
+# category: compile-fail
+# expect-error: E1201 @ 5:1
+# level: core
+# `async` is reserved for a later edition.
+async modhalu() -> khali ante:
+    5 ni choopinchu()

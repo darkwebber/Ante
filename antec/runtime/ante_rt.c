@@ -10,6 +10,7 @@
 
 #include <errno.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,7 +21,11 @@
 #include <io.h>
 #include <windows.h>
 #else
+#include <pthread.h>
+#include <signal.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 typedef struct {
@@ -51,15 +56,38 @@ void ante_flush(void) {
     fflush(stdout);
 }
 
+/* T09 (§20.3). The runtime doesn't know the source position here. */
+static NORETURN void out_of_memory(void) {
+    ante_flush();
+    fputs("kompa munigindhi! memory ayipoyindhi\n", stderr);
+    exit(101);
+}
+
+/* `a * b` for sizes; a negative or overflowing size is T09, never a short
+   allocation. */
+static int64_t size_mul(int64_t a, int64_t b) {
+    if (a < 0 || b < 0 || (b != 0 && a > INT64_MAX / b)) out_of_memory();
+    return a * b;
+}
+
+static int64_t size_add(int64_t a, int64_t b) {
+    if (a < 0 || b < 0 || a > INT64_MAX - b) out_of_memory();
+    return a + b;
+}
+
+/* The next capacity of at least `need`, doubling from `cap`. */
+static int64_t grow_cap(int64_t cap, int64_t need, int64_t first) {
+    if (cap < first) cap = first;
+    while (cap < need) cap = size_mul(cap, 2);
+    return cap;
+}
+
 static void buf_grow(ante_str *b, int64_t extra) {
-    if (b->len + extra <= b->cap) return;
-    int64_t cap = b->cap ? b->cap * 2 : 64;
-    while (cap < b->len + extra) cap *= 2;
+    int64_t need = size_add(b->len, extra);
+    if (need <= b->cap) return;
+    int64_t cap = grow_cap(b->cap, need, 64);
     uint8_t *p = (uint8_t *)malloc((size_t)cap);
-    if (!p) {
-        fputs("kompa munigindhi! memory ayipoyindhi\n", stderr);
-        exit(101);
-    }
+    if (!p) out_of_memory();
     if (b->len) memcpy(p, b->ptr, (size_t)b->len);
     if (b->cap) free(b->ptr);
     b->ptr = p;
@@ -101,6 +129,104 @@ NORETURN void ante_exit(int32_t code) {
     ante_flush();
     exit(code);
 }
+
+/* ── program start and T08 ────────────────────────────────────────────── */
+
+/* `modhalu` runs on its own thread with the stack size from `[build] stack`
+   (§7.1). Below that stack sits a guard region; touching it is a stack
+   overflow, reported as T08 instead of a bare crash. The position isn't
+   known there, so the message has none (§20.3). */
+
+typedef void (*ante_entry_fn)(void);
+static ante_entry_fn entry_fn;
+static const char overflow_msg[] = "kompa munigindhi! stack nindipoyindhi (chaala lothu recursion)\n";
+
+#ifdef _WIN32
+static LONG WINAPI on_exception(EXCEPTION_POINTERS *e) {
+    if (e->ExceptionRecord->ExceptionCode == EXCEPTION_STACK_OVERFLOW) {
+        DWORD n;
+        if (out_buf.len > 0) WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), out_buf.ptr, (DWORD)out_buf.len, &n, NULL);
+        WriteFile(GetStdHandle(STD_ERROR_HANDLE), overflow_msg, (DWORD)(sizeof overflow_msg - 1), &n, NULL);
+        ExitProcess(101);
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+static DWORD WINAPI program_thread(LPVOID arg) {
+    (void)arg;
+    ULONG guarantee = 64 * 1024; /* room for the handler itself */
+    SetThreadStackGuarantee(&guarantee);
+    entry_fn();
+    return 0;
+}
+
+NORETURN void ante_start(int32_t argc, char **argv, ante_entry_fn entry, int64_t stack) {
+    ante_init(argc, argv);
+    entry_fn = entry;
+    AddVectoredExceptionHandler(1, on_exception);
+    HANDLE t = CreateThread(NULL, (SIZE_T)stack, program_thread, NULL, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+    if (t)
+        WaitForSingleObject(t, INFINITE);
+    else
+        entry();
+    ante_exit(0);
+}
+#else
+static uint8_t *guard_lo, *guard_hi;
+
+static void on_fault(int sig, siginfo_t *info, void *ctx) {
+    (void)ctx;
+    uint8_t *addr = (uint8_t *)info->si_addr;
+    if (addr >= guard_lo && addr < guard_hi) {
+        if (out_buf.len > 0 && write(1, out_buf.ptr, (size_t)out_buf.len) < 0) _exit(101);
+        if (write(2, overflow_msg, sizeof overflow_msg - 1) < 0) _exit(101);
+        _exit(101);
+    }
+    /* Some other crash: let it happen as usual. */
+    signal(sig, SIG_DFL);
+}
+
+static void *program_thread(void *arg) {
+    (void)arg;
+    static uint8_t alt[64 * 1024]; /* the handler runs here, off the full stack */
+    stack_t ss;
+    memset(&ss, 0, sizeof ss);
+    ss.ss_sp = alt;
+    ss.ss_size = sizeof alt;
+    sigaltstack(&ss, NULL);
+    entry_fn();
+    return NULL;
+}
+
+NORETURN void ante_start(int32_t argc, char **argv, ante_entry_fn entry, int64_t stack) {
+    ante_init(argc, argv);
+    entry_fn = entry;
+    size_t page = (size_t)sysconf(_SC_PAGESIZE);
+    size_t guard = ((size_t)1 << 20) / page * page;
+    size_t size = ((size_t)(stack < (1 << 16) ? (1 << 16) : stack) + page - 1) / page * page;
+    uint8_t *mem = (uint8_t *)mmap(NULL, guard + size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    pthread_attr_t attr;
+    pthread_t t;
+    if (mem != MAP_FAILED && mprotect(mem, guard, PROT_NONE) == 0 && pthread_attr_init(&attr) == 0 &&
+        pthread_attr_setstack(&attr, mem + guard, size) == 0) {
+        guard_lo = mem;
+        guard_hi = mem + guard;
+        struct sigaction sa;
+        memset(&sa, 0, sizeof sa);
+        sa.sa_sigaction = on_fault;
+        sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGSEGV, &sa, NULL);
+        sigaction(SIGBUS, &sa, NULL);
+        if (pthread_create(&t, &attr, program_thread, NULL) == 0) {
+            pthread_join(t, NULL);
+            ante_exit(0);
+        }
+    }
+    entry(); /* couldn't make the thread: run on the main stack */
+    ante_exit(0);
+}
+#endif
 
 /* ── traps (§20.3) ────────────────────────────────────────────────────── */
 
@@ -170,20 +296,18 @@ NORETURN void ante_trap_code(int32_t code, const ante_loc *loc) {
 /* ── memory ───────────────────────────────────────────────────────────── */
 
 void *ante_alloc(int64_t size) {
+    if (size < 0) out_of_memory();
     void *p = malloc(size > 0 ? (size_t)size : 1);
-    if (!p) {
-        fputs("kompa munigindhi! memory ayipoyindhi\n", stderr);
-        exit(101);
-    }
+    if (!p) out_of_memory();
     return p;
 }
 
 /* Appends one element of `size` bytes to a vector. */
 void ante_vec_push(ante_vec *v, const void *elem, int64_t size) {
     if (v->len == v->cap) {
-        int64_t cap = v->cap ? v->cap * 2 : 4;
-        uint8_t *p = (uint8_t *)ante_alloc(cap * size);
-        if (v->len) memcpy(p, v->ptr, (size_t)(v->len * size));
+        int64_t cap = grow_cap(v->cap, size_add(v->len, 1), 4);
+        uint8_t *p = (uint8_t *)ante_alloc(size_mul(cap, size));
+        if (v->len) memcpy(p, v->ptr, (size_t)size_mul(v->len, size));
         v->ptr = p;
         v->cap = cap;
     }
@@ -218,7 +342,7 @@ static void merge_sort(uint8_t *a, uint8_t *tmp, int64_t n, int64_t size, ante_c
 /* Stable sort (§21.2: all sorts are stable). */
 void ante_sort(void *base, int64_t n, int64_t size, ante_cmp_fn cmp, void *ctx) {
     if (n < 2) return;
-    uint8_t *tmp = (uint8_t *)ante_alloc(n * size);
+    uint8_t *tmp = (uint8_t *)ante_alloc(size_mul(n, size));
     merge_sort((uint8_t *)base, tmp, n, size, cmp, ctx);
     free(tmp);
 }
@@ -270,7 +394,7 @@ void ante_buf_char(ante_str *b, uint32_t c) {
 
 /*
  * Floats in the shortest form that reads back exactly, positional (no
- * exponent); whole numbers below the threshold get ".0" (spec §13.5).
+ * exponent); whole numbers get ".0", however big (spec §13.5).
  */
 static void fmt_float(ante_str *b, double v, int is32) {
     if (isnan(v)) { push_c(b, "NaN"); return; }
@@ -307,7 +431,7 @@ static void fmt_float(ante_str *b, double v, int is32) {
         if (nd > point) {
             out[k++] = '.';
             for (int i = point; i < nd; i++) out[k++] = digits[i];
-        } else if (fabs(v) < (is32 ? 1e7 : 1e16)) {
+        } else {
             out[k++] = '.';
             out[k++] = '0';
         }
@@ -322,7 +446,7 @@ void ante_buf_f32(ante_str *b, float v) { fmt_float(b, (double)v, 1); }
 
 void ante_str_concat(ante_str *out, const ante_str *a, const ante_str *b) {
     ante_str r = {0, 0, 0};
-    buf_grow(&r, a->len + b->len + 1);
+    buf_grow(&r, size_add(size_add(a->len, b->len), 1));
     ante_buf_push(&r, a->ptr, a->len);
     ante_buf_push(&r, b->ptr, b->len);
     *out = r;
@@ -340,6 +464,18 @@ int32_t ante_str_cmp(const ante_str *a, const ante_str *b) {
     int c = n ? memcmp(a->ptr, b->ptr, (size_t)n) : 0;
     if (c) return c < 0 ? -1 : 1;
     return a->len < b->len ? -1 : (a->len > b->len ? 1 : 0);
+}
+
+/* Is `c` in a sorted table of inclusive ranges? (Unicode properties.) */
+bool ante_char_in(int32_t c, const int32_t *ranges, int64_t n) {
+    int64_t lo = 0, hi = n;
+    while (lo < hi) {
+        int64_t mid = lo + (hi - lo) / 2;
+        if (c < ranges[2 * mid]) hi = mid;
+        else if (c > ranges[2 * mid + 1]) lo = mid + 1;
+        else return true;
+    }
+    return false;
 }
 
 int64_t ante_str_chars(const ante_str *s) {
@@ -473,7 +609,7 @@ int32_t ante_str_parse_float(const ante_str *s, double *out) {
 /* ── files, system, time ──────────────────────────────────────────────── */
 
 static char *cstr(const ante_str *s) {
-    char *p = (char *)ante_alloc(s->len + 1);
+    char *p = (char *)ante_alloc(size_add(s->len, 1));
     memcpy(p, s->ptr, (size_t)s->len);
     p[s->len] = 0;
     return p;
@@ -485,19 +621,66 @@ static void set_err(ante_str *err, const char *what) {
     *err = r;
 }
 
+/* The text of an I/O error: the same words as the interpreter's `io_text`. */
+static void io_error(ante_str *err, int code) {
+    switch (code) {
+    case ENOENT: set_err(err, "aa file ledhu"); return;
+    case EACCES:
+    case EPERM: set_err(err, "permission ledhu"); return;
+    case EISDIR: set_err(err, "adhi file kaadhu, folder"); return;
+    case ENOTDIR: set_err(err, "path lo oka bhaagam folder kaadhu"); return;
+    case EEXIST: set_err(err, "adhi mundhe undhi"); return;
+    case ENOSPC: set_err(err, "disk nindipoyindhi"); return;
+    default: set_err(err, strerror(code));
+    }
+}
+
+/* Is this valid UTF-8 (no overlongs, surrogates or values past U+10FFFF)? */
+static int utf8_valid(const uint8_t *s, int64_t n) {
+    int64_t i = 0;
+    while (i < n) {
+        uint8_t c = s[i];
+        int len;
+        uint32_t min, cp;
+        if (c < 0x80) { i++; continue; }
+        else if ((c & 0xE0) == 0xC0) { len = 2; min = 0x80; cp = c & 0x1F; }
+        else if ((c & 0xF0) == 0xE0) { len = 3; min = 0x800; cp = c & 0x0F; }
+        else if ((c & 0xF8) == 0xF0) { len = 4; min = 0x10000; cp = c & 0x07; }
+        else return 0;
+        if (i + len > n) return 0;
+        for (int k = 1; k < len; k++) {
+            if ((s[i + k] & 0xC0) != 0x80) return 0;
+            cp = (cp << 6) | (s[i + k] & 0x3F);
+        }
+        if (cp < min || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) return 0;
+        i += len;
+    }
+    return 1;
+}
+
 int32_t ante_file_read(const ante_str *path, ante_str *out, ante_str *err) {
     char *p = cstr(path);
     FILE *f = fopen(p, "rb");
     free(p);
     if (!f) {
-        set_err(err, strerror(errno));
+        io_error(err, errno);
         return 0;
     }
     ante_str r = {0, 0, 0};
     uint8_t chunk[8192];
     size_t n;
     while ((n = fread(chunk, 1, sizeof chunk, f)) > 0) ante_buf_push(&r, chunk, (int64_t)n);
+    int bad = ferror(f) ? errno : 0;
     fclose(f);
+    if (bad) {
+        io_error(err, bad);
+        return 0;
+    }
+    /* `padham` is always valid UTF-8 (§9.1). */
+    if (!utf8_valid(r.ptr, r.len)) {
+        set_err(err, "file lo text valid UTF-8 kaadhu");
+        return 0;
+    }
     *out = r;
     return 1;
 }
@@ -507,20 +690,30 @@ int32_t ante_file_write(const ante_str *path, const ante_str *text, ante_str *er
     FILE *f = fopen(p, "wb");
     free(p);
     if (!f) {
-        set_err(err, strerror(errno));
+        io_error(err, errno);
         return 0;
     }
-    fwrite(text->ptr, 1, (size_t)text->len, f);
-    fclose(f);
+    size_t wrote = fwrite(text->ptr, 1, (size_t)text->len, f);
+    int bad = wrote != (size_t)text->len ? errno : 0;
+    if (fclose(f) != 0 && !bad) bad = errno;
+    if (bad) {
+        io_error(err, bad);
+        return 0;
+    }
     return 1;
 }
 
+/* Files and folders both count, readable or not (like the interpreter). */
 int32_t ante_file_exists(const ante_str *path) {
     char *p = cstr(path);
-    FILE *f = fopen(p, "rb");
+#ifdef _WIN32
+    int found = GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES;
+#else
+    struct stat st;
+    int found = stat(p, &st) == 0;
+#endif
     free(p);
-    if (f) fclose(f);
-    return f != NULL;
+    return found;
 }
 
 void ante_args(ante_vec *out) {

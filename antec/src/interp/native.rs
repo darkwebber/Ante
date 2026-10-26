@@ -21,6 +21,16 @@ pub fn std_const(name: &str) -> Value {
     }
 }
 
+/// Rust prints floats in the shortest form that reads back exactly, never
+/// with an exponent; whole numbers then get `.0`, however big (§13.5).
+fn whole_dot(s: String) -> String {
+    if s.contains('.') {
+        s
+    } else {
+        s + ".0"
+    }
+}
+
 pub fn fmt_f64(x: f64) -> String {
     if x.is_nan() {
         "NaN".into()
@@ -30,10 +40,8 @@ pub fn fmt_f64(x: f64) -> String {
         } else {
             "-inf".into()
         }
-    } else if x == x.trunc() && x.abs() < 1e16 {
-        format!("{x:.1}")
     } else {
-        format!("{x}")
+        whole_dot(format!("{x}"))
     }
 }
 
@@ -46,10 +54,8 @@ pub fn fmt_f32(x: f32) -> String {
         } else {
             "-inf".into()
         }
-    } else if x == x.trunc() && x.abs() < 1e7 {
-        format!("{x:.1}")
     } else {
-        format!("{x}")
+        whole_dot(format!("{x}"))
     }
 }
 
@@ -1291,7 +1297,7 @@ impl Machine<'_> {
 
             // ── system ──
             "system.args" => {
-                Ok(Value::Vec(std::env::args().skip(1).map(|a| Value::Str(Rc::from(a))).collect()))
+                Ok(Value::Vec(self.args.iter().map(|a| Value::Str(Rc::from(a.as_str()))).collect()))
             }
             "system.env" => Ok(match std::env::var(&*self.arg_str(&arg(0))) {
                 Ok(v) => Value::some(Value::Str(Rc::from(v))),
@@ -1322,7 +1328,7 @@ impl Machine<'_> {
                             Value::Str(Rc::from(String::from_utf8_lossy(&o.stderr).into_owned())),
                         ],
                     )),
-                    Err(e) => Value::err(thappu_record(e.to_string())),
+                    Err(e) => Value::err(thappu_record(io_text(&e))),
                 })
             }
             "system.os" => Ok(Value::Str(Rc::from(std::env::consts::OS))),
@@ -1568,7 +1574,30 @@ impl Machine<'_> {
 fn file_result(r: std::io::Result<Value>) -> Value {
     match r {
         Ok(v) => Value::ok(v),
-        Err(e) => Value::err(thappu_record(e.to_string())),
+        Err(e) => Value::err(thappu_record(io_text(&e))),
+    }
+}
+
+/// The text of an I/O error. The common ones have fixed wording, shared with
+/// the native runtime (`io_error` in `ante_rt.c`); others use the system's
+/// message, without Rust's ` (os error N)` suffix.
+pub fn io_text(e: &std::io::Error) -> String {
+    use std::io::ErrorKind as K;
+    match e.kind() {
+        K::NotFound => "aa file ledhu".into(),
+        K::PermissionDenied => "permission ledhu".into(),
+        K::IsADirectory => "adhi file kaadhu, folder".into(),
+        K::NotADirectory => "path lo oka bhaagam folder kaadhu".into(),
+        K::AlreadyExists => "adhi mundhe undhi".into(),
+        K::StorageFull => "disk nindipoyindhi".into(),
+        K::InvalidData => "file lo text valid UTF-8 kaadhu".into(),
+        _ => {
+            let text = e.to_string();
+            match text.rfind(" (os error ") {
+                Some(i) => text[..i].to_string(),
+                None => text,
+            }
+        }
     }
 }
 

@@ -22,6 +22,7 @@
 mod func;
 mod glue;
 mod native;
+mod peephole;
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Write as _;
@@ -92,6 +93,7 @@ pub fn emit_llvm(
     tc: &Typeck,
     files: &[SourceFile],
     entry: FnId,
+    stack: u64,
 ) -> Result<String, Vec<String>> {
     let mut gen = Gen {
         prog,
@@ -117,7 +119,7 @@ pub fn emit_llvm(
     while let Some(item) = gen.queue.pop_front() {
         gen.emit_item(&item);
     }
-    gen.emit_main(&main_fn, &tc.globals.fns[entry].ret.clone());
+    gen.emit_main(&main_fn, &tc.globals.fns[entry].ret.clone(), stack);
     while let Some(item) = gen.queue.pop_front() {
         gen.emit_item(&item);
     }
@@ -149,7 +151,7 @@ pub fn emit_llvm(
 }
 
 const DECLS: &str = "\
-declare void @ante_init(i32, ptr)
+declare void @ante_start(i32, ptr, ptr, i64) noreturn
 declare void @ante_exit(i32) noreturn
 declare void @ante_flush()
 declare void @ante_write(i32, ptr, i32)
@@ -190,6 +192,7 @@ declare i32 @ante_read_line(ptr)
 declare void @ante_os(ptr)
 declare void @ante_arch(ptr)
 declare i64 @ante_now_ns()
+declare i1 @ante_char_in(i32, ptr, i64)
 declare double @tan(double)
 declare float @tanf(float)
 ";
@@ -254,15 +257,19 @@ impl<'a> Gen<'a> {
             Item::Next(t) => native::next_fn(self, &name, t),
             Item::Adapter(a, tys) => native::adapter_fn(self, &name, *a, tys),
         };
-        self.funcs.push_str(&code);
+        self.funcs.push_str(&peephole::optimize(&code));
         self.funcs.push('\n');
     }
 
-    fn emit_main(&mut self, modhalu: &str, ret: &Ty) {
+    /// `main` hands `ante.entry` to the runtime, which runs it on a thread
+    /// with the `[build] stack` size and turns overflow into T08.
+    fn emit_main(&mut self, modhalu: &str, ret: &Ty, stack: u64) {
         let rt = self.ll(ret);
         let mut f = String::new();
         let _ = writeln!(f, "define i32 @main(i32 %argc, ptr %argv) {{");
-        let _ = writeln!(f, "  call void @ante_init(i32 %argc, ptr %argv)");
+        let _ = writeln!(f, "  call void @ante_start(i32 %argc, ptr %argv, ptr @ante.entry, i64 {stack})");
+        let _ = writeln!(f, "  unreachable\n}}\n");
+        let _ = writeln!(f, "define internal void @ante.entry() {{");
         let _ = writeln!(f, "  %r = call {rt} {modhalu}()");
         if let Ty::App(Con::SareThappu, a) = ret {
             // `thappu(e)`: print it and exit with 1 (§20.2).
@@ -310,6 +317,40 @@ impl<'a> Gen<'a> {
             }
         };
         format!("{{ ptr {name}, i64 {}, i64 0 }}", text.len())
+    }
+
+    /// A sorted table of inclusive code-point ranges `[lo, hi, lo, hi, …]`
+    /// for a Unicode property, built from Rust's own tables so compiled
+    /// programs agree with the interpreter. Returns the global and the
+    /// number of ranges.
+    fn char_table(&mut self, kind: &str, pred: fn(char) -> bool) -> (String, usize) {
+        let key = format!("\0t{kind}");
+        if let Some(entry) = self.strings.get(&key) {
+            let (name, n) = entry.split_once(' ').unwrap_or((entry, "0"));
+            return (name.to_string(), n.parse().unwrap_or(0));
+        }
+        let mut ranges: Vec<(u32, u32)> = Vec::new();
+        for c in (0..=0x10FFFFu32).filter_map(char::from_u32) {
+            if !pred(c) {
+                continue;
+            }
+            let c = c as u32;
+            match ranges.last_mut() {
+                Some((_, hi)) if *hi + 1 == c => *hi = c,
+                _ => ranges.push((c, c)),
+            }
+        }
+        let name = format!("@\"{}\"", self.fresh("ctab"));
+        let items: Vec<String> =
+            ranges.iter().flat_map(|(a, b)| [format!("i32 {a}"), format!("i32 {b}")]).collect();
+        let _ = writeln!(
+            self.globals,
+            "{name} = private unnamed_addr constant [{} x i32] [{}]",
+            items.len(),
+            items.join(", ")
+        );
+        self.strings.insert(key, format!("{name} {}", ranges.len()));
+        (name, ranges.len())
     }
 
     /// A C string constant (NUL-terminated), as a pointer.

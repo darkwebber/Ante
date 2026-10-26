@@ -40,15 +40,19 @@ impl Checked {
 #[derive(Clone, PartialEq, Eq)]
 pub enum Action {
     Check,
-    /// Run `modhalu`; `stream` writes output as it is produced.
+    /// Run `modhalu`; `stream` writes output as it is produced, `args` are
+    /// the program's own arguments.
     Run {
         stream: bool,
+        args: Vec<String>,
     },
     EmitMir,
     EmitLlvm,
-    /// Compile to a native executable at this path (M7).
+    /// Compile to a native executable at this path (M7); `release`
+    /// optimizes.
     Build {
         output: PathBuf,
+        release: bool,
     },
 }
 
@@ -59,6 +63,78 @@ struct Loaded {
     diagnostics: Vec<(FileId, Diagnostic)>,
     /// The entry module of a package (`modhalu` or `lib`); `None` for a lone file.
     entry: Option<String>,
+    build: BuildSettings,
+}
+
+/// The `[build]` table of `ante.toml` (§7.1).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BuildSettings {
+    /// Stack size of the thread that runs `modhalu`, in bytes.
+    pub stack: u64,
+    /// LLVM target triple; `None` builds for this machine.
+    pub target: Option<String>,
+}
+
+/// The smallest (and default) `[build] stack`: 8 MB.
+pub const MIN_STACK: u64 = 8 << 20;
+
+impl Default for BuildSettings {
+    fn default() -> Self {
+        BuildSettings { stack: MIN_STACK, target: None }
+    }
+}
+
+/// `"64MB"`, `"512 KB"`, `"1GB"` or plain bytes. Units are powers of 1024.
+pub fn parse_size(text: &str) -> Option<u64> {
+    let t = text.trim();
+    let split = t.find(|c: char| !c.is_ascii_digit()).unwrap_or(t.len());
+    let (num, unit) = t.split_at(split);
+    let n: u64 = num.parse().ok()?;
+    let mul: u64 = match unit.trim().to_ascii_uppercase().as_str() {
+        "" | "B" => 1,
+        "KB" | "K" => 1 << 10,
+        "MB" | "M" => 1 << 20,
+        "GB" | "G" => 1 << 30,
+        _ => return None,
+    };
+    n.checked_mul(mul)
+}
+
+/// Reads `[build]`, reporting bad values (E0905) at their line.
+fn build_settings(text: &str) -> (BuildSettings, Vec<Diagnostic>) {
+    let mut settings = BuildSettings::default();
+    let mut diags = Vec::new();
+    let at = |key: &str| Span::point(manifest_offset(text, "build", key).unwrap_or(0));
+    if let Some(v) = manifest_value(text, "build", "stack") {
+        match parse_size(&v) {
+            Some(n) if (MIN_STACK..=(64 << 30)).contains(&n) => settings.stack = n,
+            Some(_) => diags.push(Diagnostic::error(
+                "E0905",
+                at("stack"),
+                format!("`stack = \"{v}\"`: 8MB nunchi 64GB madhyalo undali"),
+            )),
+            None => diags.push(Diagnostic::error(
+                "E0905",
+                at("stack"),
+                format!("`stack = \"{v}\"` ardham kaaledhu. `\"64MB\"` laaga raayandi"),
+            )),
+        }
+    }
+    if let Some(v) = manifest_value(text, "build", "target") {
+        let arch = v.split('-').next().unwrap_or("");
+        if matches!(arch, "x86_64" | "aarch64" | "arm64") && v.split('-').count() >= 3 {
+            settings.target = Some(v);
+        } else {
+            diags.push(Diagnostic::error(
+                "E0905",
+                at("target"),
+                format!(
+                    "`target = \"{v}\"` support ledhu. 64-bit x86_64 leka aarch64 triple ivvandi, ex: `\"aarch64-unknown-linux-gnu\"`"
+                ),
+            ));
+        }
+    }
+    (settings, diags)
 }
 
 /// The module name for a lone file: its file stem, if that's a valid name.
@@ -75,6 +151,7 @@ fn load_single(src: SourceFile) -> Loaded {
         diagnostics: diags.into_iter().map(|d| (0, d)).collect(),
         sources: vec![src],
         entry: None,
+        build: BuildSettings::default(),
     }
 }
 
@@ -87,14 +164,14 @@ pub fn check_single(src: &SourceFile) -> Vec<Diagnostic> {
 /// Checks and runs a lone file's `modhalu`, capturing its output.
 pub fn run_source(src: &SourceFile) -> Checked {
     let loaded = load_single(SourceFile::new(src.name.clone(), src.text.clone()));
-    compile(loaded, Action::Run { stream: false })
+    compile(loaded, Action::Run { stream: false, args: Vec::new() })
 }
 
 /// The stages after parsing. Each runs only when the ones before it found
 /// no errors, so one mistake doesn't cascade; warnings are kept only when
 /// there are no errors at all.
 fn compile(loaded: Loaded, action: Action) -> Checked {
-    let Loaded { sources, modules: parsed, mut diagnostics, entry } = loaded;
+    let Loaded { sources, modules: parsed, mut diagnostics, entry, build } = loaded;
     let failed = |d: &[(FileId, Diagnostic)]| d.iter().any(|(_, d)| d.is_error());
     if failed(&diagnostics) && entry.is_none() {
         return finish(sources, diagnostics, None, None);
@@ -140,10 +217,10 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
     match action {
         Action::EmitLlvm | Action::Build { .. } => match entry_fn() {
             None => backend_errors.push("`modhalu()` function ledhu, native program build cheyyalem".into()),
-            Some(fid) => match crate::codegen::emit_llvm(&program, &tc, &sources, fid) {
+            Some(fid) => match crate::codegen::emit_llvm(&program, &tc, &sources, fid, build.stack) {
                 Err(errs) => backend_errors = errs,
                 Ok(ir) => match &action {
-                    Action::Build { output } => match link_native(&ir, output) {
+                    Action::Build { output, release } => match link_native(&ir, output, &build, *release) {
                         Ok(()) => built = Some(output.clone()),
                         Err(e) => backend_errors.push(e),
                     },
@@ -157,7 +234,7 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
             let text: Vec<String> = program.bodies.iter().map(|b| b.render(&names)).collect();
             mir = Some(text.join("\n"));
         }
-        Action::Run { stream } => {
+        Action::Run { stream, args } => {
             let module = match &entry {
                 Some(e) => resolution.module_by_name.get(e).copied(),
                 None => parsed.first().and_then(|(name, _, _)| resolution.module_by_name.get(name).copied()),
@@ -166,7 +243,10 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
                 .and_then(|m| resolution.modules[m].values.get("modhalu").copied())
                 .and_then(|d| tc.globals.fn_of_def.get(&d).copied());
             match fid {
-                Some(fid) => run = Some(crate::interp::run(&program, &tc, &sources, fid, stream)),
+                Some(fid) => {
+                    let opts = crate::interp::RunOptions { stream, stack: build.stack, args };
+                    run = Some(crate::interp::run(&program, &tc, &sources, fid, &opts))
+                }
                 None => diagnostics.push((
                     0,
                     Diagnostic::error(
@@ -194,30 +274,134 @@ fn finish(
     Checked { sources, diagnostics, run, mir, built: None, backend_errors: Vec::new() }
 }
 
-/// Compiles LLVM IR plus the runtime with the C toolchain (`$ANTE_CC`, else `clang`).
-pub fn link_native(ir: &str, output: &Path) -> Result<(), String> {
-    let stem = output.file_stem().and_then(|s| s.to_str()).unwrap_or("out");
-    let dir = std::env::temp_dir().join(format!("antec-{}-{stem}", std::process::id()));
-    fs::create_dir_all(&dir).map_err(|e| format!("`{}` create cheyyalem: {e}", dir.display()))?;
-    let ll = dir.join("program.ll");
-    let rt = dir.join("ante_rt.c");
-    fs::write(&ll, ir).map_err(|e| e.to_string())?;
-    fs::write(&rt, crate::codegen::RUNTIME_C).map_err(|e| e.to_string())?;
-    let cc = std::env::var("ANTE_CC").unwrap_or_else(|_| "clang".into());
-    let mut cmd = std::process::Command::new(&cc);
-    cmd.arg("-O2").arg("-w").arg("-Wno-override-module").arg("-o").arg(output).arg(&ll).arg(&rt);
-    if !cfg!(windows) {
-        cmd.arg("-lm");
+/// Compiles LLVM IR plus the runtime with the C toolchain (`$ANTE_CC`, else
+/// `clang`). `release` turns on optimization (§7.4); the runtime itself is
+/// always optimized, and is compiled once and cached.
+pub fn link_native(ir: &str, output: &Path, build: &BuildSettings, release: bool) -> Result<(), String> {
+    if output.is_dir() {
+        return Err(format!("`{}` oka folder. `-o` ki file peru ivvandi", output.display()));
     }
-    let result = cmd.output();
+    if output.extension().is_some_and(|e| e == "ante" || e == "toml") {
+        return Err(format!(
+            "`{}` meeda program raasthe source file pothundhi! Vere peru ivvandi (`-o`)",
+            output.display()
+        ));
+    }
+    let cc = std::env::var("ANTE_CC").unwrap_or_else(|_| "clang".into());
+    let dir = private_temp_dir()?;
+    let result = (|| {
+        let ll = dir.join("program.ll");
+        fs::write(&ll, ir).map_err(|e| e.to_string())?;
+        let runtime = runtime_object(&cc, build.target.as_deref(), &dir)?;
+        let mut cmd = std::process::Command::new(&cc);
+        cmd.arg(if release { "-O2" } else { "-O0" }).arg("-w").arg("-Wno-override-module");
+        if let Some(t) = &build.target {
+            cmd.arg(format!("--target={t}"));
+        }
+        cmd.arg("-o").arg(output).arg(&ll).arg(&runtime);
+        if !cfg!(windows) {
+            cmd.arg("-lm").arg("-pthread");
+        }
+        run_cc(&cc, &mut cmd)
+    })();
     let _ = fs::remove_dir_all(&dir);
-    match result {
+    result
+}
+
+fn run_cc(cc: &str, cmd: &mut std::process::Command) -> Result<(), String> {
+    match cmd.output() {
         Ok(out) if out.status.success() => Ok(()),
         Ok(out) => Err(format!("`{cc}` fail ayyindhi:\n{}", String::from_utf8_lossy(&out.stderr))),
         Err(e) => Err(format!(
             "`{cc}` dorakaledhu ({e}). Native build ki clang kavali: macOS lo Xcode tools, Linux lo `clang` package, Windows lo LLVM install cheyyandi; leka `ANTE_CC` set cheyyandi"
         )),
     }
+}
+
+/// A new folder that only this user can read, with a name nobody can guess
+/// ahead of time; creating it fails rather than reusing one that exists.
+fn private_temp_dir() -> Result<PathBuf, String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let base = std::env::temp_dir();
+    let mut last = String::new();
+    for attempt in 0..16u32 {
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let seed = format!("{}-{nanos}-{attempt}-{:p}", std::process::id(), &last);
+        let dir = base.join(format!("antec-{:016x}", fnv1a(seed.as_bytes())));
+        let mut builder = fs::DirBuilder::new();
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        match builder.create(&dir) {
+            Ok(()) => return Ok(dir),
+            Err(e) => last = e.to_string(),
+        }
+    }
+    Err(format!("temp folder create cheyyalem: {last}"))
+}
+
+/// The runtime compiled to an object file, from the cache when possible.
+/// The cache key covers the runtime source, the compiler and the target.
+fn runtime_object(cc: &str, target: Option<&str>, scratch: &Path) -> Result<PathBuf, String> {
+    let version = std::process::Command::new(cc)
+        .arg("--version")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    let key = fnv1a(format!("{}\0{cc}\0{version}\0{target:?}", crate::codegen::RUNTIME_C).as_bytes());
+    let compile = |obj: &Path| -> Result<(), String> {
+        let src = scratch.join("ante_rt.c");
+        fs::write(&src, crate::codegen::RUNTIME_C).map_err(|e| e.to_string())?;
+        let mut cmd = std::process::Command::new(cc);
+        cmd.arg("-O2").arg("-w").arg("-c");
+        if let Some(t) = target {
+            cmd.arg(format!("--target={t}"));
+        }
+        cmd.arg("-o").arg(obj).arg(&src);
+        run_cc(cc, &mut cmd)
+    };
+    let Some(cache) = cache_dir() else {
+        let obj = scratch.join("ante_rt.o");
+        compile(&obj)?;
+        return Ok(obj);
+    };
+    let obj = cache.join(format!("ante_rt-{key:016x}.o"));
+    if obj.is_file() {
+        return Ok(obj);
+    }
+    let fresh = scratch.join("ante_rt.o");
+    compile(&fresh)?;
+    // Copy next to the final name, then rename: other builds never see half a file.
+    let partial = cache.join(format!("ante_rt-{key:016x}.{}.tmp", std::process::id()));
+    if fs::create_dir_all(&cache).is_ok()
+        && fs::copy(&fresh, &partial).is_ok()
+        && fs::rename(&partial, &obj).is_ok()
+    {
+        return Ok(obj);
+    }
+    let _ = fs::remove_file(&partial);
+    Ok(fresh)
+}
+
+/// `$ANTE_CACHE_DIR`, else the platform's per-user cache folder.
+fn cache_dir() -> Option<PathBuf> {
+    if let Some(d) = std::env::var_os("ANTE_CACHE_DIR") {
+        return Some(PathBuf::from(d));
+    }
+    let base = if cfg!(windows) {
+        std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
+    } else if cfg!(target_os = "macos") {
+        std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library/Caches"))
+    } else {
+        std::env::var_os("XDG_CACHE_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
+    };
+    base.map(|b| b.join("antec"))
+}
+
+/// FNV-1a: a stable 64-bit hash (std's hasher may change between releases).
+fn fnv1a(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, &b| (h ^ b as u64).wrapping_mul(0x0100_0000_01b3))
 }
 
 /// The entry point of a package (§7.5).
@@ -294,6 +478,22 @@ pub fn process(path: &Path, action: Action) -> io::Result<Checked> {
     Ok(compile(load_single(src), action))
 }
 
+/// The byte offset of `key` in a `[section]` of a manifest.
+fn manifest_offset(text: &str, section: &str, key: &str) -> Option<usize> {
+    let mut current = String::new();
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        let code = line.split('#').next().unwrap_or("").trim();
+        if let Some(name) = code.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            current = name.trim().to_string();
+        } else if current == section && code.split_once('=').is_some_and(|(k, _)| k.trim() == key) {
+            return Some(offset + line.len() - line.trim_start().len());
+        }
+        offset += line.len();
+    }
+    None
+}
+
 /// Reads `key = "value"` from a `[section]` of a TOML manifest. Only the few
 /// keys `antec` needs are read, so this stays a tiny line-based reader.
 pub fn manifest_value(text: &str, section: &str, key: &str) -> Option<String> {
@@ -353,6 +553,8 @@ fn load_package(root: &Path) -> io::Result<Loaded> {
     let mut diagnostics: Vec<(FileId, Diagnostic)> = Vec::new();
 
     let kind = manifest_value(&manifest_text, "package", "kind").unwrap_or_else(|| "bin".into());
+    let (build, build_diags) = build_settings(&manifest_text);
+    diagnostics.extend(build_diags.into_iter().map(|d| (0, d)));
     if kind != "bin" && kind != "lib" {
         diagnostics.push((
             0,
@@ -408,5 +610,5 @@ fn load_package(root: &Path) -> io::Result<Loaded> {
         sources.push(src);
     }
     let entry = if kind == "lib" { "lib" } else { "modhalu" };
-    Ok(Loaded { sources, modules: parsed, diagnostics, entry: Some(entry.to_string()) })
+    Ok(Loaded { sources, modules: parsed, diagnostics, entry: Some(entry.to_string()), build })
 }

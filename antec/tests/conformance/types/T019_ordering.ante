@@ -1,0 +1,23 @@
+# category: run-pass
+# expect-stdout: avunu kaadhu avunu kaadhu
+# expect-stdout: avunu avunu kaadhu
+# expect-stdout: kaadhu avunu avunu kaadhu
+# expect-stdout: avunu kaadhu avunu
+# expect-stdout: avunu avunu
+# expect-stdout: [a, ab, abc, b, ఆ]
+# level: core
+# `<` and friends on text (by bytes), `ato_ito` (`kaadhu < avunu`), `aksharam`
+# (by code point) and tuples, the same in every backend.
+modhalu() -> khali ante:
+    a ante "abc"
+    b ante "abd"
+    f"{a < b} {a > b} {a <= a} {b <= a}" ni choopinchu()
+    (ab, abc, khali_, b2) ante ("ab", "abc", "", "b")
+    f"{ab < abc} {khali_ < ab} {b2 < abc}" ni choopinchu()
+    f"{avunu < kaadhu} {kaadhu < avunu} {avunu >= kaadhu} {kaadhu > kaadhu}" ni choopinchu()
+    f"{'a' < 'b'} {'z' > 'ఆ'} {'ఆ' >= 'అ'}" ni choopinchu()
+    (t1, t2) ante ((1, "a"), (1, "b"))
+    f"{t1 < t2} {(kaadhu, 2) < (avunu, 1)}" ni choopinchu()
+    maare v ante ["b", "ఆ", "abc", "a", "ab"]
+    v.sort_cheyyi()
+    v ni choopinchu()

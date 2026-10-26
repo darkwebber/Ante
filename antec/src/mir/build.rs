@@ -885,6 +885,16 @@ impl<'a, 'p> Builder<'a, 'p> {
         self.lower_operand(e)
     }
 
+    /// Where a text operand lives, looking through a `&padham`.
+    fn text_place(&mut self, e: &'a Expr) -> Place {
+        let p = self.place_of(e);
+        if matches!(self.ty_of(e), Ty::Ref(..)) {
+            p.deref()
+        } else {
+            p
+        }
+    }
+
     fn operand_place(&mut self, op: Operand, ty: Ty) -> Place {
         match op {
             Operand::Copy(p) | Operand::Move(p) => p,
@@ -1263,6 +1273,14 @@ impl<'a, 'p> Builder<'a, 'p> {
             }
         }
         match op_ty(&lt) {
+            // Operators take their operands by reference (§13.5), so text
+            // operands are read where they are, never moved out.
+            Some(OpTy::Str) => {
+                let a = self.text_place(lhs);
+                let b = self.text_place(rhs);
+                let (a, b) = (Operand::Copy(a), Operand::Copy(b));
+                self.assign(dest, Rvalue::Binary(op, OpTy::Str, a, b, span));
+            }
             Some(t) => {
                 let a = self.scalar_operand(lhs);
                 let a = self.stable(a, lt.clone());

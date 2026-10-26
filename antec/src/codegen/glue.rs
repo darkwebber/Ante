@@ -113,7 +113,7 @@ fn by_variant(fx: &mut Fx, ty: &Ty, v: &str, f: &mut VariantFn) {
 pub(super) fn show(gen: &mut Gen, name: &str, ty: &Ty) -> String {
     let mut fx = Fx::new_for_glue(gen);
     show_into(&mut fx, ty, "%buf", "%v");
-    format!("define internal void {name}(ptr %buf, ptr %v) {{\nentry:\n{}  ret void\n}}\n", fx.out)
+    format!("define internal void {name}(ptr %buf, ptr %v) {{\nentry:\n{}  ret void\n}}\n", fx.code())
 }
 
 fn show_call(fx: &mut Fx, ty: &Ty, buf: &str, v: &str) {
@@ -306,7 +306,7 @@ pub(super) fn eq(gen: &mut Gen, name: &str, ty: &Ty) -> String {
     fx.emit(format!("br label %{end}"));
     fx.start(&end);
     let r = fx.load("i1", &res);
-    format!("define internal i1 {name}(ptr %a, ptr %b) {{\nentry:\n{}  ret i1 {r}\n}}\n", fx.out)
+    format!("define internal i1 {name}(ptr %a, ptr %b) {{\nentry:\n{}  ret i1 {r}\n}}\n", fx.code())
 }
 
 /// Compares `a` and `b`, jumping to `fail` when they differ.
@@ -450,7 +450,7 @@ pub(super) fn cmp(gen: &mut Gen, name: &str, ty: &Ty) -> String {
     fx.emit(format!("br label %{done}"));
     fx.start(&done);
     let r = fx.load("i32", &res);
-    format!("define internal i32 {name}(ptr %a, ptr %b) {{\nentry:\n{}  ret i32 {r}\n}}\n", fx.out)
+    format!("define internal i32 {name}(ptr %a, ptr %b) {{\nentry:\n{}  ret i32 {r}\n}}\n", fx.code())
 }
 
 /// Writes -1/0/1 to `res`; jumps to `done` as soon as the order is known.
@@ -597,7 +597,7 @@ pub(super) fn xerox(gen: &mut Gen, name: &str, ty: &Ty) -> String {
     let mut fx = Fx::new_for_glue(gen);
     let lt = fx.ll(ty);
     let v = xerox_value(&mut fx, ty, "%v");
-    format!("define internal {lt} {name}(ptr %v) {{\nentry:\n{}  ret {lt} {v}\n}}\n", fx.out)
+    format!("define internal {lt} {name}(ptr %v) {{\nentry:\n{}  ret {lt} {v}\n}}\n", fx.code())
 }
 
 pub(super) fn call_xerox(fx: &mut Fx, ty: &Ty, v: &str) -> String {
@@ -713,7 +713,7 @@ fn needs_deep(gen: &Gen, ty: &Ty) -> bool {
 pub(super) fn drop_glue(gen: &mut Gen, name: &str, ty: &Ty) -> String {
     let mut fx = Fx::new_for_glue(gen);
     drop_into(&mut fx, ty, "%v");
-    format!("define internal void {name}(ptr %v) {{\nentry:\n{}  ret void\n}}\n", fx.out)
+    format!("define internal void {name}(ptr %v) {{\nentry:\n{}  ret void\n}}\n", fx.code())
 }
 
 fn call_drop(fx: &mut Fx, ty: &Ty, v: &str) {
@@ -776,7 +776,10 @@ fn drop_into(fx: &mut Fx, ty: &Ty, v: &str) {
 pub(super) fn sort_cmp(gen: &mut Gen, name: &str, ty: &Ty) -> String {
     let mut fx = Fx::new_for_glue(gen);
     let r = call_cmp(&mut fx, ty, "%a", "%b");
-    format!("define internal i32 {name}(ptr %a, ptr %b, ptr %ctx) {{\nentry:\n{}  ret i32 {r}\n}}\n", fx.out)
+    format!(
+        "define internal i32 {name}(ptr %a, ptr %b, ptr %ctx) {{\nentry:\n{}  ret i32 {r}\n}}\n",
+        fx.code()
+    )
 }
 
 /// A sort callback calling the `pani` comparator at `ctx` with two references.
@@ -797,7 +800,10 @@ pub(super) fn sort_by(gen: &mut Gen, name: &str, ty: &Ty) -> String {
     let r = fx.r();
     fx.emit(format!("{r} = sub i32 {tag}, 1"));
     let _ = ty;
-    format!("define internal i32 {name}(ptr %a, ptr %b, ptr %ctx) {{\nentry:\n{}  ret i32 {r}\n}}\n", fx.out)
+    format!(
+        "define internal i32 {name}(ptr %a, ptr %b, ptr %ctx) {{\nentry:\n{}  ret i32 {r}\n}}\n",
+        fx.code()
+    )
 }
 
 /// `(env, args…)` → a named function, so it can be a `pani` value (§10.7.3).
@@ -820,5 +826,5 @@ pub(super) fn thunk(gen: &mut Gen, name: &str, fid: FnId, tys: &[Ty]) -> String 
             "undef".into()
         }
     };
-    format!("define internal {rt} {name}({}) {{\nentry:\n{}  ret {rt} {r}\n}}\n", decl.join(", "), fx.out)
+    format!("define internal {rt} {name}({}) {{\nentry:\n{}  ret {rt} {r}\n}}\n", decl.join(", "), fx.code())
 }

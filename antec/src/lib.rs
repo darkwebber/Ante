@@ -5,6 +5,7 @@
 pub mod ast;
 pub mod codegen;
 pub mod diag;
+pub mod fmt;
 pub mod interp;
 pub mod lexer;
 pub mod lint;
@@ -47,6 +48,25 @@ pub fn source_from_bytes(name: impl Into<String>, bytes: Vec<u8>) -> (SourceFile
 pub fn load_source(path: &Path) -> std::io::Result<(SourceFile, Vec<Diagnostic>)> {
     let bytes = std::fs::read(path)?;
     Ok(source_from_bytes(path.display().to_string(), bytes))
+}
+
+/// The stack `antec` runs on. Parsing and checking recurse over a program's
+/// nesting, which the parser bounds (E0216), so this is always enough; it's
+/// only reserved, not used, until needed.
+pub const COMPILER_STACK: usize = 256 << 20;
+
+/// Runs `f` on a thread with `COMPILER_STACK` bytes of stack. Embedders
+/// (tests, editors) should compile through this too, since the default
+/// thread stack is small.
+pub fn on_big_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .stack_size(COMPILER_STACK)
+            .spawn_scoped(s, f)
+            .expect("antec thread start avvaledhu")
+            .join()
+            .unwrap_or_else(|e| std::panic::resume_unwind(e))
+    })
 }
 
 /// Lexes and parses a file. Parsing is skipped when lexing reports errors,

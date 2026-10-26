@@ -51,6 +51,18 @@ PR pampe mundhu ee moodu pass avvali. CI kuda ivve check chesthundhi, kaabatti i
 cargo fmt --all --check
 ```
 
+Idhi marchipothe CI lo rustfmt fail avthundhi (manaki kuda okasari ayyindhi 😅). Commit mundhu automatic ga run avvalante oka git hook pettukondi:
+
+```bash
+printf '#!/bin/sh\nexec cargo fmt --all --check\n' > .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+```
+
+"Ante" files (`examples/`, tests) maaristhe vaatini kuda format cheyyandi:
+
+```bash
+cargo run -p antec -- fmt examples
+```
+
 ```bash
 cargo clippy --workspace --all-targets -- -D warnings
 ```
@@ -135,7 +147,7 @@ modhalu() -> khali ante:
     10 ni, 20 tho kalupu() |> choopinchu()
 ```
 
-Prathi `# expect-stdout:` oka output line. Ee tests interpreter tho run avthayi, `clang` unte native binary ga kuda (`tests/native.rs`); rendintlo output same undali. `runtime-trap` ki `# expect-trap: T01 @ 7:12` (trap code + position), `# expect-exit:` default ga run-pass ki 0, runtime-trap ki 101.
+Prathi `# expect-stdout:` oka output line. Ee tests interpreter tho run avthayi, `clang` unte native binary ga kuda (`tests/native.rs`, `-O0` lo `--release` lo rendu sarlu); anni chotla output same undali. `runtime-trap` ki `# expect-trap: T01 @ 7:12` (trap code + position; native lo T08/T09 ki position undadhu), `# expect-exit:` default ga run-pass ki 0, runtime-trap ki 101.
 
 ID prefixes: `L` lexer, `S` syntax, `N` names, `PK` packages, `B` binding, `P` pipes, `T` types/arithmetic, `O` ownership, `M` match, `G` generics, `D` data, `W` warnings, `X` interop.
 
@@ -154,7 +166,7 @@ name = "pk002"
 kind = "bin"
 ``` New ID theeskune mundhu, aa folder lo already unna numbers check cheyyandi.
 
-> **Note:** compiler inka complete avvaledhu. Conformance runner ippatiki ready ayina stages matrame run chesthundhi. `compile-fail` cases lo expected error code, line:col match avvali. Migatha categories lo, ippudu unna stages lo errors raakudadhu.
+> **Note:** compiler inka complete avvaledhu. Conformance runner ippatiki ready ayina stages matrame run chesthundhi. `compile-fail` cases lo expected error code, line:col match avvali, inka compiler ichhe **prathi** error oka `# expect-error:` line lo undali (extra error vasthe adhi kuda bug ae, cascade avvakoodadhu). Migatha categories lo, ippudu unna stages lo errors raakudadhu.
 
 ### Editor grammar
 

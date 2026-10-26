@@ -1,0 +1,28 @@
+# category: run-pass
+# expect-stdout: 0.30000000000000004
+# expect-stdout: 0.3333333333333333
+# expect-stdout: 100000000000000000000.0
+# expect-stdout: 123456789012345680.0
+# expect-stdout: 1.0
+# expect-stdout: -0.0
+# expect-stdout: 0.00000015
+# expect-stdout: 16777216.0
+# expect-stdout: 0.1
+# expect-stdout: inf -inf NaN
+# level: core
+# Floats print in the shortest form that reads back exactly, and whole
+# numbers always end in `.0`, however big (§13.5).
+modhalu() -> khali ante:
+    (0.1 + 0.2) ni choopinchu()
+    (1.0 / 3.0) ni choopinchu()
+    1e20 ni choopinchu()
+    123456789012345678.0 ni choopinchu()
+    1.0 ni choopinchu()
+    (-0.0) ni choopinchu()
+    1.5e-7 ni choopinchu()
+    x: amsam32 ante 16777216.0
+    x ni choopinchu()
+    y: amsam32 ante 0.1
+    y ni choopinchu()
+    big ante 1e308 * 10.0
+    f"{big} {-big} {big - big}" ni choopinchu()
