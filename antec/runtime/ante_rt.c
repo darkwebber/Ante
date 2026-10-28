@@ -302,6 +302,12 @@ void *ante_alloc(int64_t size) {
     return p;
 }
 
+/* The buffer of a `varusa` with `n` elements. An empty one owns no buffer
+   (`cap == 0`), so it gets none rather than one nobody frees. */
+void *ante_vec_alloc(int64_t n, int64_t bytes) {
+    return n ? ante_alloc(bytes) : 0;
+}
+
 /* Frees a `padham` or `varusa` buffer. `cap == 0` means it owns nothing
    (an empty value, or a literal in static memory). */
 void ante_buf_free(ante_str *b) {

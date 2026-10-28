@@ -1,0 +1,31 @@
+# category: run-pass
+# expect-stdout: 4
+# expect-stdout: 23
+# expect-stdout: 33
+# expect-stdout: 7
+# expect-stdout: sardhu g1
+# expect-stdout: sardhu g10
+# level: core
+# A closure behind a reference is called through it (§11.1).
+rakam Gadi ante:
+    peru: padham
+
+Gadi ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"sardhu {peru}" ni choopinchu()
+
+mk(n: ankam ni) -> pani[(ankam ni) -> ankam] ante:
+    g ante Gadi{peru: f"g{n}"}
+    theesuko (x) => x * n + g.peru.byte_len() icchey
+
+apply(f: &pani[(ankam ni) -> ankam] ni, x: ankam tho) -> ankam ante:
+    (x ni f()) icchey
+
+modhalu() -> khali ante:
+    fs ante [1 ni mk(), 10 ni mk()]
+    fs lo okko f ki:
+        (2 ni f()) ni choopinchu()
+    (&fs[1] ni, 3 tho apply()) ni choopinchu()
+    first ante &fs[0]
+    rr ante &first
+    (5 ni rr()) ni choopinchu()

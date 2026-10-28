@@ -55,6 +55,8 @@ enum Item {
     Next(Ty),
     /// An adapter's `i1 next(ptr state, ptr out)` (§21.4.2).
     Adapter(Adapter, Vec<Ty>),
+    /// An adapter's `void drop(ptr state)`.
+    AdapterDrop(Adapter, Vec<Ty>),
     /// `void drop(ptr env)` for a closure environment with these captures.
     EnvDrop(Vec<Ty>),
 }
@@ -173,6 +175,7 @@ declare void @ante_trap_slice(i64, i64, i64, ptr) noreturn
 declare void @ante_trap_shift(i64, i32, ptr) noreturn
 declare void @ante_trap_code(i32, ptr) noreturn
 declare ptr @ante_alloc(i64)
+declare ptr @ante_vec_alloc(i64, i64)
 declare void @ante_vec_push(ptr, ptr, i64)
 declare void @ante_buf_free(ptr)
 declare void @ante_str_append(ptr, ptr)
@@ -244,6 +247,7 @@ impl<'a> Gen<'a> {
             Item::SortBy(_) => "sortby".into(),
             Item::Next(_) => "next".into(),
             Item::Adapter(..) => "adapter".into(),
+            Item::AdapterDrop(..) => "adapterdrop".into(),
             Item::EnvDrop(_) => "envdrop".into(),
         };
         let name = format!("@\"{}\"", self.fresh(&base));
@@ -267,6 +271,7 @@ impl<'a> Gen<'a> {
             Item::SortBy(t) => glue::sort_by(self, &name, t),
             Item::Next(t) => native::next_fn(self, &name, t),
             Item::Adapter(a, tys) => native::adapter_fn(self, &name, *a, tys),
+            Item::AdapterDrop(a, tys) => native::adapter_drop(self, &name, *a, tys),
         };
         self.funcs.push_str(&peephole::optimize(&code));
         self.funcs.push('\n');
@@ -445,7 +450,7 @@ impl<'a> Gen<'a> {
             // A type inference left open: the value is never looked at.
             Ty::Var(_) => "{}".into(),
             other => {
-                let shown = format!("{other:?}");
+                let shown = crate::typeck::show_ty(self.g, other);
                 self.error(format!("native backend lo ee type inka ledhu: {shown}"));
                 "{}".into()
             }

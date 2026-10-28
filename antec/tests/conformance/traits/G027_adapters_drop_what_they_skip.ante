@@ -1,0 +1,50 @@
+# category: run-pass
+# expect-stdout: got a
+# expect-stdout: sardhu a
+# expect-stdout: sardhu b
+# expect-stdout: sardhu c
+# expect-stdout: sardhu d
+# expect-stdout: sardhu f
+# expect-stdout: kept 1
+# expect-stdout: sardhu g
+# expect-stdout: sardhu i
+# expect-stdout: mid 1
+# expect-stdout: sardhu l
+# expect-stdout: zipped 1
+# expect-stdout: sardhu n
+# expect-stdout: have m
+# expect-stdout: sardhu m
+# expect-stdout: sardhu k
+# expect-stdout: sardhu h
+# expect-stdout: sardhu e
+# level: core
+# Items an iterator never hands out are still dropped: the rest of an owned
+# `varusa` after `aapey`, filtered and skipped items, a zip's unpaired item,
+# and `lekapothe`'s unused default (§19.3, §21.4).
+rakam Gadi ante:
+    peru: padham
+
+Gadi ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"sardhu {peru}" ni choopinchu()
+
+mk(p: padham ni) -> Gadi ante:
+    Gadi{peru: p} icchey
+
+modhalu() -> khali ante:
+    gs ante ["a" ni mk(), "b" ni mk(), "c" ni mk()]
+    gs.anni_theesuko() lo okko g ki:
+        f"got {g.peru}" ni choopinchu()
+        aapey
+    hs ante ["d" ni mk(), "e" ni mk(), "f" ni mk()]
+    ks ante hs.anni_theesuko() |> ((g) => g.peru == "e") ni jalleda_pattu() |> varusa_ga()
+    f"kept {ks.enni()}" ni choopinchu()
+    js ante ["g" ni mk(), "h" ni mk(), "i" ni mk()]
+    ms ante js.anni_theesuko() |> 1 ni dhaatu() |> 1 ni modhati() |> varusa_ga()
+    f"mid {ms.enni()}" ni choopinchu()
+    zs ante ["k" ni mk(), "l" ni mk()]
+    zz ante zs.anni_theesuko(), [1] kalipi() |> varusa_ga()
+    f"zipped {zz.enni()}" ni choopinchu()
+    o ante undhi("m" ni mk())
+    x ante ("n" ni mk()) ni o.lekapothe()
+    f"have {x.peru}" ni choopinchu()

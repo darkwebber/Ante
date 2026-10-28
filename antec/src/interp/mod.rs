@@ -84,6 +84,12 @@ pub struct Machine<'a> {
     max_frames: usize,
     pub args: Vec<String>,
     started: std::time::Instant,
+    /// The body of each function, by `FnId` (a call is the hot path).
+    body_of: Vec<Option<BodyId>>,
+    /// Shared empty type arguments, so calls without generics allocate none.
+    no_tys: Rc<[Ty]>,
+    /// A spare argument buffer, reused from call to call.
+    arg_buf: Vec<Value>,
 }
 
 #[derive(Clone)]
@@ -201,6 +207,17 @@ impl<'a> Machine<'a> {
             max_frames: MAX_FRAMES,
             args: Vec::new(),
             started: std::time::Instant::now(),
+            body_of: {
+                let mut v = vec![None; g.fns.len()];
+                for (&fid, &b) in &prog.fn_bodies {
+                    if let Some(slot) = v.get_mut(fid) {
+                        *slot = Some(b);
+                    }
+                }
+                v
+            },
+            no_tys: Rc::from(Vec::new()),
+            arg_buf: Vec::new(),
         }
     }
 
@@ -258,7 +275,7 @@ impl<'a> Machine<'a> {
 
     fn read(&self, a: &Addr) -> &Value {
         let mut v = self.root(a.root);
-        for e in &a.path {
+        for e in a.path.iter() {
             v = v.elem(e);
         }
         v
@@ -266,7 +283,7 @@ impl<'a> Machine<'a> {
 
     fn read_mut(&mut self, a: &Addr) -> &mut Value {
         let mut v = self.root_mut(a.root);
-        for e in &a.path {
+        for e in a.path.iter() {
             v = v.elem_mut(e);
         }
         v
@@ -360,7 +377,49 @@ impl<'a> Machine<'a> {
         Ok(())
     }
 
+    /// A place that is a local or fields of one, found without building an
+    /// `Addr` (the common case, and the hot path).
+    fn direct(&self, p: &Place) -> Option<usize> {
+        p.proj
+            .iter()
+            .all(|x| matches!(x, Proj::Field(_) | Proj::Variant(_)))
+            .then(|| self.frame().base + p.local as usize)
+    }
+
+    fn direct_ref(&self, slot: usize, p: &Place) -> &Value {
+        let mut v = &self.slots[slot];
+        for x in &p.proj {
+            if let Proj::Field(i) = x {
+                v = v.elem(&Elem::Field(*i));
+            }
+        }
+        v
+    }
+
+    fn direct_mut(&mut self, slot: usize, p: &Place) -> &mut Value {
+        let mut v = &mut self.slots[slot];
+        for x in &p.proj {
+            if let Proj::Field(i) = x {
+                v = v.elem_mut(&Elem::Field(*i));
+            }
+        }
+        v
+    }
+
     fn operand(&mut self, o: &Operand) -> R<Value> {
+        match o {
+            Operand::Copy(p) => {
+                if let Some(slot) = self.direct(p) {
+                    return Ok(self.direct_ref(slot, p).clone());
+                }
+            }
+            Operand::Move(p) => {
+                if let Some(slot) = self.direct(p) {
+                    return Ok(std::mem::replace(self.direct_mut(slot, p), Value::Uninit));
+                }
+            }
+            Operand::Const(_) => {}
+        }
         Ok(match o {
             Operand::Const(c) => self.constant(c),
             Operand::Copy(p) => match self.place(p)? {
@@ -428,7 +487,7 @@ impl<'a> Machine<'a> {
         tys: Option<Rc<[Ty]>>,
     ) -> R<()> {
         let depth = self.frames.len();
-        if let Some(v) = self.invoke(callee, args, dest.clone(), span, tys)? {
+        if let Some(v) = self.invoke(&callee, args, dest.clone(), span, tys)? {
             *self.read_mut(&dest) = v;
         }
         self.run_until(depth)
@@ -448,10 +507,14 @@ impl<'a> Machine<'a> {
         let b = &self.prog.bodies[body as usize];
         let base = self.slots.len();
         self.slots.resize(base + b.locals.len(), Value::Uninit);
-        for (i, v) in args.into_iter().enumerate() {
+        let mut args = args;
+        for (i, v) in args.drain(..).enumerate() {
             if let Some(slot) = self.slots.get_mut(base + 1 + i) {
                 *slot = v;
             }
+        }
+        if args.capacity() > self.arg_buf.capacity() {
+            self.arg_buf = args;
         }
         self.frames.push(Frame { body, base, block: 0, stmt: 0, tys, dest });
         Ok(())
@@ -497,13 +560,14 @@ impl<'a> Machine<'a> {
                 return Err(self.trap("T00", "antec bug: unreachable code ki vacchindhi", Span::default()))
             }
             Term::Call { callee, args, dest, next, span } => {
-                let mut vals = Vec::with_capacity(args.len());
+                let mut vals = std::mem::take(&mut self.arg_buf);
+                vals.clear();
                 for a in args {
                     vals.push(self.operand(a)?);
                 }
                 let dest = self.addr(dest)?;
                 self.jump(*next);
-                if let Some(v) = self.invoke(callee.clone(), vals, dest.clone(), *span, None)? {
+                if let Some(v) = self.invoke(callee, vals, dest.clone(), *span, None)? {
                     *self.read_mut(&dest) = v;
                 }
             }
@@ -521,7 +585,7 @@ impl<'a> Machine<'a> {
     /// `dest` on return) and yields `None`; a native call yields its value.
     fn invoke(
         &mut self,
-        callee: Callee,
+        callee: &Callee,
         args: Vec<Value>,
         dest: Addr,
         span: Span,
@@ -531,13 +595,14 @@ impl<'a> Machine<'a> {
             Callee::Fn(fid, ts) => {
                 let tys: Rc<[Ty]> = match tys {
                     Some(t) => t,
+                    None if ts.is_empty() => self.no_tys.clone(),
                     None => Rc::from(ts.iter().map(|t| self.subst(t)).collect::<Vec<_>>()),
                 };
-                self.invoke_fn(fid, tys, args, dest, span)
+                self.invoke_fn(*fid, tys, args, dest, span)
             }
             Callee::Trait(fid, ts) => {
                 let tys: Vec<Ty> = ts.iter().map(|t| self.subst(t)).collect();
-                match self.resolve_trait(fid, &tys, span)? {
+                match self.resolve_trait(*fid, &tys, span)? {
                     Dispatch::Body(body, btys) => {
                         self.push_frame(body, btys, args, Some(dest), span)?;
                         Ok(None)
@@ -546,7 +611,7 @@ impl<'a> Machine<'a> {
                 }
             }
             Callee::Value(op) => {
-                let f = self.operand(&op)?;
+                let f = self.operand(op)?;
                 match f {
                     Value::Fn(fid, tys) => self.invoke_fn(fid, tys, args, dest, span),
                     Value::Closure(c) => {
@@ -558,7 +623,18 @@ impl<'a> Machine<'a> {
                     _ => Err(self.trap("T00", "antec bug: call of a non-function", span)),
                 }
             }
-            Callee::Intrinsic(i) => self.intrinsic(&i, args, span).map(Some),
+            // A loop's step: keeps the argument buffer for the next call.
+            Callee::Intrinsic(Intrinsic::IterNext) => {
+                let mut args = args;
+                let r = match args.first() {
+                    Some(it) => self.next_through(it, span),
+                    None => Ok(Value::none()),
+                };
+                args.clear();
+                self.arg_buf = args;
+                r.map(Some)
+            }
+            Callee::Intrinsic(i) => self.intrinsic(i, args, span).map(Some),
         }
     }
 
@@ -570,7 +646,7 @@ impl<'a> Machine<'a> {
         dest: Addr,
         span: Span,
     ) -> R<Option<Value>> {
-        if let Some(&body) = self.prog.fn_bodies.get(&fid) {
+        if let Some(body) = self.body_of.get(fid).copied().flatten() {
             self.push_frame(body, tys, args, Some(dest), span)?;
             return Ok(None);
         }
@@ -613,6 +689,10 @@ impl<'a> Machine<'a> {
         match s {
             Stmt::Assign(p, rv) => {
                 let v = self.rvalue(rv)?;
+                if let Some(slot) = self.direct(p) {
+                    *self.direct_mut(slot, p) = v;
+                    return Ok(());
+                }
                 let a = self.addr(p)?;
                 *self.read_mut(&a) = v;
             }
@@ -718,6 +798,11 @@ impl<'a> Machine<'a> {
                         self.drop_value(k, &args[0])?;
                         self.drop_value(x, &args[1])?;
                     }
+                }
+            }
+            Ty::App(Con::Pravaham, _) => {
+                if let Value::Iter(it) = v {
+                    self.drop_iter(*it)?;
                 }
             }
             Ty::Fn(..) => {

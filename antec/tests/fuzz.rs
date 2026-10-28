@@ -215,3 +215,39 @@ fn deep_nesting_is_an_error_not_a_crash() {
         assert!(codes.contains(&"E0216"), "case {i}: expected E0216, got {codes:?}");
     }
 }
+
+/// Long programs compile in about linear time. Each of these used to be
+/// quadratic somewhere: a long list literal in the parser, a long
+/// `ledhante` chain in the MIR builder and borrow checker, many locals in
+/// drop flags. The budget is generous; quadratic behaviour blows far past it.
+#[test]
+fn long_programs_compile_in_linear_time() {
+    let list = format!(
+        "modhalu() -> khali ante:\n    v ante [{}]\n    v.enni() ni choopinchu()\n",
+        (0..40_000).map(|i| i.to_string()).collect::<Vec<_>>().join(", ")
+    );
+    let chain = {
+        let mut s = String::from("f(n: ankam ni) -> ankam ante:\n    n == 0 aithe:\n        0 icchey\n");
+        for i in 1..4_000 {
+            s.push_str(&format!("    ledhante n == {i} aithe:\n        {i} icchey\n"));
+        }
+        s.push_str("    -1 icchey\n\nmodhalu() -> khali ante:\n    5 ni f() |> choopinchu()\n");
+        s
+    };
+    let locals = {
+        let mut s = String::from("modhalu() -> khali ante:\n    maare t ante 0\n");
+        for i in 0..2_000 {
+            s.push_str(&format!("    s{i} ante \"a\" + \"{i}\"\n    t += s{i}.byte_len()\n"));
+        }
+        s.push_str("    t ni choopinchu()\n");
+        s
+    };
+    for (name, text) in [("list", list), ("chain", chain), ("locals", locals)] {
+        let start = std::time::Instant::now();
+        let src = SourceFile::new("long.ante", text.as_str());
+        let out = antec::on_big_stack(|| antec::package::emit_llvm_source(&src));
+        assert!(out.error_count() == 0 && out.mir.is_some(), "{name}: didn't compile");
+        let took = start.elapsed();
+        assert!(took.as_secs() < 20, "{name}: took {took:?}");
+    }
+}

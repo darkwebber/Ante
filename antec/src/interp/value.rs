@@ -13,7 +13,7 @@ pub enum Root {
     Heap(usize),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Elem {
     /// A field of a record, tuple or variant.
     Field(u32),
@@ -259,7 +259,8 @@ pub enum IterState {
         pos: usize,
         copy: bool,
     },
-    Owned(VecDeque<Value>),
+    /// Owned items still to come, of this type (dropped with the iterator).
+    Owned(VecDeque<Value>, Ty),
     Chars {
         text: Rc<str>,
         pos: usize,
@@ -270,11 +271,14 @@ pub enum IterState {
         positions: VecDeque<usize>,
         keys_only: bool,
     },
-    Zip(Box<IterState>, Box<IterState>),
+    /// The first side's item type, to drop an item left without a partner.
+    Zip(Box<IterState>, Box<IterState>, Ty),
     Take(Box<IterState>, usize),
-    Skip(Box<IterState>, usize),
+    /// The item type, to drop skipped items.
+    Skip(Box<IterState>, usize, Ty),
     Map2(Box<IterState>, Value),
-    Filter(Box<IterState>, Value),
+    /// The item type, to drop rejected items.
+    Filter(Box<IterState>, Value, Ty),
     Enumerate(Box<IterState>, i128),
     /// A user type implementing `Okkokkati`: the value and its `tharvatha`.
     User {

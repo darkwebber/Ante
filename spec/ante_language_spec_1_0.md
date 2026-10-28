@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r10. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r11. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -590,7 +590,7 @@ A closure with any borrow captures is RC (§9.3). The borrow checker knows which
 ### 11.1 Callee resolution
 
 The callee `path` resolves to one of the following, in this order:
-1. a local binding of `pani` type;
+1. a local binding of `pani` type, or of a reference to one (the call goes through the reference, so a closure taken from a `varusa` can be called);
 2. a method `recv.m`, where `recv` is a path resolving to a value (§13.4);
 3. an associated function `Type.f`;
 4. a function in scope or through a module path.
@@ -792,7 +792,7 @@ The borrow checker works on the MIR control-flow graph (Appendix E). It is a non
 
 ### 15.5 Temporaries
 
-Temporaries are dropped at the end of the enclosing statement, in reverse order of creation. **Exception:** if a binding's initializer is exactly `&e` or `&maare e` and `e` is a temporary, that temporary lives until the end of the enclosing block.
+Temporaries are dropped at the end of the enclosing statement, in reverse order of creation. The condition of an `aithe`, `ledhante … aithe` or `unnanthasepu` counts as its own statement: its temporaries are dropped before the branch is taken, every time it is evaluated. **Exception:** if a binding's initializer is exactly `&e` or `&maare e` and `e` is a temporary, that temporary lives until the end of the enclosing block.
 
 ## 16. Constant evaluation
 
@@ -3042,6 +3042,9 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | O029 | A `&maare` reference passed to two calls in a row (reborrow) | run-pass |
 | O030 | A `batti` arm moving one field; the other is dropped with the scrutinee | expected stdout |
 | O031 | Moving the contents out of a `pette` with `*b` | run-pass |
+| O032 | A binding's temporaries end with the statement; `x ante &e` extends `e` | expected stdout |
+| O033 | A loop condition's temporaries are dropped every evaluation, before the body | expected stdout |
+| O034 | Keeping an iterator over a temporary `padham` past its statement | E0606 |
 | M001 | Non-exhaustive `sare_thappu` match | E0701 |
 | M002 | Refutable pattern in a binding | E0703 |
 | M003 | Copy binding mode through `&` | run-pass |
@@ -3074,6 +3077,9 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | G023 | Closure changing a captured variable | E0611 |
 | G024 | `theesuko` closure capturing a `&maare` reference | E0612 |
 | G025 | `@automatic` for every derivable trait | expected stdout |
+| G026 | Calling closures through `&pani` and `&&pani` | expected stdout |
+| G027 | Adapters drop the items they never hand out; `lekapothe` drops its unused default | expected stdout |
+| G028 | A call returning `&padham` passed to a `&T` parameter | expected stdout |
 | N001 | Undefined name | E0301 |
 | N002 | Name used before its binding | E0306 |
 | N003 | Redefinition in the same scope | E0308 |
@@ -3448,6 +3454,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r11 | `antec` 0.1.1 | Audit after M9: a callee may be a reference to a `pani` (§11.1); a condition is its own temporary scope (§15.5); seed cases O032–O034, G026–G028. |
 | r10 | `antec` 0.1.1 | Closures settled while implementing M9 (§10.7): no mutable captures (E0611), no raw-pointer captures and no `&maare` moved into a `theesuko` closure (E0612); `pani` isn't `CopyKottochu` but a place is shared, not moved, with captures dropped after the last handle (§10.7.4); every `pani` is `Pampochu` and `Panchukovochu`. `NunchiRavochu`'s method is `daani_nunchi` (`nunchi` is a keyword, so the method couldn't be written). G007 is E0606; seed cases G013–G025. |
 | r9 | `antec` 0.1.1 | Annex P rewritten in detail (P.1–P.22): the Python environment and `antec python`, imports and package-local Python, `edhaina` (now a type keyword, §4.4.2), bindings from stubs, calls, attributes, indexing, operators, conversions, arrays and buffers, errors with learner hints, iteration, context managers, callbacks, async Python, threads and the GIL, output and processes, bundling, notes for numpy, pandas, matplotlib, OpenCV, scipy, scikit-learn, OpenAI, Hugging Face and PyTorch, security; traps T13 and T14; E1501–E1508, W1501–W1502; interactive use (§23.7, `antec repl`, Jupyter); seed cases PY001–PY030; roadmap M22 detailed and M24 added; learning stages L0 and L6–L9. |
 | r8 | `antec` 0.1.1 | Ownership details settled while writing the borrow checker (M8): a `&maare` place passed as a phrase is reborrowed, not moved (§11.3); moving a field out of a value whose type implements `Sardhukochu` is E0603 (§15.1.2); partially moved values drop only their remaining fields, and assigning to a moved place drops nothing (§19.3); seed cases O021–O031. |

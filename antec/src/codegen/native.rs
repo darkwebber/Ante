@@ -333,8 +333,13 @@ fn into_iter(fx: &mut Fx, v: &str, ty: &Ty, item: &Ty) -> String {
             fx.emit(format!("{done} = zext i1 {empty} to i8"));
             make_iter(fx, 0, &done, &lo64, &last, "null", "0")
         }
+        // `done` marks a sequence the iterator owns: its drop frees the buffer
+        // and drops the items not taken.
         _ => match seq_val(fx, v, ty) {
-            Some((d, n, _)) => make_iter(fx, 1, "0", "0", "0", &d, &n),
+            Some((d, n, _)) => {
+                let owned = if matches!(ty, Ty::Ref(..)) { "0" } else { "1" };
+                make_iter(fx, 1, owned, "0", "0", &d, &n)
+            }
             None => match ty {
                 Ty::Array(e, n) => {
                     // An owned array: move it to the heap so the iterator owns it.
@@ -344,13 +349,13 @@ fn into_iter(fx: &mut Fx, v: &str, ty: &Ty, item: &Ty) -> String {
                     fx.emit(format!("{p} = call ptr @ante_alloc(i64 {size})"));
                     fx.emit(format!("store {lt} {v}, ptr {p}"));
                     let _ = e;
-                    make_iter(fx, 1, "0", "0", "0", &p, &n.unwrap_or(0).to_string())
+                    make_iter(fx, 1, "1", "0", "0", &p, &n.unwrap_or(0).to_string())
                 }
                 _ => match user_iterator(fx, ty, item) {
-                    Some(target) => {
-                        let (target_ty, ptr) = match ty {
+                    Some(_) => {
+                        let ptr = match ty {
                             // `&maare it`: step the caller's iterator in place.
-                            Ty::Ref(_, inner) => ((**inner).clone(), v.to_string()),
+                            Ty::Ref(..) => v.to_string(),
                             // An owned iterator moves to the heap with the loop.
                             other => {
                                 let lt = fx.ll(other);
@@ -358,11 +363,15 @@ fn into_iter(fx: &mut Fx, v: &str, ty: &Ty, item: &Ty) -> String {
                                 let p = fx.r();
                                 fx.emit(format!("{p} = call ptr @ante_alloc(i64 {size})"));
                                 fx.emit(format!("store {lt} {v}, ptr {p}"));
-                                (other.clone(), p)
+                                p
                             }
                         };
-                        let _ = target;
-                        make_adapter(fx, Adapter::User, vec![target_ty, item.clone()], &[("ptr".into(), ptr)])
+                        make_adapter(
+                            fx,
+                            Adapter::User,
+                            vec![ty.clone(), item.clone()],
+                            &[("ptr".into(), ptr)],
+                        )
                     }
                     None => unsupported(fx, "ee iterable (jodi, gumpu)", ty).0,
                 },
@@ -542,26 +551,29 @@ fn user_iterator(fx: &mut Fx, ty: &Ty, item: &Ty) -> Option<(crate::mir::BodyId,
     }
 }
 
-/// The state struct of an adapter: `{ ptr next, … }`.
+/// The state struct of an adapter: `{ ptr next, ptr drop, … }`.
 fn adapter_state(a: Adapter) -> &'static str {
     match a {
-        Adapter::Take | Adapter::Skip | Adapter::Enumerate => "{ ptr, %iter, i64 }",
-        Adapter::Map | Adapter::Filter => "{ ptr, %iter, %pani }",
-        Adapter::Zip => "{ ptr, %iter, %iter }",
-        Adapter::User => "{ ptr, ptr }",
+        Adapter::Take | Adapter::Skip | Adapter::Enumerate => "{ ptr, ptr, %iter, i64 }",
+        Adapter::Map | Adapter::Filter => "{ ptr, ptr, %iter, %pani }",
+        Adapter::Zip => "{ ptr, ptr, %iter, %iter }",
+        Adapter::User => "{ ptr, ptr, ptr }",
     }
 }
 
 /// Wraps an adapter state in an `%iter` of kind 3.
 fn make_adapter(fx: &mut Fx, a: Adapter, tys: Vec<Ty>, fields: &[(String, String)]) -> String {
     let st = adapter_state(a);
-    let f = fx.gen.item(Item::Adapter(a, tys));
+    let f = fx.gen.item(Item::Adapter(a, tys.clone()));
+    let d = fx.gen.item(Item::AdapterDrop(a, tys));
     let state = fx.r();
     fx.emit(format!("{state} = call ptr @ante_alloc(i64 96)"));
     let p0 = fx.gep(st, &state, &["0".into(), "0".into()]);
     fx.emit(format!("store ptr {f}, ptr {p0}"));
+    let p1 = fx.gep(st, &state, &["0".into(), "1".into()]);
+    fx.emit(format!("store ptr {d}, ptr {p1}"));
     for (i, (ty, v)) in fields.iter().enumerate() {
-        let p = fx.gep(st, &state, &["0".into(), (i + 1).to_string()]);
+        let p = fx.gep(st, &state, &["0".into(), (i + 2).to_string()]);
         fx.emit(format!("store {ty} {v}, ptr {p}"));
     }
     make_iter(fx, 3, "0", "0", "0", &state, "0")
@@ -572,11 +584,11 @@ pub(super) fn adapter_fn(gen: &mut Gen, name: &str, a: Adapter, tys: &[Ty]) -> S
     let mut fx = Fx::new_for_glue(gen);
     let st = adapter_state(a);
     let none = fx.label();
-    let inner = fx.gep(st, "%s", &["0".into(), "1".into()]);
+    let inner = fx.gep(st, "%s", &["0".into(), "2".into()]);
     let ty = |i: usize| tys.get(i).cloned().unwrap_or(Ty::Unit);
     match a {
         Adapter::Take => {
-            let np = fx.gep(st, "%s", &["0".into(), "2".into()]);
+            let np = fx.gep(st, "%s", &["0".into(), "3".into()]);
             let n = fx.load("i64", &np);
             let zero = fx.r();
             fx.emit(format!("{zero} = icmp eq i64 {n}, 0"));
@@ -591,7 +603,7 @@ pub(super) fn adapter_fn(gen: &mut Gen, name: &str, a: Adapter, tys: &[Ty]) -> S
             fx.emit(format!("store {il} {x}, ptr %out"));
         }
         Adapter::Skip => {
-            let np = fx.gep(st, "%s", &["0".into(), "2".into()]);
+            let np = fx.gep(st, "%s", &["0".into(), "3".into()]);
             let head = fx.label();
             let skip = fx.label();
             let take = fx.label();
@@ -605,7 +617,9 @@ pub(super) fn adapter_fn(gen: &mut Gen, name: &str, a: Adapter, tys: &[Ty]) -> S
             let m = fx.r();
             fx.emit(format!("{m} = sub i64 {n}, 1"));
             fx.emit(format!("store i64 {m}, ptr {np}"));
-            next_or(&mut fx, &inner, &ty(0), &none);
+            // A skipped item is dropped.
+            let skipped = next_or(&mut fx, &inner, &ty(0), &none);
+            drop_ssa(&mut fx, &ty(0), &skipped);
             fx.emit(format!("br label %{head}"));
             fx.start(&take);
             let x = next_or(&mut fx, &inner, &ty(0), &none);
@@ -613,7 +627,7 @@ pub(super) fn adapter_fn(gen: &mut Gen, name: &str, a: Adapter, tys: &[Ty]) -> S
             fx.emit(format!("store {il} {x}, ptr %out"));
         }
         Adapter::Map | Adapter::Filter => {
-            let fp = fx.gep(st, "%s", &["0".into(), "2".into()]);
+            let fp = fx.gep(st, "%s", &["0".into(), "3".into()]);
             let f = fx.load("%pani", &fp);
             let code = fx.r();
             fx.emit(format!("{code} = extractvalue %pani {f}, 0"));
@@ -634,15 +648,28 @@ pub(super) fn adapter_fn(gen: &mut Gen, name: &str, a: Adapter, tys: &[Ty]) -> S
                 let keep = fx.r();
                 fx.emit(format!("{keep} = call i1 {code}(ptr {env}, ptr {slot})"));
                 let yes = fx.label();
-                fx.emit(format!("br i1 {keep}, label %{yes}, label %{head}"));
+                let no = fx.label();
+                fx.emit(format!("br i1 {keep}, label %{yes}, label %{no}"));
+                // A rejected item is dropped.
+                fx.start(&no);
+                super::glue::call_drop(&mut fx, &ty(0), &slot);
+                fx.emit(format!("br label %{head}"));
                 fx.start(&yes);
                 fx.emit(format!("store {il} {x}, ptr %out"));
             }
         }
         Adapter::Zip => {
-            let second = fx.gep(st, "%s", &["0".into(), "2".into()]);
+            let second = fx.gep(st, "%s", &["0".into(), "3".into()]);
             let x = next_or(&mut fx, &inner, &ty(0), &none);
-            let y = next_or(&mut fx, &second, &ty(1), &none);
+            // When the second side ends first, the first side's item is dropped.
+            let lone = fx.label();
+            let y = next_or(&mut fx, &second, &ty(1), &lone);
+            let paired = fx.label();
+            fx.emit(format!("br label %{paired}"));
+            fx.start(&lone);
+            drop_ssa(&mut fx, &ty(0), &x);
+            fx.emit(format!("br label %{none}"));
+            fx.start(&paired);
             let pair = Ty::Tuple(vec![ty(0), ty(1)]);
             let pl = fx.ll(&pair);
             let (xl, yl) = (fx.ll(&ty(0)), fx.ll(&ty(1)));
@@ -676,7 +703,7 @@ pub(super) fn adapter_fn(gen: &mut Gen, name: &str, a: Adapter, tys: &[Ty]) -> S
             fx.emit(format!("store {il} {x}, ptr %out"));
         }
         Adapter::Enumerate => {
-            let ip = fx.gep(st, "%s", &["0".into(), "2".into()]);
+            let ip = fx.gep(st, "%s", &["0".into(), "3".into()]);
             let x = next_or(&mut fx, &inner, &ty(0), &none);
             let i = fx.load("i64", &ip);
             let j = fx.r();
@@ -696,6 +723,66 @@ pub(super) fn adapter_fn(gen: &mut Gen, name: &str, a: Adapter, tys: &[Ty]) -> S
     fx.start(&none);
     fx.emit("ret i1 false");
     format!("define internal i1 {name}(ptr %s, ptr %out) {{\nentry:\n{}}}\n", fx.code())
+}
+
+/// An adapter's `void drop(ptr state)`: drops what the state owns (inner
+/// iterators, the `pani`, an owned user iterator), then frees it.
+pub(super) fn adapter_drop(gen: &mut Gen, name: &str, a: Adapter, tys: &[Ty]) -> String {
+    let mut fx = Fx::new_for_glue(gen);
+    let st = adapter_state(a);
+    let ty = |i: usize| tys.get(i).cloned().unwrap_or(Ty::Unit);
+    let iter = |t: Ty| Ty::App(Con::Pravaham, vec![t]);
+    let field = |fx: &mut Fx, i: u32| fx.gep(st, "%s", &["0".into(), i.to_string()]);
+    match a {
+        Adapter::Take
+        | Adapter::Skip
+        | Adapter::Enumerate
+        | Adapter::Map
+        | Adapter::Filter
+        | Adapter::Zip => {
+            let p = field(&mut fx, 2);
+            super::glue::call_drop(&mut fx, &iter(ty(0)), &p);
+            match a {
+                Adapter::Map | Adapter::Filter => {
+                    let fp = field(&mut fx, 3);
+                    let f = fx.load("%pani", &fp);
+                    pani_dec(&mut fx, &f);
+                }
+                Adapter::Zip => {
+                    let q = field(&mut fx, 3);
+                    super::glue::call_drop(&mut fx, &iter(ty(1)), &q);
+                }
+                _ => {}
+            }
+        }
+        Adapter::User => {
+            // `tys[0]` is the iterable's type: owned iterators were moved to the heap.
+            if !matches!(ty(0), Ty::Ref(..)) {
+                let pp = field(&mut fx, 2);
+                let p = fx.load("ptr", &pp);
+                super::glue::call_drop(&mut fx, &ty(0), &p);
+                fx.emit(format!("call void @free(ptr {p})"));
+            }
+        }
+    }
+    fx.emit("call void @free(ptr %s)");
+    format!("define internal void {name}(ptr %s) {{\nentry:\n{}  ret void\n}}\n", fx.code())
+}
+
+/// Releases one handle to a closure (§10.7.4).
+fn pani_dec(fx: &mut Fx, f: &str) {
+    let env = fx.r();
+    fx.emit(format!("{env} = extractvalue %pani {f}, 1"));
+    fx.emit(format!("call void @ante_pani_dec(ptr {env})"));
+}
+
+/// Drops a value held in a register.
+fn drop_ssa(fx: &mut Fx, ty: &Ty, v: &str) {
+    if fx.needs_drop(ty) {
+        let lt = fx.ll(ty);
+        let p = fx.spill(&lt, v);
+        super::glue::call_drop(fx, ty, &p);
+    }
 }
 
 // ── built-in trait methods ─────────────────────────────────────────────────
@@ -944,6 +1031,10 @@ pub(super) fn std_call(
             }
             fx.emit(format!("br label %{head}"));
             fx.start(&done);
+            super::glue::call_drop(fx, &Ty::App(Con::Pravaham, vec![item]), &it);
+            if fold {
+                pani_dec(fx, &v(2));
+            }
             (fx.load(&al, &acc), acc_ty)
         }
         "prelude.size_of" | "prelude.align_of" => {
@@ -1110,12 +1201,14 @@ pub(super) fn std_call(
                 let cb = fx.gen.item(Item::SortBy(elem));
                 let ctx = fx.spill("%pani", &v(1));
                 fx.emit(format!("call void @ante_sort(ptr {d}, i64 {n}, i64 {size}, ptr {cb}, ptr {ctx})"));
+                pani_dec(fx, &v(1));
             }
             unit()
         }
         "varusa.anni_theesuko" | "prelude.anni_theesuko" => {
             let Some((d, n, _)) = seq_val(fx, &v(0), &t(0)) else { return unsupported(fx, &key, dest) };
-            (make_iter(fx, 1, "0", "0", "0", &d, &n), ret)
+            let owned = if matches!(t(0), Ty::Ref(..)) { "0" } else { "1" };
+            (make_iter(fx, 1, owned, "0", "0", &d, &n), ret)
         }
 
         // ── undochu, sare_thappu, pette ──
@@ -1147,8 +1240,15 @@ pub(super) fn std_call(
             fx.emit(format!("{is_some} = icmp eq i32 {tag}, 0"));
             if key == "undochu.lekapothe" {
                 let x = fx.load(&it, &fp);
+                let d = v(1);
+                if fx.needs_drop(&inner) {
+                    // The unused default is dropped.
+                    let ds = fx.spill(&it, &d);
+                    let inner2 = inner.clone();
+                    fx.when(&is_some, |fx| super::glue::call_drop(fx, &inner2, &ds));
+                }
                 let r = fx.r();
-                fx.emit(format!("{r} = select i1 {is_some}, {it} {x}, {it} {}", v(1)));
+                fx.emit(format!("{r} = select i1 {is_some}, {it} {x}, {it} {d}"));
                 return (r, inner);
             }
             let bad = fx.r();
@@ -1235,6 +1335,7 @@ pub(super) fn std_call(
             fx.emit(format!("store {rl} {e}, ptr {rslot}"));
             fx.emit(format!("br label %{done}"));
             fx.start(&done);
+            pani_dec(fx, &v(1));
             (fx.load(&rl, &rslot), ret)
         }
         "pette.kotthadhi" => {

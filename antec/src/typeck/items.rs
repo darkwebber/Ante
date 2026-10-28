@@ -10,7 +10,7 @@ use crate::resolve::{FileId, SourceModule};
 use crate::source::Span;
 use crate::types::{Con, InferTable, Ty, VarKind};
 
-const DERIVABLE: &[&str] =
+pub const DERIVABLE: &[&str] =
     &["CopyKottochu", "XeroxTheeyochu", "Polchochu", "VarusaPettochu", "HashCheyochu", "Choopinchochu"];
 
 pub fn check_items(g: &Globals, modules: &[SourceModule]) -> Vec<(FileId, Diagnostic)> {
@@ -313,7 +313,8 @@ fn sig_mismatch(
     None
 }
 
-fn show(g: &Globals, t: &Ty) -> String {
+/// A type as the programmer writes it (`varusa[ankam64]`), for messages.
+pub fn show(g: &Globals, t: &Ty) -> String {
     let adt_name = |d: usize| g.res.defs[d].name.clone();
     let param_name = |i: u32| format!("T{i}");
     let var_kind = |_| VarKind::General;
