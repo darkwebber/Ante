@@ -490,11 +490,11 @@ impl fmt::Display for Rvalue {
 }
 
 impl Body {
-    pub fn render(&self, fn_name: &dyn Fn(FnId) -> String) -> String {
+    pub fn render(&self, fn_name: &dyn Fn(FnId) -> String, ty_name: &dyn Fn(&Ty) -> String) -> String {
         let mut out = format!("{} ({} params):\n", self.name, self.params);
         for (i, l) in self.locals.iter().enumerate() {
             let name = l.name.as_deref().map(|n| format!("  // {n}")).unwrap_or_default();
-            out.push_str(&format!("    let _{i}: {:?};{name}\n", l.ty));
+            out.push_str(&format!("    let _{i}: {};{name}\n", ty_name(&l.ty)));
         }
         for (i, b) in self.blocks.iter().enumerate() {
             out.push_str(&format!("  bb{i}:\n"));

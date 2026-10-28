@@ -1,0 +1,34 @@
+# category: run-pass
+# expect-stdout: aaaa
+# expect-stdout: sardhu w
+# expect-stdout: body 0
+# expect-stdout: sardhu w
+# expect-stdout: body 1
+# expect-stdout: sardhu w
+# expect-stdout: sardhu c
+# expect-stdout: then
+# level: core
+# A condition's temporaries end before its branch, once per evaluation (§15.5).
+rakam Gadi ante:
+    peru: padham
+
+Gadi ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"sardhu {peru}" ni choopinchu()
+
+mk(p: padham ni) -> Gadi ante:
+    Gadi{peru: p} icchey
+
+modhalu() -> khali ante:
+    maare s ante "a"
+    (s + "xyz").byte_len() < 7 unnanthasepu:
+        s lo s + "a" pettu
+    s ni choopinchu()
+    maare i ante 0
+    ("w" ni mk()).peru.byte_len() + i < 3 unnanthasepu:
+        f"body {i}" ni choopinchu()
+        i += 1
+    ("c" ni mk()).peru == "c" aithe:
+        "then" ni choopinchu()
+    ledhante ("d" ni mk()).peru == "d" aithe:
+        "elif" ni choopinchu()

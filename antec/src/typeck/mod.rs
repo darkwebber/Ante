@@ -228,6 +228,7 @@ pub(crate) struct TyEnv<'x> {
 }
 
 pub use body::is_place as is_place_expr;
+pub use items::show as show_ty;
 
 /// Everything the type checker produces.
 pub struct Typeck<'a> {

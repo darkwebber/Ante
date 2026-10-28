@@ -225,6 +225,8 @@ fn show_into(fx: &mut Fx, ty: &Ty, buf: &str, v: &str) {
                 let (s, _) = fx.call_body_vals(b, &tys, &[v.to_string()]);
                 let sp = fx.spill("%str", &s);
                 show_into(fx, &Ty::Str, buf, &sp);
+                // The text the user's `padham_ga` returned is ours to free.
+                fx.emit(format!("call void @ante_buf_free(ptr {sp})"));
                 return;
             }
             let Some(adt) = fx.gen.g.adts.get(d).cloned() else { return };
@@ -635,7 +637,7 @@ fn xerox_value(fx: &mut Fx, ty: &Ty, v: &str) -> String {
             let bytes = fx.r();
             fx.emit(format!("{bytes} = mul i64 {len}, {size}"));
             let nd = fx.r();
-            fx.emit(format!("{nd} = call ptr @ante_alloc(i64 {bytes})"));
+            fx.emit(format!("{nd} = call ptr @ante_vec_alloc(i64 {len}, i64 {bytes})"));
             let et = fx.ll(&elem);
             each(fx, &data, &len, &elem, &mut |fx, p, _| {
                 let c = call_xerox(fx, &elem, p);
@@ -737,7 +739,7 @@ pub(super) fn drop_glue(gen: &mut Gen, name: &str, ty: &Ty) -> String {
     format!("define internal void {name}(ptr %v) {{\nentry:\n{}  ret void\n}}\n", fx.code())
 }
 
-fn call_drop(fx: &mut Fx, ty: &Ty, v: &str) {
+pub(super) fn call_drop(fx: &mut Fx, ty: &Ty, v: &str) {
     if !fx.needs_drop(ty) {
         return;
     }
@@ -800,8 +802,51 @@ fn drop_into(fx: &mut Fx, ty: &Ty, v: &str) {
                 }
             });
         }
+        Ty::App(Con::Pravaham, a) => drop_iter(fx, &a[0], v),
         _ => {}
     }
+}
+
+/// Drops an iterator (`%iter`, see native.rs): an owned sequence drops the
+/// items not yet taken and frees its buffer; an adapter runs its own drop.
+fn drop_iter(fx: &mut Fx, item: &Ty, v: &str) {
+    let kp = fx.gep("%iter", v, &["0".into(), "0".into()]);
+    let kind = fx.load("i32", &kp);
+    let seq = fx.label();
+    let adapter = fx.label();
+    let end = fx.label();
+    fx.emit(format!("switch i32 {kind}, label %{end} [ i32 1, label %{seq} i32 3, label %{adapter} ]"));
+    fx.start(&seq);
+    let op = fx.gep("%iter", v, &["0".into(), "1".into()]);
+    let owned = fx.load("i8", &op);
+    let is_owned = fx.r();
+    fx.emit(format!("{is_owned} = icmp ne i8 {owned}, 0"));
+    let item = item.clone();
+    fx.when(&is_owned, |fx| {
+        let pp = fx.gep("%iter", v, &["0".into(), "4".into()]);
+        let data = fx.load("ptr", &pp);
+        if !matches!(item, Ty::Ref(..)) && fx.needs_drop(&item) {
+            let ap = fx.gep("%iter", v, &["0".into(), "2".into()]);
+            let taken = fx.load("i64", &ap);
+            let np = fx.gep("%iter", v, &["0".into(), "5".into()]);
+            let n = fx.load("i64", &np);
+            let et = fx.ll(&item);
+            let rest = fx.gep(&et, &data, &[format!("i64 {taken}")]);
+            let left = fx.r();
+            fx.emit(format!("{left} = sub i64 {n}, {taken}"));
+            each(fx, &rest, &left, &item, &mut |fx, p, _| call_drop(fx, &item, p));
+        }
+        fx.emit(format!("call void @free(ptr {data})"));
+    });
+    fx.emit(format!("br label %{end}"));
+    fx.start(&adapter);
+    let sp = fx.gep("%iter", v, &["0".into(), "4".into()]);
+    let state = fx.load("ptr", &sp);
+    let dp = fx.gep("{ ptr, ptr }", &state, &["0".into(), "1".into()]);
+    let d = fx.load("ptr", &dp);
+    fx.emit(format!("call void {d}(ptr {state})"));
+    fx.emit(format!("br label %{end}"));
+    fx.start(&end);
 }
 
 // ── sort callbacks and thunks ──────────────────────────────────────────────

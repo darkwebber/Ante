@@ -1,0 +1,27 @@
+# category: run-pass
+# expect-stdout: sardhu tmp
+# expect-stdout: after binding 3
+# expect-stdout: extended ext
+# expect-stdout: expr
+# expect-stdout: sardhu expr
+# expect-stdout: end
+# expect-stdout: sardhu ext
+# level: core
+# A temporary ends with its statement, even in a binding; only `x ante &e` extends it (§15.5).
+rakam Gadi ante:
+    peru: padham
+
+Gadi ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"sardhu {peru}" ni choopinchu()
+
+mk(p: padham ni) -> Gadi ante:
+    Gadi{peru: p} icchey
+
+modhalu() -> khali ante:
+    n ante ("tmp" ni mk()).peru.byte_len()
+    f"after binding {n}" ni choopinchu()
+    r ante &("ext" ni mk())
+    f"extended {r.peru}" ni choopinchu()
+    ("expr" ni mk()).peru ni choopinchu()
+    "end" ni choopinchu()

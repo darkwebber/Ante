@@ -247,7 +247,8 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
         Action::Check => {}
         Action::EmitMir => {
             let names = |fid: usize| tc.globals.fns[fid].name.clone();
-            let text: Vec<String> = program.bodies.iter().map(|b| b.render(&names)).collect();
+            let ty_name = |t: &crate::types::Ty| crate::typeck::show_ty(&tc.globals, t);
+            let text: Vec<String> = program.bodies.iter().map(|b| b.render(&names, &ty_name)).collect();
             mir = Some(text.join("\n"));
         }
         Action::Run { stream, args } => {
@@ -311,6 +312,11 @@ pub fn link_native(ir: &str, output: &Path, build: &BuildSettings, release: bool
         let runtime = runtime_object(&cc, build.target.as_deref(), &dir)?;
         let mut cmd = std::process::Command::new(&cc);
         cmd.arg(if release { "-O2" } else { "-O0" }).arg("-w").arg("-Wno-override-module");
+        if !release {
+            // AArch64's default -O0 selector (GlobalISel) is quadratic on long
+            // functions that reuse constants; the classic one is linear.
+            cmd.args(["-mllvm", "-global-isel=0"]);
+        }
         if let Some(t) = &build.target {
             cmd.arg(format!("--target={t}"));
         }
@@ -363,11 +369,7 @@ fn private_temp_dir() -> Result<PathBuf, String> {
 /// The runtime compiled to an object file, from the cache when possible.
 /// The cache key covers the runtime source, the compiler and the target.
 fn runtime_object(cc: &str, target: Option<&str>, scratch: &Path) -> Result<PathBuf, String> {
-    let version = std::process::Command::new(cc)
-        .arg("--version")
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .unwrap_or_default();
+    let version = cc_version(cc);
     let key = fnv1a(format!("{}\0{cc}\0{version}\0{target:?}", crate::codegen::RUNTIME_C).as_bytes());
     let compile = |obj: &Path| -> Result<(), String> {
         let src = scratch.join("ante_rt.c");
@@ -392,7 +394,9 @@ fn runtime_object(cc: &str, target: Option<&str>, scratch: &Path) -> Result<Path
     let fresh = scratch.join("ante_rt.o");
     compile(&fresh)?;
     // Copy next to the final name, then rename: other builds never see half a file.
-    let partial = cache.join(format!("ante_rt-{key:016x}.{}.tmp", std::process::id()));
+    static PARTIAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = PARTIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let partial = cache.join(format!("ante_rt-{key:016x}.{}-{n}.tmp", std::process::id()));
     if fs::create_dir_all(&cache).is_ok()
         && fs::copy(&fresh, &partial).is_ok()
         && fs::rename(&partial, &obj).is_ok()
@@ -401,6 +405,24 @@ fn runtime_object(cc: &str, target: Option<&str>, scratch: &Path) -> Result<Path
     }
     let _ = fs::remove_file(&partial);
     Ok(fresh)
+}
+
+/// `cc --version`, asked once per compiler per process (it's part of the
+/// runtime's cache key, and starting a process for every build is slow).
+fn cc_version(cc: &str) -> String {
+    static SEEN: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+    if let Some((_, v)) = SEEN.lock().ok().and_then(|s| s.iter().find(|(c, _)| c == cc).cloned()) {
+        return v;
+    }
+    let version = std::process::Command::new(cc)
+        .arg("--version")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    if let Ok(mut s) = SEEN.lock() {
+        s.push((cc.to_string(), version.clone()));
+    }
+    version
 }
 
 /// `$ANTE_CACHE_DIR`, else the platform's per-user cache folder.

@@ -78,13 +78,39 @@ fn native_matches_expectations() {
     fs::create_dir_all(&out_dir).expect("temp dir");
     let mut files = Vec::new();
     collect(&root, &mut files);
+    // Programs build and run in parallel; each worker takes the next file.
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let results = std::sync::Mutex::new((0usize, Vec::new()));
+    let workers = std::thread::available_parallelism().map_or(4, |n| n.get());
+    std::thread::scope(|s| {
+        for _ in 0..workers {
+            s.spawn(|| loop {
+                let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let Some(path) = files.get(i) else { break };
+                let (ran, failures) = check_native(path, &out_dir);
+                let mut r = results.lock().expect("results");
+                r.0 += ran;
+                r.1.extend(failures);
+            });
+        }
+    });
+    let (ran, mut failures) = results.into_inner().expect("results");
+    failures.sort();
+    let _ = fs::remove_dir_all(&out_dir);
+    assert!(ran >= 90, "only {ran} native programs ran");
+    assert!(failures.is_empty(), "{} native failures:\n{}", failures.len(), failures.join("\n"));
+}
+
+/// Builds one conformance program natively (optimized and not), runs it and
+/// compares with its expectations: the number of runs, and any failures.
+fn check_native(path: &Path, out_dir: &Path) -> (usize, Vec<String>) {
     let mut failures = Vec::new();
     let mut ran = 0;
-    for path in files {
-        let text = fs::read_to_string(&path).expect("readable test");
+    {
+        let text = fs::read_to_string(path).expect("readable test");
         let category = header(&text, "category:").first().cloned().unwrap_or_default();
         if !matches!(category.trim(), "run-pass" | "runtime-trap") {
-            continue;
+            return (0, failures);
         }
         let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
         // Every program is built twice: optimized (`--release`) and not.
@@ -93,7 +119,7 @@ fn native_matches_expectations() {
             let base = format!("{name}-{level}");
             let exe = out_dir.join(if cfg!(windows) { format!("{base}.exe") } else { base });
             let action = Action::Build { output: exe.clone(), release };
-            let checked = antec::on_big_stack(|| antec::package::process(&path, action)).expect("readable");
+            let checked = antec::on_big_stack(|| antec::package::process(path, action)).expect("readable");
             if NOT_YET_NATIVE.contains(&name.as_str()) {
                 if checked.built.is_some() {
                     failures.push(format!("{name}: builds natively now; take it off NOT_YET_NATIVE"));
@@ -141,9 +167,7 @@ fn native_matches_expectations() {
             }
         }
     }
-    let _ = fs::remove_dir_all(&out_dir);
-    assert!(ran >= 90, "only {ran} native programs ran");
-    assert!(failures.is_empty(), "{} native failures:\n{}", failures.len(), failures.join("\n"));
+    (ran, failures)
 }
 
 /// The README's welcome program, compiled natively, prints what the README says.

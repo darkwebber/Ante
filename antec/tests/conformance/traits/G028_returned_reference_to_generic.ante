@@ -1,0 +1,15 @@
+# category: run-pass
+# expect-stdout: ravi
+# expect-stdout: ravi
+# level: core
+# A call returning `&padham` passed to a `&T` parameter infers `T = padham` (§11.3).
+modhati_peru(xs: &varusa[padham] ni) -> &padham ante:
+    &xs[0] icchey
+
+chupi[T: Choopinchochu](x: &T ni) -> khali ante:
+    x ni choopinchu()
+
+modhalu() -> khali ante:
+    names ante ["ravi", "sita"]
+    (&names ni modhati_peru()) ni choopinchu()
+    (&names ni modhati_peru()) ni chupi()

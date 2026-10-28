@@ -390,7 +390,12 @@ impl<'a, 'p> Builder<'a, 'p> {
         let mut extend = false;
         match &stmt.kind {
             StmtKind::Binding { target, value, .. } => {
-                extend = true;
+                // `x ante &e` with `e` a temporary keeps `e` alive as long as
+                // `x` (§15.5); every other temporary ends with the statement.
+                extend = matches!(
+                    &value.kind,
+                    ExprKind::Unary { op: UnOp::Ref | UnOp::RefMut, operand } if !is_place(operand)
+                );
                 match target {
                     BindTarget::Name(n) => {
                         let ty = self.local_ty(n.span.start);
@@ -436,7 +441,7 @@ impl<'a, 'p> Builder<'a, 'p> {
             StmtKind::If { branches, else_block } => {
                 let join = self.new_block();
                 for (cond, body) in branches {
-                    let c = self.lower_operand(cond);
+                    let c = self.lower_cond(cond);
                     let then = self.new_block();
                     let next = self.new_block();
                     self.set_term(Term::Switch { discr: c, targets: vec![(1, then)], otherwise: next });
@@ -454,7 +459,7 @@ impl<'a, 'p> Builder<'a, 'p> {
                 let head = self.new_block();
                 let exit = self.new_block();
                 self.goto(head);
-                let c = self.lower_operand(cond);
+                let c = self.lower_cond(cond);
                 let inner = self.new_block();
                 self.set_term(Term::Switch { discr: c, targets: vec![(1, inner)], otherwise: exit });
                 self.cur = inner;
@@ -492,7 +497,6 @@ impl<'a, 'p> Builder<'a, 'p> {
             }
         }
         if extend {
-            // Temporaries of a binding live as long as the binding (§15.5).
             let temps = self.frames.pop().expect("temp frame");
             let scope = self.frames.iter_mut().rev().find(|f| !f.temps).expect("a scope frame");
             scope.drops.extend(temps.drops);
@@ -500,6 +504,18 @@ impl<'a, 'p> Builder<'a, 'p> {
         } else {
             self.pop_frame();
         }
+    }
+
+    /// A condition is its own temporary scope: its temporaries end before
+    /// the branch, once per evaluation, so a loop's condition doesn't pile
+    /// them up and a long `ledhante` chain doesn't carry them to every exit.
+    fn lower_cond(&mut self, cond: &'a Expr) -> Operand {
+        self.push_frame(true);
+        let c = self.lower_operand(cond);
+        let flag = self.new_local(Ty::Bool, None);
+        self.assign(Place::local(flag), Rvalue::Use(c));
+        self.pop_frame();
+        Operand::Copy(Place::local(flag))
     }
 
     fn local_ty(&self, decl: usize) -> Ty {
@@ -1385,6 +1401,16 @@ impl<'a, 'p> Builder<'a, 'p> {
         }
         // The callee value, then the phrases in source order (§11.5).
         let callee_op = match &plan.target {
+            // A closure behind references is called through them, not copied.
+            Target::Value if is_place(callee) && matches!(self.ty_of(callee), Ty::Ref(..)) => {
+                let mut p = self.place_of(callee);
+                let mut t = self.ty_of(callee);
+                while let Ty::Ref(_, inner) = t {
+                    p = p.deref();
+                    t = *inner;
+                }
+                Some(Operand::Copy(p))
+            }
             Target::Value => Some(self.lower_operand(callee)),
             _ => None,
         };
@@ -1954,7 +1980,10 @@ pub fn needs_drop(
             r
         }
         Ty::Str | Ty::Fn(..) => true,
-        Ty::App(Con::Varusa | Con::Pette | Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => true,
+        // An iterator may own adapter state, a `pani` or the rest of a sequence.
+        Ty::App(Con::Varusa | Con::Pette | Con::Jodi | Con::GajibijiJodi | Con::Gumpu | Con::Pravaham, _) => {
+            true
+        }
         Ty::App(_, args) | Ty::Tuple(args) => {
             args.iter().any(|a| needs_drop(g, generics, cache, a, visiting))
         }

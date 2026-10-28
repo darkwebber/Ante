@@ -173,6 +173,24 @@ impl Machine<'_> {
 
     // ── intrinsics ─────────────────────────────────────────────────────────
 
+    /// The next item of the iterator behind the reference `r`, as `undochu`.
+    pub(super) fn next_through(&mut self, r: &Value, span: Span) -> R<Value> {
+        let a = self.ref_addr(r);
+        let mut it = match std::mem::replace(self.read_mut(&a), Value::Uninit) {
+            Value::Iter(b) => b,
+            other => {
+                *self.read_mut(&a) = other;
+                return Ok(Value::none());
+            }
+        };
+        let next = self.iter_next(&mut it, span);
+        *self.read_mut(&a) = Value::Iter(it);
+        Ok(match next? {
+            Some(v) => Value::some(v),
+            None => Value::none(),
+        })
+    }
+
     pub(super) fn intrinsic(&mut self, i: &Intrinsic, args: Vec<Value>, span: Span) -> R<Value> {
         match i {
             Intrinsic::IntoIter { copy, ty } => {
@@ -181,22 +199,7 @@ impl Machine<'_> {
                 let st = self.make_iter(v, *copy, &ty, span)?;
                 Ok(Value::Iter(Box::new(st)))
             }
-            Intrinsic::IterNext => {
-                let a = self.ref_addr(&args[0]);
-                let mut it = match std::mem::replace(self.read_mut(&a), Value::Uninit) {
-                    Value::Iter(b) => b,
-                    other => {
-                        *self.read_mut(&a) = other;
-                        return Ok(Value::none());
-                    }
-                };
-                let next = self.iter_next(&mut it, span);
-                *self.read_mut(&a) = Value::Iter(it);
-                Ok(match next? {
-                    Some(v) => Value::some(v),
-                    None => Value::none(),
-                })
-            }
+            Intrinsic::IterNext => self.next_through(&args[0], span),
             Intrinsic::Format { texts, tys } => {
                 let mut out = String::new();
                 for (i, t) in texts.iter().enumerate() {
@@ -254,7 +257,7 @@ impl Machine<'_> {
                 }
                 _ => return self.user_iter(Value::Ref(a), ty, span),
             },
-            Value::Vec(xs) | Value::Array(xs) => IterState::Owned(xs.into()),
+            Value::Vec(xs) | Value::Array(xs) => IterState::Owned(xs.into(), elem_ty(ty)),
             Value::Map(m) => {
                 let keys_only = matches!(ty, Ty::App(Con::Gumpu, _));
                 let positions = m.positions().into();
@@ -310,7 +313,7 @@ impl Machine<'_> {
                     Some(if *copy { self.read(&a).clone() } else { Value::Ref(a) })
                 }
             }
-            IterState::Owned(q) => q.pop_front(),
+            IterState::Owned(q, _) => q.pop_front(),
             IterState::Chars { text, pos } => {
                 let c = text[*pos..].chars().next();
                 if let Some(c) = c {
@@ -329,9 +332,17 @@ impl Machine<'_> {
                     }
                 }
             },
-            IterState::Zip(a, b) => match (self.iter_next(a, span)?, self.iter_next(b, span)?) {
-                (Some(x), Some(y)) => Some(Value::Tuple(vec![x, y])),
-                _ => None,
+            IterState::Zip(a, b, at) => match self.iter_next(a, span)? {
+                None => None,
+                Some(x) => match self.iter_next(b, span)? {
+                    Some(y) => Some(Value::Tuple(vec![x, y])),
+                    None => {
+                        // The first side's item has no partner: it is dropped.
+                        let at = at.clone();
+                        self.drop_value(x, &at)?;
+                        None
+                    }
+                },
             },
             IterState::Take(inner, n) => {
                 if *n == 0 {
@@ -341,11 +352,15 @@ impl Machine<'_> {
                     self.iter_next(inner, span)?
                 }
             }
-            IterState::Skip(inner, n) => {
+            IterState::Skip(inner, n, t) => {
                 while *n > 0 {
                     *n -= 1;
-                    if self.iter_next(inner, span)?.is_none() {
-                        return Ok(None);
+                    match self.iter_next(inner, span)? {
+                        None => return Ok(None),
+                        Some(x) => {
+                            let t = t.clone();
+                            self.drop_value(x, &t)?;
+                        }
                     }
                 }
                 self.iter_next(inner, span)?
@@ -357,7 +372,7 @@ impl Machine<'_> {
                 }
                 None => None,
             },
-            IterState::Filter(inner, f) => loop {
+            IterState::Filter(inner, f, t) => loop {
                 match self.iter_next(inner, span)? {
                     None => break None,
                     Some(x) => {
@@ -370,6 +385,8 @@ impl Machine<'_> {
                         if matches!(keep, Value::Bool(true)) {
                             break Some(x);
                         }
+                        let t = t.clone();
+                        self.drop_value(x, &t)?;
                     }
                 }
             },
@@ -396,7 +413,7 @@ impl Machine<'_> {
     fn take_iter(&mut self, v: Value) -> IterState {
         match v {
             Value::Iter(b) => *b,
-            other => IterState::Owned(vec![other].into()),
+            other => IterState::Owned(vec![other].into(), Ty::Error),
         }
     }
 
@@ -806,8 +823,52 @@ impl Machine<'_> {
 
     // ── standard functions (§21) ───────────────────────────────────────────
 
-    #[allow(clippy::cognitive_complexity)]
+    /// A standard function. A `pani` passed by value is released afterwards:
+    /// its captures drop unless the result kept a handle (§10.7.4).
     pub(super) fn native(&mut self, name: &str, tys: &[Ty], args: Vec<Value>, span: Span) -> R<Value> {
+        let closures: Vec<Value> = args.iter().filter(|v| matches!(v, Value::Closure(_))).cloned().collect();
+        let r = self.native_call(name, tys, args, span);
+        for c in closures {
+            self.drop_value(c, &Ty::Fn(Vec::new(), Box::new(Ty::Unit)))?;
+        }
+        r
+    }
+
+    /// Drops an iterator and whatever it still owns, as native code does.
+    pub fn drop_iter(&mut self, it: IterState) -> R<()> {
+        match it {
+            IterState::Owned(q, t) => {
+                for x in q {
+                    self.drop_value(x, &t)?;
+                }
+            }
+            IterState::Zip(a, b, _) => {
+                self.drop_iter(*a)?;
+                self.drop_iter(*b)?;
+            }
+            IterState::Take(i, _) | IterState::Skip(i, _, _) | IterState::Enumerate(i, _) => {
+                self.drop_iter(*i)?
+            }
+            IterState::Map2(i, f) | IterState::Filter(i, f, _) => {
+                self.drop_iter(*i)?;
+                self.drop_value(f, &Ty::Fn(Vec::new(), Box::new(Ty::Unit)))?;
+            }
+            IterState::User { value, tys, .. } => {
+                if let Some(t) = tys.first() {
+                    let t = t.clone();
+                    self.drop_value(*value, &t)?;
+                }
+            }
+            IterState::Range { .. }
+            | IterState::Seq { .. }
+            | IterState::Chars { .. }
+            | IterState::Map { .. } => {}
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::cognitive_complexity)]
+    fn native_call(&mut self, name: &str, tys: &[Ty], args: Vec<Value>, span: Span) -> R<Value> {
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Unit);
         let ty = |i: usize| tys.get(i).cloned().unwrap_or(Ty::Error);
         match name {
@@ -854,7 +915,7 @@ impl Machine<'_> {
             "prelude.kalipi" => {
                 let a = self.take_iter(arg(0));
                 let b = self.take_iter(arg(1));
-                Ok(Value::Iter(Box::new(IterState::Zip(Box::new(a), Box::new(b)))))
+                Ok(Value::Iter(Box::new(IterState::Zip(Box::new(a), Box::new(b), ty(0)))))
             }
             "prelude.modhati" | "prelude.dhaatu" => {
                 let it = self.take_iter(arg(0));
@@ -862,7 +923,7 @@ impl Machine<'_> {
                 let st = if name == "prelude.modhati" {
                     IterState::Take(Box::new(it), n)
                 } else {
-                    IterState::Skip(Box::new(it), n)
+                    IterState::Skip(Box::new(it), n, ty(0))
                 };
                 Ok(Value::Iter(Box::new(st)))
             }
@@ -872,7 +933,7 @@ impl Machine<'_> {
             }
             "prelude.jalleda_pattu" => {
                 let it = self.take_iter(arg(0));
-                Ok(Value::Iter(Box::new(IterState::Filter(Box::new(it), arg(1)))))
+                Ok(Value::Iter(Box::new(IterState::Filter(Box::new(it), arg(1), ty(0)))))
             }
             "prelude.number_vesi" => {
                 let it = self.take_iter(arg(0));
@@ -885,6 +946,7 @@ impl Machine<'_> {
                 while let Some(x) = self.iter_next(&mut it, span)? {
                     acc = self.call_value(&f, vec![acc, x], span)?;
                 }
+                self.drop_iter(it)?;
                 Ok(acc)
             }
             "prelude.varusa_ga" => {
@@ -893,10 +955,15 @@ impl Machine<'_> {
                 while let Some(x) = self.iter_next(&mut it, span)? {
                     out.push(x);
                 }
+                self.drop_iter(it)?;
                 Ok(Value::Vec(out))
             }
             "prelude.anni_theesuko" | "varusa.anni_theesuko" => match arg(0) {
-                Value::Vec(xs) | Value::Array(xs) => Ok(Value::Iter(Box::new(IterState::Owned(xs.into())))),
+                Value::Vec(xs) | Value::Array(xs) => {
+                    // A method's first type is its receiver's (`idhi`).
+                    let t = if name.starts_with("varusa.") { ty(1) } else { ty(0) };
+                    Ok(Value::Iter(Box::new(IterState::Owned(xs.into(), t))))
+                }
                 other => Ok(other),
             },
 
@@ -1105,7 +1172,11 @@ impl Machine<'_> {
             "undochu.undhaa" => Ok(bool_v(matches!(self.target(&arg(0)), Value::Adt(0, _)))),
             "undochu.ledhaa" => Ok(bool_v(matches!(self.target(&arg(0)), Value::Adt(1, _)))),
             "undochu.lekapothe" => Ok(match arg(0) {
-                Value::Adt(0, mut xs) => xs.pop().unwrap_or(Value::Unit),
+                Value::Adt(0, mut xs) => {
+                    // The unused default is dropped.
+                    self.drop_value(arg(1), &ty(1))?;
+                    xs.pop().unwrap_or(Value::Unit)
+                }
                 _ => arg(1),
             }),
             "undochu.kachithanga" => match arg(0) {
@@ -1636,5 +1707,14 @@ fn size_of(t: &Ty) -> i128 {
         Ty::Tuple(items) => items.iter().map(size_of).sum(),
         Ty::Array(e, n) => size_of(e) * n.unwrap_or(0) as i128,
         _ => 8,
+    }
+}
+
+/// The element type of an owned sequence type.
+fn elem_ty(ty: &Ty) -> Ty {
+    match ty {
+        Ty::Array(e, _) => (**e).clone(),
+        Ty::App(_, a) if !a.is_empty() => a[0].clone(),
+        _ => Ty::Error,
     }
 }

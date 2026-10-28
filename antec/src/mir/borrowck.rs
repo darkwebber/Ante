@@ -245,6 +245,10 @@ struct Cx<'a> {
     errors: Vec<Diagnostic>,
     reported: HashSet<(&'static str, usize)>,
     sardhu: Option<DefId>,
+    /// Liveness only matters for locals that can hold loans (RC types,
+    /// §9.3.1), so it tracks just those: each one's index in the live sets.
+    rc_ix: Vec<Option<usize>>,
+    n_rc: usize,
 }
 
 impl<'a> Cx<'a> {
@@ -263,7 +267,14 @@ impl<'a> Cx<'a> {
             errors: Vec::new(),
             reported: HashSet::new(),
             sardhu: g.std_trait("Sardhukochu"),
+            rc_ix: Vec::new(),
+            n_rc: 0,
         };
+        for l in &body.locals {
+            let ix = is_rc(&l.ty).then_some(cx.n_rc);
+            cx.n_rc += usize::from(ix.is_some());
+            cx.rc_ix.push(ix);
+        }
         for (bi, b) in body.blocks.iter().enumerate() {
             for (si, s) in b.stmts.iter().enumerate() {
                 let span = b.spans.get(si).copied().unwrap_or_default();
@@ -278,19 +289,26 @@ impl<'a> Cx<'a> {
                         cx.loans.push(Loan { place: p.clone(), mutable, span });
                     }
                 }
-                for a in stmt_accesses(s) {
-                    cx.note_path(&a, span);
+                let acc = std::mem::take(&mut cx.stmt_acc[bi][si]);
+                for a in &acc {
+                    cx.note_path(a, span);
                 }
+                cx.stmt_acc[bi][si] = acc;
             }
-            for a in term_accesses(&b.term) {
-                cx.note_path(&a, b.term_span);
+            let acc = std::mem::take(&mut cx.term_acc[bi]);
+            for a in &acc {
+                cx.note_path(a, b.term_span);
             }
+            cx.term_acc[bi] = acc;
         }
         cx
     }
 
     fn note_path(&mut self, a: &Access, span: Span) {
-        if a.kind == Kind::Move && self.owned(&a.place).is_ok() && !self.paths.contains(&a.place) {
+        if a.kind == Kind::Move
+            && self.owned(&a.place).is_ok()
+            && !self.local_paths(a.place.local).iter().any(|&i| self.paths[i] == a.place)
+        {
             self.paths_of.entry(a.place.local).or_default().push(self.paths.len());
             self.paths.push(a.place.clone());
             self.path_moves.push(span);
@@ -381,21 +399,27 @@ impl<'a> Cx<'a> {
 
     // ── liveness (backward) ────────────────────────────────────────────────
 
-    fn live_transfer(live: &mut Bits, accesses: &[Access]) {
+    fn live_transfer(&self, live: &mut Bits, accesses: &[Access]) {
         // Writes of whole locals happen last in a statement; kill them first.
         for a in accesses.iter().rev() {
+            let Some(ix) = self.rc_ix[a.place.local as usize] else { continue };
             match a.kind {
-                Kind::Write if a.place.proj.is_empty() => live.set(a.place.local as usize, false),
+                Kind::Write if a.place.proj.is_empty() => live.set(ix, false),
                 Kind::Write if !a.place.proj.contains(&Proj::Deref) => {}
                 Kind::Dead => {}
-                _ => live.set(a.place.local as usize, true),
+                _ => live.set(ix, true),
             }
         }
     }
 
+    /// Whether local `l` is in a live set.
+    fn is_live(&self, live: &Bits, l: Local) -> bool {
+        self.rc_ix[l as usize].is_some_and(|ix| live.get(ix))
+    }
+
     /// The live locals on entry to each block.
     fn liveness(&self) -> Vec<Bits> {
-        let n = self.body.locals.len();
+        let n = self.n_rc;
         let blocks = &self.body.blocks;
         let mut live_in: Vec<Bits> = vec![Bits::new(n); blocks.len()];
         let mut changed = true;
@@ -416,15 +440,15 @@ impl<'a> Cx<'a> {
     /// terminator (the last entry).
     fn block_live(&self, bi: usize, live_in: &[Bits]) -> Vec<Bits> {
         let b = &self.body.blocks[bi];
-        let mut live = Bits::new(self.body.locals.len());
+        let mut live = Bits::new(self.n_rc);
         for s in b.term.successors() {
             live.union(&live_in[s as usize]);
         }
         let mut per = vec![Bits::empty(); b.stmts.len() + 1];
-        Self::live_transfer(&mut live, &self.term_acc[bi]);
+        self.live_transfer(&mut live, &self.term_acc[bi]);
         per[b.stmts.len()] = live.clone();
         for i in (0..b.stmts.len()).rev() {
-            Self::live_transfer(&mut live, &self.stmt_acc[bi][i]);
+            self.live_transfer(&mut live, &self.stmt_acc[bi][i]);
             per[i] = live.clone();
         }
         per
@@ -588,7 +612,7 @@ impl<'a> Cx<'a> {
             for succ in blocks[bi].term.successors() {
                 let si = succ as usize;
                 let mut st = st.clone();
-                st.holds.retain(|l, _| live_in[si].get(*l as usize));
+                st.holds.retain(|l, _| self.is_live(&live_in[si], *l));
                 let changed = match &mut entry[si] {
                     None => {
                         let mut first = st.clone();
@@ -643,7 +667,7 @@ impl<'a> Cx<'a> {
     fn live_loans(&self, st: &State, live: &Bits) -> Bits {
         let mut out = Bits::empty();
         for (l, h) in &st.holds {
-            if live.get(*l as usize) {
+            if self.is_live(live, *l) {
                 out.union(h);
             }
         }
@@ -783,11 +807,14 @@ impl<'a> Cx<'a> {
             }
             Kind::Dead => {
                 if !self.through_reference(&a.place, &lplace) {
-                    self.error(
-                        "E0606",
-                        lspan,
-                        format!("`{lname}` ki reference ikkada theesukunnav, kaani `{name}` scope aipoyaka kuda aa reference vaadutunnav"),
-                    );
+                    // An unnamed local is a temporary: it ends with its statement (§15.5).
+                    let temp = self.body.locals[lplace.local as usize].name.is_none();
+                    let msg = if temp {
+                        "ee value oka temporary: statement aipogaane adhi pothundhi, kaani daani reference tharvatha kuda vaadutunnav. Mundhu daanini oka variable lo pettandi (`x ante …`), tharvatha vaadandi".to_string()
+                    } else {
+                        format!("`{lname}` ki reference ikkada theesukunnav, kaani `{name}` scope aipoyaka kuda aa reference vaadutunnav")
+                    };
+                    self.error("E0606", lspan, msg);
                 }
             }
         }

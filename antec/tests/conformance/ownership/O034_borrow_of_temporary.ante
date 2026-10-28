@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0606 @ 7:13
+# level: core
+# The text is a temporary: it ends with the statement, so the iterator
+# borrowing it can't be kept (§15.5).
+modhalu() -> khali ante:
+    it ante ("xy" + "zw").aksharaalu()
+    it |> varusa_ga() |> choopinchu()

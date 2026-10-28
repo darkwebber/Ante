@@ -146,6 +146,11 @@ impl BodyCx<'_, '_> {
                 self.need_annotation(span);
                 None
             }
+            // A closure behind a reference is called through it (§11.1), say
+            // one taken from a `varusa` of closures.
+            Ty::Ref(_, inner) if matches!(self.shallow(&inner), Ty::Fn(..) | Ty::Ref(..)) => {
+                self.value_callee(*inner, span)
+            }
             other => {
                 let shown = self.show(&other);
                 self.error("E0401", span, format!("`{shown}` function kaadhu, call cheyyalem"));
@@ -328,13 +333,18 @@ impl BodyCx<'_, '_> {
         } else {
             None
         };
-        if conv.is_some() && type_args.is_empty() {
+        // Conversions name their target (§18.4). Without it there's nothing
+        // more to say about the conversion itself.
+        let conv = if conv.is_some() && type_args.is_empty() {
             self.error(
                 "E0404",
                 span,
-                format!("`{}` ki target type cheppandi: `x ni {}[ankam32]()`", sig.name, sig.name),
+                format!("`{}` ki target type cheppandi: `x ni {}[amsam]()`", sig.name, sig.name),
             );
-        }
+            None
+        } else {
+            conv
+        };
         Some(Prepared {
             name: sig.name.clone(),
             formals: sig.params.iter().map(|f| Formal { ty: f.ty.subst(&fresh), ..f.clone() }).collect(),
@@ -749,8 +759,56 @@ impl BodyCx<'_, '_> {
                                 format!("`_` ki {} parameter `{}` lo ledhu", role_name(en.role), p.name),
                             );
                         } else {
-                            let msg =
-                                format!("`{}` ki {} tho inko parameter ledhu", p.name, role_name(en.role));
+                            // An argument without a marker, where every parameter has
+                            // one: say which marker it needs.
+                            let wanted = match en.role {
+                                Some(_) => None,
+                                None => formals
+                                    .iter()
+                                    .enumerate()
+                                    .find(|(fi, f)| {
+                                        f.kind == ParamKind::Normal
+                                            && bound[*fi].is_none()
+                                            && f.role.is_some()
+                                    })
+                                    .and_then(|(_, f)| f.role)
+                                    .or_else(|| variadic.and_then(|vi| formals[vi].role)),
+                            };
+                            let msg = match wanted {
+                                Some(_) => {
+                                    // The call's shape, from the parameters: `a ni, b tho max()`.
+                                    let shape: Vec<String> = formals
+                                        .iter()
+                                        .filter(|f| matches!(f.kind, ParamKind::Normal) && !f.has_default)
+                                        .map(|f| match f.role {
+                                            Some(r) => format!("{} {}", f.name, r.as_str()),
+                                            None => f.name.clone(),
+                                        })
+                                        .collect();
+                                    format!(
+                                        "ee argument ki marker ledhu. `{}` ni ila pilavali: `{} {}()`",
+                                        p.name,
+                                        shape.join(", "),
+                                        p.name
+                                    )
+                                }
+                                None if formals.iter().enumerate().any(|(fi, f)| {
+                                    f.kind == ParamKind::Normal && bound[fi].is_none() && f.role.is_none()
+                                }) =>
+                                {
+                                    // A marker where the parameter has none (say a closure
+                                    // written `(x) => …` with no type for it to take one from).
+                                    format!(
+                                        "`{}` parameter ki marker ledhu, kaani ikkada {} ichharu. Marker theeseyandi, leka parameter ki marker pettandi: `(x: ankam {})`",
+                                        p.name,
+                                        role_name(en.role),
+                                        en.role.map_or("ni", |r| r.as_str())
+                                    )
+                                }
+                                None => {
+                                    format!("`{}` ki {} tho inko parameter ledhu", p.name, role_name(en.role))
+                                }
+                            };
                             self.error("E0502", en.span, msg);
                         }
                     }
@@ -816,6 +874,10 @@ impl BodyCx<'_, '_> {
             adjs[ei] = match (&en.src, want) {
                 (Src::Expr(e), Some(w)) => {
                     let hint = match self.shallow(&w) {
+                        // An open `T` in `&T` tells the argument nothing, and
+                        // offering it would let a call returning `&X` bind
+                        // `T := &X` before the automatic borrow is decided.
+                        Ty::Ref(_, inner) if matches!(self.shallow(&inner), Ty::Var(_)) => None,
                         Ty::Ref(_, inner)
                             if !matches!(e.kind, ExprKind::Unary { op: UnOp::Ref | UnOp::RefMut, .. }) =>
                         {

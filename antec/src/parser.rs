@@ -347,6 +347,29 @@ impl<'a> Parser<'a> {
                 tok.span,
                 "`ga` ikkada raakoodadhu. Named argument ki `value ni peru ga` ani raayandi",
             ),
+            // `a ni f() == b`: a phrase call ends the expression, so an
+            // operator can't follow it without brackets.
+            TokenKind::Plus
+            | TokenKind::Minus
+            | TokenKind::Star
+            | TokenKind::Slash
+            | TokenKind::Percent
+            | TokenKind::EqEq
+            | TokenKind::NotEq
+            | TokenKind::Lt
+            | TokenKind::Le
+            | TokenKind::Gt
+            | TokenKind::Ge
+            | TokenKind::AndAnd
+            | TokenKind::OrOr
+                if self.pos > 0 && self.toks[self.pos - 1].kind == TokenKind::RParen =>
+            {
+                self.error(
+                    "E0201",
+                    tok.span,
+                    format!("ikkada {expected} kavali, kaani {found} vachindhi. Call tharvatha operator raavalante call ni brackets lo pettandi: `(x ni f()) == y`"),
+                )
+            }
             _ => self.error("E0201", tok.span, format!("ikkada {expected} kavali, kaani {found} vachindhi")),
         }
     }
@@ -1683,11 +1706,20 @@ impl<'a> Parser<'a> {
 
     /// One element of a bracketed list. A comma joins phrases only when the
     /// phrase list ends in a callee; otherwise it separates elements (D4).
-    fn parse_list_elem(&mut self) -> PResult<Expr> {
+    ///
+    /// `no_commas_before`: an earlier element of the same list tried the comma
+    /// reading and failed at that token. An element starting before it reads
+    /// the same phrases and fails the same way, so it skips straight to the
+    /// plain reading (otherwise a long list is quadratic).
+    fn parse_list_elem(&mut self, no_commas_before: &mut usize) -> PResult<Expr> {
+        if self.pos < *no_commas_before {
+            return self.list_elem_attempt(false);
+        }
         let snap = self.snapshot();
         match self.list_elem_attempt(true) {
             Ok(expr) => Ok(expr),
             Err(()) => {
+                *no_commas_before = self.pos;
                 self.restore(snap);
                 self.list_elem_attempt(false)
             }
@@ -1713,8 +1745,9 @@ impl<'a> Parser<'a> {
     fn parse_list_until(&mut self, close: &TokenKind) -> PResult<(Vec<Expr>, bool)> {
         let mut elems = Vec::new();
         let mut trailing = false;
+        let mut no_commas_before = 0;
         while !self.at(close) {
-            elems.push(self.parse_list_elem()?);
+            elems.push(self.parse_list_elem(&mut no_commas_before)?);
             trailing = false;
             if !self.eat(&TokenKind::Comma) {
                 break;
@@ -1851,9 +1884,9 @@ impl<'a> Parser<'a> {
                 self.advance();
                 let mut pairs = Vec::new();
                 while !self.at(&TokenKind::RBrace) {
-                    let key = self.parse_list_elem()?;
+                    let key = self.parse_list_elem(&mut 0)?;
                     self.expect(&TokenKind::Colon, "`:`")?;
-                    let value = self.parse_list_elem()?;
+                    let value = self.parse_list_elem(&mut 0)?;
                     pairs.push((key, value));
                     if !self.eat(&TokenKind::Comma) {
                         break;
@@ -1882,7 +1915,7 @@ impl<'a> Parser<'a> {
         while !self.at(&TokenKind::RBrace) {
             let name = self.expect_ident("field peru")?;
             self.expect(&TokenKind::Colon, "`:`")?;
-            let value = self.parse_list_elem()?;
+            let value = self.parse_list_elem(&mut 0)?;
             fields.push((name, value));
             if !self.eat(&TokenKind::Comma) {
                 break;
@@ -2042,6 +2075,15 @@ impl<'a> Parser<'a> {
                 let path = self.parse_path()?;
                 let args = if self.at(&TokenKind::LBracket) { self.parse_type_args()? } else { Vec::new() };
                 TypeKind::Named { path, args }
+            }
+            // `(A, B)` is how Python spells it; "Ante" writes `jatha[A, B]`.
+            TokenKind::LParen => {
+                self.error(
+                    "E0201",
+                    self.span(),
+                    "tuple type ni `(A, B)` ga raayalem; `jatha[A, B]` ani raayandi",
+                );
+                return Err(());
             }
             _ => {
                 self.unexpected("type");

@@ -456,12 +456,14 @@ impl<'a> Scanner<'a> {
                         self.pos += 1;
                     }
                     if !closed {
-                        self.error(
-                            "E0110",
-                            open,
-                            self.pos,
-                            "ee `{` open chesaru, kaani `}` tho close cheyyaledhu",
-                        );
+                        // A `"` inside the braces: a string literal, which an
+                        // interpolation can't hold (§4.5).
+                        let msg = if self.peek() == Some(b'"') {
+                            "f-string `{…}` lopala string literal (`\"…\"`) raayakoodadhu. Mundhu daanini oka variable lo pettandi, `{peru}` ga vaadandi"
+                        } else {
+                            "ee `{` open chesaru, kaani `}` tho close cheyyaledhu"
+                        };
+                        self.error("E0110", open, self.pos, msg);
                         continue;
                     }
                     if text_src[expr_start..self.pos].trim().is_empty() {

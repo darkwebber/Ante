@@ -213,6 +213,26 @@ impl<'s, 'g> BodyCx<'s, 'g> {
         self.infer.fresh(VarKind::General)
     }
 
+    /// The innermost part of a built-in type that keeps it from
+    /// implementing a trait without arguments (or the type itself).
+    fn culprit(&mut self, t: &Ty, tr: &TraitRef) -> Ty {
+        if !tr.args.is_empty() {
+            return t.clone();
+        }
+        let parts: Vec<Ty> = match t {
+            Ty::Tuple(items) => items.clone(),
+            Ty::Array(e, _) | Ty::Ref(_, e) => vec![(**e).clone()],
+            Ty::App(con, args) if !matches!(con, Con::Adt(_)) => args.clone(),
+            _ => Vec::new(),
+        };
+        for p in parts {
+            if !self.implements(&p, tr) {
+                return self.culprit(&p, tr);
+            }
+        }
+        t.clone()
+    }
+
     pub fn show(&mut self, ty: &Ty) -> String {
         let ty = self.infer.resolve(ty);
         let g = self.g;
@@ -1674,11 +1694,31 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             if !self.implements(&t, &tr) {
                 let shown = self.show(&t);
                 let name = self.trait_name(tr.def);
-                let msg = if code == "E0407" {
+                let mut msg = if code == "E0407" {
                     format!("`{shown}` ki ee operator ledhu (`{name}` gunam kavali)")
                 } else {
                     format!("`{shown}` ki `{name}` gunam ledhu")
                 };
+                // `sare_thappu[ankam, NaaThappu]` lacks it because `NaaThappu` does:
+                // name the type to fix.
+                let culprit = self.culprit(&t, &tr);
+                let fix = |c: &str| {
+                    if super::items::DERIVABLE.contains(&name.as_str()) {
+                        format!("`{c}` meeda `@automatic {name}` pettandi, leka `{c} ki {name} gunam undhi:` raayandi")
+                    } else {
+                        format!("`{c} ki {name} gunam undhi:` raayandi")
+                    }
+                };
+                if culprit == t
+                    && matches!(t, Ty::App(Con::Adt(_), _))
+                    && code == "E0801"
+                    && tr.args.is_empty()
+                {
+                    msg.push_str(&format!(". {}", fix(&shown)));
+                } else if culprit != t {
+                    let c = self.show(&culprit);
+                    msg.push_str(&format!(": lopala unna `{c}` ki ledhu. {}", fix(&c)));
+                }
                 self.error(code, span, msg);
             }
         }

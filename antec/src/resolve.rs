@@ -165,6 +165,9 @@ struct Resolver {
     diags: Vec<(FileId, Diagnostic)>,
     resolutions: HashMap<(FileId, usize), Res>,
     const_deps: HashMap<DefId, Vec<DefId>>,
+    /// Modules already reported as used without an import, per file: one
+    /// error each, not one per use.
+    unimported: HashSet<(FileId, String)>,
 
     // State for the item being resolved.
     file: FileId,
@@ -198,6 +201,7 @@ impl Resolver {
             diags: Vec::new(),
             resolutions: HashMap::new(),
             const_deps: HashMap::new(),
+            unimported: HashSet::new(),
             file: 0,
             module: 0,
             scopes: Vec::new(),
@@ -1094,6 +1098,9 @@ impl Resolver {
                 ),
             );
         } else if self.module_by_name.contains_key(name) {
+            if !self.unimported.insert((self.file, name.to_string())) {
+                return;
+            }
             self.error(
                 "E0301",
                 first.span,

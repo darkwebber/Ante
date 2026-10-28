@@ -123,6 +123,17 @@ impl<'g, 'a> Fx<'g, 'a> {
         self.start(&ok);
     }
 
+    /// Runs `then` only when `cond` holds, then carries on.
+    pub fn when(&mut self, cond: &str, then: impl FnOnce(&mut Self)) {
+        let yes = self.label();
+        let join = self.label();
+        self.emit(format!("br i1 {cond}, label %{yes}, label %{join}"));
+        self.start(&yes);
+        then(self);
+        self.emit(format!("br label %{join}"));
+        self.start(&join);
+    }
+
     pub fn alloca(&mut self, ll: &str) -> String {
         let p = self.r();
         let _ = writeln!(self.allocas, "  {p} = alloca {ll}");
@@ -207,17 +218,8 @@ impl<'g, 'a> Fx<'g, 'a> {
             params.push(format!("{lt} %p{i}"));
         }
         let header = format!("define internal {rt} {name}({}) {{\nentry:\n", params.join(", "));
-        // Locals that `Drop` statements name get a drop flag (§19.3).
-        let mut flagged: Vec<Local> = Vec::new();
-        for b in &body.blocks {
-            for s in &b.stmts {
-                if let Stmt::Drop(p, _) = s {
-                    if p.proj.is_empty() && !flagged.contains(&p.local) {
-                        flagged.push(p.local);
-                    }
-                }
-            }
-        }
+        // Locals that a `Drop` may find uninitialized get a drop flag (§19.3).
+        let flagged = maybe_uninit_at_drop(body, nparams);
         for i in 0..self.locals.len() {
             let t = self.locals[i].clone();
             let lt = self.ll(&t);
@@ -835,6 +837,10 @@ impl<'g, 'a> Fx<'g, 'a> {
     pub fn build_vec(&mut self, elem: &Ty, vals: &[String]) -> String {
         let (size, _) = self.gen.size_align(elem);
         let n = vals.len();
+        // An empty `varusa` owns no buffer (`cap == 0`), so it allocates none.
+        if n == 0 {
+            return "zeroinitializer".into();
+        }
         let data = self.r();
         self.emit(format!("{data} = call ptr @ante_alloc(i64 {})", (size as usize * n).max(1)));
         let et = self.ll(elem);
@@ -1288,4 +1294,91 @@ pub fn env_ty(caps: &[Ty]) -> Ty {
     let mut items = vec![Ty::ANKAM, Ty::Ptr(false, Box::new(Ty::Unit))];
     items.extend(caps.iter().cloned());
     Ty::Tuple(items)
+}
+
+/// The locals that some `Drop` may find uninitialized (say a temporary made
+/// on one side of `&&` only). Only they need a runtime drop flag; every
+/// other drop is unconditional. A forward "definitely initialized" analysis:
+/// assignments initialize a whole local; whole moves, drops and the end of
+/// its storage uninitialize it.
+fn maybe_uninit_at_drop(body: &Body, nparams: usize) -> Vec<Local> {
+    let words = body.locals.len().div_ceil(64);
+    let set = |b: &mut [u64], l: usize| b[l / 64] |= 1 << (l % 64);
+    let clear = |b: &mut [u64], l: usize| b[l / 64] &= !(1 << (l % 64));
+    let has = |b: &[u64], l: usize| b[l / 64] & (1 << (l % 64)) != 0;
+    let moved = |b: &mut [u64], o: &Operand| {
+        if let Operand::Move(p) = o {
+            if p.proj.is_empty() {
+                b[p.local as usize / 64] &= !(1 << (p.local as usize % 64));
+            }
+        }
+    };
+    // `flag`: called at each whole-local `Drop` with the state before it.
+    let transfer = |b: &mut Vec<u64>, block: &Block, flag: &mut dyn FnMut(&[u64], Local)| {
+        for st in &block.stmts {
+            match st {
+                Stmt::Assign(p, rv) | Stmt::Replace(p, rv, _) => {
+                    rv.operands().into_iter().for_each(|o| moved(b, o));
+                    if p.proj.is_empty() {
+                        set(b, p.local as usize);
+                    }
+                }
+                Stmt::Drop(p, _) if p.proj.is_empty() => {
+                    flag(b, p.local);
+                    clear(b, p.local as usize);
+                }
+                Stmt::StorageDead(l) => clear(b, *l as usize),
+                Stmt::Drop(..) | Stmt::FreeBox(..) => {}
+            }
+        }
+        match &block.term {
+            Term::Switch { discr, .. } => moved(b, discr),
+            Term::Call { callee, args, dest, .. } => {
+                if let Callee::Value(o) = callee {
+                    moved(b, o);
+                }
+                args.iter().for_each(|o| moved(b, o));
+                if dest.proj.is_empty() {
+                    set(b, dest.local as usize);
+                }
+            }
+            _ => {}
+        }
+    };
+    let mut ins: Vec<Option<Vec<u64>>> = vec![None; body.blocks.len()];
+    let mut entry = vec![0u64; words];
+    for l in 1..=nparams.min(body.locals.len().saturating_sub(1)) {
+        set(&mut entry, l);
+    }
+    if ins.is_empty() {
+        return Vec::new();
+    }
+    ins[0] = Some(entry);
+    let mut work: Vec<usize> = vec![0];
+    while let Some(bi) = work.pop() {
+        let Some(mut b) = ins[bi].clone() else { continue };
+        transfer(&mut b, &body.blocks[bi], &mut |_, _| {});
+        for t in body.blocks[bi].term.successors() {
+            let t = t as usize;
+            let next = match &ins[t] {
+                None => b.clone(),
+                Some(old) => old.iter().zip(&b).map(|(x, y)| x & y).collect(),
+            };
+            if ins[t].as_ref() != Some(&next) {
+                ins[t] = Some(next);
+                work.push(t);
+            }
+        }
+    }
+    let mut needs = vec![false; body.locals.len()];
+    for (bi, block) in body.blocks.iter().enumerate() {
+        if let Some(mut b) = ins[bi].clone() {
+            transfer(&mut b, block, &mut |state, l| {
+                if !has(state, l as usize) {
+                    needs[l as usize] = true;
+                }
+            });
+        }
+    }
+    (0..body.locals.len()).filter(|&l| needs[l]).map(|l| l as Local).collect()
 }
