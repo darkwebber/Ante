@@ -56,11 +56,20 @@ void ante_flush(void) {
     fflush(stdout);
 }
 
+/* Ends the process at once: a trap or `system.vellipo` (§20.3). Live values
+   aren't dropped, so nothing exit-time runs either (`_Exit`); a leak checker
+   would otherwise count what the program still held as lost. */
+static NORETURN void end_now(int32_t code) {
+    ante_flush();
+    fflush(stderr);
+    _Exit(code);
+}
+
 /* T09 (§20.3). The runtime doesn't know the source position here. */
 static NORETURN void out_of_memory(void) {
     ante_flush();
     fputs("kompa munigindhi! memory ayipoyindhi\n", stderr);
-    exit(101);
+    end_now(101);
 }
 
 /* `a * b` for sizes; a negative or overflowing size is T09, never a short
@@ -128,6 +137,11 @@ void ante_init(int32_t argc, char **argv) {
 NORETURN void ante_exit(int32_t code) {
     ante_flush();
     exit(code);
+}
+
+/* `system.vellipo`: leaves without dropping what's alive. */
+NORETURN void ante_vellipo(int32_t code) {
+    end_now(code);
 }
 
 /* ── program start and T08 ────────────────────────────────────────────── */
@@ -241,7 +255,7 @@ static NORETURN void trap_text(const char *msg, const ante_loc *loc) {
     ante_flush();
     fprintf(stderr, "kompa munigindhi! %s (%.*s:%d:%d)\n", msg, (int)loc->file_len, (const char *)loc->file,
             loc->line, loc->col);
-    exit(101);
+    end_now(101);
 }
 
 NORETURN void ante_trap(const ante_str *msg, const ante_loc *loc) {

@@ -159,6 +159,7 @@ pub fn emit_llvm(
 const DECLS: &str = "\
 declare void @ante_start(i32, ptr, ptr, i64) noreturn
 declare void @ante_exit(i32) noreturn
+declare void @ante_vellipo(i32) noreturn
 declare void @ante_flush()
 declare void @ante_write(i32, ptr, i32)
 declare void @ante_buf_push(ptr, ptr, i64)
