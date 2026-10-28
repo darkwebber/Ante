@@ -1472,7 +1472,7 @@ pub(super) fn std_call(
             (b, Ty::Bool)
         }
         "system.vellipo" => {
-            fx.emit(format!("call void @ante_exit(i32 {})", v(0)));
+            fx.emit(format!("call void @ante_vellipo(i32 {})", v(0)));
             fx.emit("unreachable");
             let dead = fx.label();
             fx.start(&dead);

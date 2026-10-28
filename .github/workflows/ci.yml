@@ -89,8 +89,10 @@ jobs:
       - run: cargo test --release --test native
         env:
           ANTE_REQUIRE_NATIVE: "1"
-          # The runtime turns a stack overflow into T08 itself.
-          ASAN_OPTIONS: handle_segv=0:handle_sigbus=0:detect_leaks=0
+          # The runtime turns a stack overflow into T08 itself. Leaks are
+          # checked when a program ends normally; a trap ends it at once
+          # (spec §20.3), without the exit-time check.
+          ASAN_OPTIONS: handle_segv=0:handle_sigbus=0:detect_leaks=1
 
   editor:
     name: editor grammar
