@@ -24,8 +24,13 @@
 #include <pthread.h>
 #include <signal.h>
 #include <sys/mman.h>
+#include <dirent.h>
+#include <poll.h>
+#include <spawn.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
+extern char **environ;
 #endif
 
 typedef struct {
@@ -316,6 +321,48 @@ void *ante_alloc(int64_t size) {
     return p;
 }
 
+/* `memory.allocate` (§21.3, `naa_risk` only): `n` bytes aligned to `a`, a
+   power of two. Running out is T09, never a null pointer. */
+void *ante_mem_alloc(uint64_t n, uint64_t a) {
+    if (n > (uint64_t)INT64_MAX || a == 0 || (a & (a - 1)) != 0) out_of_memory();
+    if (a <= 16) return ante_alloc((int64_t)n);
+    size_t size = n ? (size_t)n : 1;
+#ifdef _WIN32
+    void *p = _aligned_malloc(size, (size_t)a);
+#else
+    void *p = 0;
+    if (posix_memalign(&p, (size_t)a, size) != 0) p = 0;
+#endif
+    if (!p) out_of_memory();
+    return p;
+}
+
+void ante_mem_release(void *p, uint64_t n, uint64_t a) {
+    (void)n;
+#ifdef _WIN32
+    if (a > 16) {
+        _aligned_free(p);
+        return;
+    }
+#else
+    (void)a;
+#endif
+    free(p);
+}
+
+void *ante_mem_realloc(void *p, uint64_t n, uint64_t a, uint64_t m) {
+    if (m > (uint64_t)INT64_MAX) out_of_memory();
+    if (a <= 16) {
+        void *q = realloc(p, m ? (size_t)m : 1);
+        if (!q) out_of_memory();
+        return q;
+    }
+    void *q = ante_mem_alloc(m, a);
+    if (p) memcpy(q, p, (size_t)(n < m ? n : m));
+    ante_mem_release(p, n, a);
+    return q;
+}
+
 /* The buffer of a `varusa` with `n` elements. An empty one owns no buffer
    (`cap == 0`), so it gets none rather than one nobody frees. */
 void *ante_vec_alloc(int64_t n, int64_t bytes) {
@@ -370,6 +417,136 @@ void ante_vec_push(ante_vec *v, const void *elem, int64_t size) {
 /* Appends `n` elements. */
 void ante_vec_extend(ante_vec *v, const void *elems, int64_t n, int64_t size) {
     for (int64_t i = 0; i < n; i++) ante_vec_push(v, (const uint8_t *)elems + i * size, size);
+}
+
+/* ── jodi, gajibiji_jodi, gumpu (§21.2) ───────────────────────────────── */
+
+/* An insertion-ordered hash map. Entries sit in insertion order, each
+   `esize` bytes: { u64 hash, u8 live, key, value }. `slots` indexes them by
+   hash with open addressing (-1 empty, -2 removed). Generated code hashes
+   and compares keys and moves keys and values in and out; this part only
+   finds and places entries. A removed entry leaves a hole until the next
+   rebuild, which closes the holes. */
+typedef struct {
+    uint8_t *entries;
+    int64_t len, cap;
+    int64_t *slots;
+    int64_t nslots;
+    int64_t live;
+} ante_map;
+
+/* Key equality from generated code; the result is an LLVM `i1`, so only
+   bit 0 is meaningful. */
+typedef uint32_t (*ante_eq_fn)(const void *, const void *);
+
+static uint8_t *map_entry(const ante_map *m, int64_t i, int64_t esize) { return m->entries + i * esize; }
+
+static uint64_t slot_hash(uint64_t h) {
+    h ^= h >> 33;
+    h *= 0xff51afd7ed558ccdULL;
+    h ^= h >> 33;
+    return h;
+}
+
+/* The entry holding `key`, or -1. */
+int64_t ante_map_find(const ante_map *m, uint64_t h, const void *key, int64_t esize, int64_t koff, ante_eq_fn eq) {
+    if (!m->nslots) return -1;
+    uint64_t mask = (uint64_t)m->nslots - 1;
+    for (uint64_t i = slot_hash(h) & mask;; i = (i + 1) & mask) {
+        int64_t s = m->slots[i];
+        if (s == -1) return -1;
+        if (s >= 0) {
+            uint8_t *e = map_entry(m, s, esize);
+            if (*(uint64_t *)e == h && (eq(e + koff, key) & 1)) return s;
+        }
+    }
+}
+
+/* Every slot points at an entry made since the last rebuild, so keeping
+   `len` under half the slots always leaves an empty one to end a search. */
+static void map_rebuild(ante_map *m, int64_t esize) {
+    if (m->live < m->len) {
+        int64_t w = 0;
+        for (int64_t k = 0; k < m->len; k++) {
+            uint8_t *e = map_entry(m, k, esize);
+            if (!e[8]) continue;
+            if (w != k) memmove(map_entry(m, w, esize), e, (size_t)esize);
+            w++;
+        }
+        m->len = w;
+    }
+    int64_t need = size_mul(size_add(m->len, 1), 2);
+    if (need > m->nslots) {
+        int64_t n = m->nslots ? m->nslots : 8;
+        while (n < size_mul(need, 2)) n = size_mul(n, 2);
+        free(m->slots);
+        m->slots = (int64_t *)ante_alloc(size_mul(n, 8));
+        m->nslots = n;
+    }
+    uint64_t mask = (uint64_t)m->nslots - 1;
+    for (int64_t s = 0; s < m->nslots; s++) m->slots[s] = -1;
+    for (int64_t k = 0; k < m->len; k++) {
+        uint64_t i = slot_hash(*(uint64_t *)map_entry(m, k, esize)) & mask;
+        while (m->slots[i] != -1) i = (i + 1) & mask;
+        m->slots[i] = k;
+    }
+}
+
+/* Adds an entry for a key known to be missing and returns its index; the
+   caller writes the key and value into it. Earlier entry addresses may
+   change. */
+int64_t ante_map_add(ante_map *m, uint64_t h, int64_t esize) {
+    if (size_mul(size_add(m->len, 1), 2) > m->nslots) map_rebuild(m, esize);
+    if (m->len == m->cap) {
+        int64_t cap = grow_cap(m->cap, size_add(m->len, 1), 4);
+        uint8_t *p = (uint8_t *)ante_alloc(size_mul(cap, esize));
+        if (m->len) memcpy(p, m->entries, (size_t)size_mul(m->len, esize));
+        free(m->entries);
+        m->entries = p;
+        m->cap = cap;
+    }
+    int64_t k = m->len++;
+    uint8_t *e = map_entry(m, k, esize);
+    *(uint64_t *)e = h;
+    e[8] = 1;
+    uint64_t mask = (uint64_t)m->nslots - 1;
+    uint64_t i = slot_hash(h) & mask;
+    while (m->slots[i] >= 0) i = (i + 1) & mask;
+    m->slots[i] = k;
+    m->live++;
+    return k;
+}
+
+/* Forgets entry `k`; the caller has already moved out or dropped its key
+   and value. */
+void ante_map_remove(ante_map *m, int64_t k, int64_t esize) {
+    uint8_t *e = map_entry(m, k, esize);
+    uint64_t mask = (uint64_t)m->nslots - 1;
+    for (uint64_t i = slot_hash(*(uint64_t *)e) & mask;; i = (i + 1) & mask) {
+        if (m->slots[i] == k) {
+            m->slots[i] = -2;
+            break;
+        }
+    }
+    e[8] = 0;
+    m->live--;
+}
+
+/* Frees the map's memory; the caller has dropped the live entries. */
+void ante_map_free(ante_map *m) {
+    free(m->entries);
+    free(m->slots);
+    memset(m, 0, sizeof *m);
+}
+
+/* Mixes text into a key hash (FNV-1a). */
+uint64_t ante_hash_text(uint64_t h, const ante_str *s) {
+    h ^= (uint64_t)s->len;
+    for (int64_t i = 0; i < s->len; i++) {
+        h ^= s->ptr[i];
+        h *= 0x100000001b3ULL;
+    }
+    return h;
 }
 
 typedef int32_t (*ante_cmp_fn)(const void *, const void *, void *);
@@ -739,7 +916,7 @@ static int utf8_valid(const uint8_t *s, int64_t n) {
     return 1;
 }
 
-int32_t ante_file_read(const ante_str *path, ante_str *out, ante_str *err) {
+static int32_t read_all(const ante_str *path, ante_str *out, ante_str *err) {
     char *p = cstr(path);
     FILE *f = fopen(p, "rb");
     if (!f) {
@@ -755,11 +932,99 @@ int32_t ante_file_read(const ante_str *path, ante_str *out, ante_str *err) {
     int bad = ferror(f) ? errno : 0;
     fclose(f);
     if (bad) {
+        ante_buf_free(&r);
         io_error(err, bad);
         return 0;
     }
+    *out = r;
+    return 1;
+}
+
+/* Where UTF-8 decoding of `s` first fails, as Rust reports it: `*bad` is the
+   length of the invalid sequence, or 0 when the text ends inside one.
+   Returns 1 when the whole text is valid. */
+static int utf8_check(const uint8_t *s, int64_t n, int64_t *upto, int *bad) {
+    int64_t i = 0;
+    while (i < n) {
+        uint8_t c = s[i];
+        if (c < 0x80) {
+            i++;
+            continue;
+        }
+        int w = c >= 0xC2 && c <= 0xDF ? 2 : c >= 0xE0 && c <= 0xEF ? 3 : c >= 0xF0 && c <= 0xF4 ? 4 : 0;
+        *upto = i;
+        if (w == 0) {
+            *bad = 1;
+            return 0;
+        }
+        uint8_t lo = 0x80, hi = 0xBF;
+        if (c == 0xE0) lo = 0xA0;
+        if (c == 0xED) hi = 0x9F;
+        if (c == 0xF0) lo = 0x90;
+        if (c == 0xF4) hi = 0x8F;
+        for (int k = 1; k < w; k++) {
+            if (i + k >= n) {
+                *bad = 0;
+                return 0;
+            }
+            uint8_t d = s[i + k];
+            if (k == 1 ? (d < lo || d > hi) : (d & 0xC0) != 0x80) {
+                *bad = k;
+                return 0;
+            }
+        }
+        i += w;
+    }
+    return 1;
+}
+
+static void utf8_error(ante_str *err, int64_t upto, int bad) {
+    char msg[96];
+    if (bad)
+        snprintf(msg, sizeof msg, "UTF-8 kaadhu: invalid utf-8 sequence of %d bytes from index %lld", bad,
+                 (long long)upto);
+    else
+        snprintf(msg, sizeof msg, "UTF-8 kaadhu: incomplete utf-8 byte sequence from index %lld", (long long)upto);
+    set_err(err, msg);
+}
+
+/* `padham.baitlu_nunchi`: a copy of the bytes, if they are UTF-8. */
+int32_t ante_str_from_bytes(const uint8_t *p, int64_t n, ante_str *out, ante_str *err) {
+    int64_t upto;
+    int bad;
+    if (!utf8_check(p, n, &upto, &bad)) {
+        utf8_error(err, upto, bad);
+        return 0;
+    }
+    ante_str r = {0, 0, 0};
+    ante_buf_push(&r, p, n);
+    *out = r;
+    return 1;
+}
+
+static int char_start(const ante_str *s, int64_t i) { return i == s->len || (i < s->len && (s->ptr[i] & 0xC0) != 0x80); }
+
+/* `a ni, b tho s.byte_mukka()`: bytes `a` up to `b`, both on character
+   boundaries. */
+int32_t ante_str_byte_part(const ante_str *s, int64_t a, int64_t b, ante_str *out, ante_str *err) {
+    if (a < 0 || b < a || b > s->len || !char_start(s, a) || !char_start(s, b)) {
+        char msg[96];
+        snprintf(msg, sizeof msg, "%lld..%lld akshara haddu meeda ledhu", (long long)a, (long long)b);
+        set_err(err, msg);
+        return 0;
+    }
+    ante_str r = {0, 0, 0};
+    ante_buf_push(&r, s->ptr + a, b - a);
+    *out = r;
+    return 1;
+}
+
+int32_t ante_file_read(const ante_str *path, ante_str *out, ante_str *err) {
+    ante_str r;
+    if (!read_all(path, &r, err)) return 0;
     /* `padham` is always valid UTF-8 (§9.1). */
     if (!utf8_valid(r.ptr, r.len)) {
+        ante_buf_free(&r);
         set_err(err, "file lo text valid UTF-8 kaadhu");
         return 0;
     }
@@ -767,7 +1032,12 @@ int32_t ante_file_read(const ante_str *path, ante_str *out, ante_str *err) {
     return 1;
 }
 
-int32_t ante_file_write(const ante_str *path, const ante_str *text, ante_str *err) {
+/* `file.baitlu_chadhuvu`: the bytes as a `varusa[aasajeevi ankam8]`. */
+int32_t ante_file_read_bytes(const ante_str *path, ante_vec *out, ante_str *err) {
+    return read_all(path, out, err);
+}
+
+int32_t ante_file_write_bytes(const ante_str *path, const uint8_t *data, int64_t len, ante_str *err) {
     char *p = cstr(path);
     FILE *f = fopen(p, "wb");
     if (!f) {
@@ -776,14 +1046,18 @@ int32_t ante_file_write(const ante_str *path, const ante_str *text, ante_str *er
         return 0;
     }
     free(p);
-    size_t wrote = fwrite(text->ptr, 1, (size_t)text->len, f);
-    int bad = wrote != (size_t)text->len ? errno : 0;
+    size_t wrote = fwrite(data, 1, (size_t)len, f);
+    int bad = wrote != (size_t)len ? errno : 0;
     if (fclose(f) != 0 && !bad) bad = errno;
     if (bad) {
         io_error(err, bad);
         return 0;
     }
     return 1;
+}
+
+int32_t ante_file_write(const ante_str *path, const ante_str *text, ante_str *err) {
+    return ante_file_write_bytes(path, text->ptr, text->len, err);
 }
 
 /* Files and folders both count, readable or not (like the interpreter). */
@@ -797,6 +1071,389 @@ int32_t ante_file_exists(const ante_str *path) {
 #endif
     free(p);
     return found;
+}
+
+int32_t ante_file_is_folder(const ante_str *path) {
+    char *p = cstr(path);
+    int r = is_folder(p);
+    free(p);
+    return r;
+}
+
+static int32_t cmp_text(const void *a, const void *b, void *ctx) {
+    (void)ctx;
+    return ante_str_cmp((const ante_str *)a, (const ante_str *)b);
+}
+
+/* `file.list_cheyyi`: the names in a folder, sorted, without `.` and `..`. */
+int32_t ante_file_list(const ante_str *path, ante_vec *out, ante_str *err) {
+    char *p = cstr(path);
+    ante_vec v = {0, 0, 0};
+#ifdef _WIN32
+    ante_str pat = {0, 0, 0};
+    push_c(&pat, p);
+    push_c(&pat, "\\*");
+    uint8_t z = 0;
+    ante_buf_push(&pat, &z, 1);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA((const char *)pat.ptr, &fd);
+    ante_buf_free(&pat);
+    if (h == INVALID_HANDLE_VALUE) {
+        DWORD e = GetLastError();
+        io_error(err, e == ERROR_PATH_NOT_FOUND || e == ERROR_FILE_NOT_FOUND ? ENOENT
+                      : e == ERROR_DIRECTORY ? ENOTDIR : EACCES);
+        free(p);
+        return 0;
+    }
+    do {
+        if (!strcmp(fd.cFileName, ".") || !strcmp(fd.cFileName, "..")) continue;
+        ante_str s = {0, 0, 0};
+        push_c(&s, fd.cFileName);
+        ante_vec_push(&v, &s, sizeof s);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+#else
+    DIR *d = opendir(p);
+    if (!d) {
+        io_error(err, errno);
+        free(p);
+        return 0;
+    }
+    struct dirent *e;
+    while ((e = readdir(d)) != 0) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        ante_str s = {0, 0, 0};
+        push_c(&s, e->d_name);
+        ante_vec_push(&v, &s, sizeof s);
+    }
+    closedir(d);
+#endif
+    free(p);
+    ante_sort(v.ptr, v.len, sizeof(ante_str), cmp_text, 0);
+    *out = v;
+    return 1;
+}
+
+static int make_dir(const char *p) {
+#ifdef _WIN32
+    if (CreateDirectoryA(p, 0)) return 0;
+    DWORD e = GetLastError();
+    return e == ERROR_ALREADY_EXISTS ? EEXIST : e == ERROR_PATH_NOT_FOUND || e == ERROR_FILE_NOT_FOUND ? ENOENT : EACCES;
+#else
+    return mkdir(p, 0777) == 0 ? 0 : errno;
+#endif
+}
+
+static int is_sep(char c) {
+#ifdef _WIN32
+    return c == '/' || c == '\\';
+#else
+    return c == '/';
+#endif
+}
+
+/* `file.folder_cheyyi`: creates the folder and any missing parents, the
+   way Rust's `create_dir_all` does (so the errors match the interpreter). */
+static int mkdirs(char *p, size_t n) {
+    if (n == 0) return 0;
+    char saved = p[n];
+    p[n] = 0;
+    int e = make_dir(p);
+    if (e == 0 || (e != ENOENT && is_folder(p))) {
+        p[n] = saved;
+        return 0;
+    }
+    p[n] = saved;
+    if (e != ENOENT) return e;
+    size_t k = n;
+    while (k > 0 && !is_sep(p[k - 1])) k--;
+    while (k > 1 && is_sep(p[k - 1])) k--;
+    if (k > 0 && !(k == 1 && is_sep(p[0]))) {
+        int pe = mkdirs(p, k);
+        if (pe) return pe;
+    }
+    p[n] = 0;
+    e = make_dir(p);
+    if (e && is_folder(p)) e = 0;
+    p[n] = saved;
+    return e;
+}
+
+int32_t ante_file_mkdirs(const ante_str *path, ante_str *err) {
+    char *p = cstr(path);
+    size_t n = strlen(p);
+    while (n > 1 && is_sep(p[n - 1])) n--;
+    int e = mkdirs(p, n);
+    free(p);
+    if (e) {
+        io_error(err, e);
+        return 0;
+    }
+    return 1;
+}
+
+/* `file.theesey`: deletes a file. */
+int32_t ante_file_remove(const ante_str *path, ante_str *err) {
+    char *p = cstr(path);
+#ifdef _WIN32
+    int ok = DeleteFileA(p);
+    int e = ok ? 0 : (GetLastError() == ERROR_FILE_NOT_FOUND || GetLastError() == ERROR_PATH_NOT_FOUND ? ENOENT : EACCES);
+#else
+    int e = unlink(p) == 0 ? 0 : errno;
+#endif
+    free(p);
+    if (e) {
+        io_error(err, e);
+        return 0;
+    }
+    return 1;
+}
+
+/* ── paths (the interpreter follows Rust's `Path`; so does this) ────────── */
+
+/* `a ni, b tho file.path_kalupu()`: `b` alone when it is absolute. */
+void ante_path_join(ante_str *out, const ante_str *a, const ante_str *b) {
+    ante_str r = {0, 0, 0};
+    if ((b->len > 0 && is_sep((char)b->ptr[0])) || a->len == 0) {
+        ante_buf_push(&r, b->ptr, b->len);
+    } else {
+        ante_buf_push(&r, a->ptr, a->len);
+        if (!is_sep((char)a->ptr[a->len - 1])) push_c(&r, "/");
+        ante_buf_push(&r, b->ptr, b->len);
+    }
+    *out = r;
+}
+
+/* The last component of `s[0..n)`, ignoring trailing separators and `.`
+   components: its start and length. Returns 0 when there is none. */
+static int last_component(const uint8_t *s, int64_t n, int64_t *start, int64_t *len) {
+    for (;;) {
+        while (n > 0 && is_sep((char)s[n - 1])) n--;
+        if (n == 0) return 0;
+        int64_t b = n;
+        while (b > 0 && !is_sep((char)s[b - 1])) b--;
+        if (n - b == 1 && s[b] == '.' && b > 0) {
+            n = b;
+            continue;
+        }
+        *start = b;
+        *len = n - b;
+        return 1;
+    }
+}
+
+/* `file.path_peru`: the file name, or "" (for `..`, `/` or ""). */
+void ante_path_name(ante_str *out, const ante_str *p) {
+    ante_str r = {0, 0, 0};
+    int64_t b, n;
+    if (last_component(p->ptr, p->len, &b, &n) && !(n == 2 && p->ptr[b] == '.' && p->ptr[b + 1] == '.') &&
+        !(n == 1 && p->ptr[b] == '.')) {
+        ante_buf_push(&r, p->ptr + b, n);
+    }
+    *out = r;
+}
+
+/* `file.path_folder`: everything before the last component, or "". */
+void ante_path_folder(ante_str *out, const ante_str *p) {
+    ante_str r = {0, 0, 0};
+    int64_t b, n;
+    if (last_component(p->ptr, p->len, &b, &n)) {
+        int64_t end = b;
+        /* Trim trailing separators and `.` components, keeping the root. */
+        int64_t min = p->len > 0 && is_sep((char)p->ptr[0]) ? 1 : 0;
+        for (;;) {
+            while (end > min && is_sep((char)p->ptr[end - 1])) end--;
+            if (end >= 2 && p->ptr[end - 1] == '.' && is_sep((char)p->ptr[end - 2])) {
+                end--;
+                continue;
+            }
+            break;
+        }
+        ante_buf_push(&r, p->ptr, end);
+    }
+    *out = r;
+}
+
+/* `file.path_extension`: after the last `.` of the file name, unless the
+   name starts with its only dot. Returns 0 for none. */
+int32_t ante_path_extension(ante_str *out, const ante_str *p) {
+    ante_str name;
+    ante_path_name(&name, p);
+    int64_t dot = -1;
+    for (int64_t i = name.len - 1; i >= 0; i--) {
+        if (name.ptr[i] == '.') {
+            dot = i;
+            break;
+        }
+    }
+    if (dot <= 0) {
+        ante_buf_free(&name);
+        return 0;
+    }
+    ante_str r = {0, 0, 0};
+    ante_buf_push(&r, name.ptr + dot + 1, name.len - dot - 1);
+    ante_buf_free(&name);
+    *out = r;
+    return 1;
+}
+
+/* ── running programs (`system.nadupu`) ───────────────────────────────── */
+
+#ifdef _WIN32
+typedef struct {
+    HANDLE h;
+    ante_str buf;
+} pipe_reader;
+
+static DWORD WINAPI drain(LPVOID arg) {
+    pipe_reader *r = (pipe_reader *)arg;
+    uint8_t chunk[8192];
+    DWORD n;
+    while (ReadFile(r->h, chunk, sizeof chunk, &n, 0) && n > 0) ante_buf_push(&r->buf, chunk, (int64_t)n);
+    return 0;
+}
+
+/* One argument, quoted the way the C runtime splits a command line. */
+static void quote_arg(ante_str *cmd, const ante_str *a) {
+    int plain = a->len > 0;
+    for (int64_t i = 0; i < a->len; i++)
+        if (a->ptr[i] == ' ' || a->ptr[i] == '\t' || a->ptr[i] == '"') plain = 0;
+    if (plain) {
+        ante_buf_push(cmd, a->ptr, a->len);
+        return;
+    }
+    push_c(cmd, "\"");
+    int64_t slashes = 0;
+    for (int64_t i = 0; i < a->len; i++) {
+        uint8_t c = a->ptr[i];
+        if (c == '\\') {
+            slashes++;
+            continue;
+        }
+        for (int64_t k = 0; k < (c == '"' ? slashes * 2 + 1 : slashes); k++) push_c(cmd, "\\");
+        slashes = 0;
+        ante_buf_push(cmd, &c, 1);
+    }
+    for (int64_t k = 0; k < slashes * 2; k++) push_c(cmd, "\\");
+    push_c(cmd, "\"");
+}
+#endif
+
+/* Runs `prog` with `args` (a `varusa[padham]`), waits for it, and collects
+   its exit status and output. A program killed by a signal has status -1. */
+int32_t ante_run(const ante_str *prog, const ante_vec *args, int32_t *status, ante_str *out_s, ante_str *err_s,
+                 ante_str *err) {
+    const ante_str *av = (const ante_str *)args->ptr;
+    ante_flush();
+#ifdef _WIN32
+    ante_str cmd = {0, 0, 0};
+    quote_arg(&cmd, prog);
+    for (int64_t i = 0; i < args->len; i++) {
+        push_c(&cmd, " ");
+        quote_arg(&cmd, &av[i]);
+    }
+    uint8_t z = 0;
+    ante_buf_push(&cmd, &z, 1);
+    SECURITY_ATTRIBUTES sa = {sizeof sa, 0, TRUE};
+    HANDLE or_, ow, er, ew;
+    CreatePipe(&or_, &ow, &sa, 0);
+    CreatePipe(&er, &ew, &sa, 0);
+    SetHandleInformation(or_, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(er, HANDLE_FLAG_INHERIT, 0);
+    STARTUPINFOA si;
+    memset(&si, 0, sizeof si);
+    si.cb = sizeof si;
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    si.hStdOutput = ow;
+    si.hStdError = ew;
+    PROCESS_INFORMATION pi;
+    BOOL ok = CreateProcessA(0, (char *)cmd.ptr, 0, 0, TRUE, 0, 0, 0, &si, &pi);
+    ante_buf_free(&cmd);
+    CloseHandle(ow);
+    CloseHandle(ew);
+    if (!ok) {
+        CloseHandle(or_);
+        CloseHandle(er);
+        io_error(err, ENOENT);
+        return 0;
+    }
+    pipe_reader ro = {or_, {0, 0, 0}}, re = {er, {0, 0, 0}};
+    HANDLE t1 = CreateThread(0, 0, drain, &ro, 0, 0);
+    HANDLE t2 = CreateThread(0, 0, drain, &re, 0, 0);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    WaitForSingleObject(t1, INFINITE);
+    WaitForSingleObject(t2, INFINITE);
+    DWORD code = 0;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(t1);
+    CloseHandle(t2);
+    CloseHandle(or_);
+    CloseHandle(er);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    *status = (int32_t)code;
+    *out_s = ro.buf;
+    *err_s = re.buf;
+    return 1;
+#else
+    char **argv = (char **)ante_alloc(size_mul(size_add(args->len, 2), (int64_t)sizeof(char *)));
+    argv[0] = cstr(prog);
+    for (int64_t i = 0; i < args->len; i++) argv[i + 1] = cstr(&av[i]);
+    argv[args->len + 1] = 0;
+    int po[2], pe[2];
+    if (pipe(po) != 0 || pipe(pe) != 0) {
+        io_error(err, errno);
+        return 0;
+    }
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_adddup2(&fa, po[1], 1);
+    posix_spawn_file_actions_adddup2(&fa, pe[1], 2);
+    posix_spawn_file_actions_addclose(&fa, po[0]);
+    posix_spawn_file_actions_addclose(&fa, pe[0]);
+    pid_t pid;
+    int e = posix_spawnp(&pid, argv[0], &fa, 0, argv, environ);
+    posix_spawn_file_actions_destroy(&fa);
+    for (int64_t i = 0; i <= args->len; i++) free(argv[i]);
+    free(argv);
+    close(po[1]);
+    close(pe[1]);
+    if (e != 0) {
+        close(po[0]);
+        close(pe[0]);
+        io_error(err, e);
+        return 0;
+    }
+    /* Both pipes at once, so a child filling one never blocks on the other. */
+    ante_str o = {0, 0, 0}, x = {0, 0, 0};
+    struct pollfd fds[2] = {{po[0], POLLIN, 0}, {pe[0], POLLIN, 0}};
+    int open_n = 2;
+    uint8_t chunk[8192];
+    while (open_n > 0) {
+        if (poll(fds, 2, -1) < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        for (int k = 0; k < 2; k++) {
+            if (fds[k].fd < 0 || !(fds[k].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+            ssize_t n = read(fds[k].fd, chunk, sizeof chunk);
+            if (n > 0) {
+                ante_buf_push(k == 0 ? &o : &x, chunk, (int64_t)n);
+            } else if (n == 0 || errno != EINTR) {
+                close(fds[k].fd);
+                fds[k].fd = -1;
+                open_n--;
+            }
+        }
+    }
+    int ws = 0;
+    while (waitpid(pid, &ws, 0) < 0 && errno == EINTR) {}
+    *status = WIFEXITED(ws) ? WEXITSTATUS(ws) : -1;
+    *out_s = o;
+    *err_s = x;
+    return 1;
+#endif
 }
 
 void ante_args(ante_vec *out) {

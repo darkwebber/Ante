@@ -558,7 +558,9 @@ impl<'a, 'p> Builder<'a, 'p> {
 
     fn iterable_operand(&mut self, e: &'a Expr) -> Operand {
         let ty = self.ty_of(e);
-        if is_place(e) && owned_collection(&ty) {
+        // A collection place is borrowed for the loop (§21.4.1); a `mukka`
+        // (`xs[a nunchi b lopu]`) is always one.
+        if (is_place(e) && owned_collection(&ty)) || matches!(ty, Ty::App(Con::Mukka, _)) {
             let p = self.place_of(e);
             let t = self.temp(Ty::reference(false, ty));
             self.assign(Place::local(t), Rvalue::Ref(false, p));
@@ -874,8 +876,28 @@ impl<'a, 'p> Builder<'a, 'p> {
                 Some(Self::apply_steps(b, &[step]))
             }
             ExprKind::Index { base, indices } if indices.len() == 1 => {
-                if matches!(indices[0].kind, ExprKind::Range { .. }) {
-                    return None;
+                if let ExprKind::Range { lo, hi, inclusive } = &indices[0].kind {
+                    // `xs[a nunchi b lopu]` where a place is needed (a borrowed
+                    // argument or a receiver): the `mukka` behind a shared slice.
+                    let derefs = self.tc.results.index_derefs.get(&id).copied().unwrap_or(0);
+                    let mut b = self.place_of(base);
+                    for _ in 0..derefs {
+                        b = b.deref();
+                    }
+                    let lo = self.scalar_operand(lo);
+                    let hi = self.scalar_operand(hi);
+                    let ty = Ty::reference(false, self.ty_of(e));
+                    let t = self.temp(ty);
+                    let rv = Rvalue::Slice {
+                        place: b,
+                        lo,
+                        hi,
+                        inclusive: *inclusive,
+                        mutable: false,
+                        span: e.span,
+                    };
+                    self.assign(Place::local(t), rv);
+                    return Some(Place::local(t).deref());
                 }
                 let derefs = self.tc.results.index_derefs.get(&id).copied().unwrap_or(0);
                 let mut b = self.place_of(base);
@@ -1132,7 +1154,7 @@ impl<'a, 'p> Builder<'a, 'p> {
                     let vt = self.ty_of(v);
                     ops.push(self.stable(vo, vt));
                 }
-                self.assign(dest, Rvalue::Aggregate(Agg::Jodi, ops));
+                self.assign(dest, Rvalue::Aggregate(Agg::Jodi(ty.clone()), ops));
             }
         }
     }
@@ -1508,7 +1530,7 @@ impl<'a, 'p> Builder<'a, 'p> {
                         ops.push(self.arg_operand(x, &vals, injected.as_ref(), pre.as_ref(), call.span));
                     }
                     let t = self.temp(formal(fi));
-                    self.assign(Place::local(t), Rvalue::Aggregate(Agg::Jodi, ops));
+                    self.assign(Place::local(t), Rvalue::Aggregate(Agg::Jodi(formal(fi)), ops));
                     Operand::Move(Place::local(t))
                 }
             };

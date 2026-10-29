@@ -20,7 +20,7 @@ use crate::typeck::{FnId, FnOrigin, Typeck};
 use crate::types::{Con, IntTy, Ty};
 
 pub use value::Value;
-use value::{Addr, Closure, Elem, OrdMap, Root};
+use value::{Addr, Closure, Elem, Root};
 
 /// How a run ended.
 pub struct RunOutput {
@@ -885,13 +885,23 @@ impl<'a> Machine<'a> {
                     Agg::Varusa => Value::Vec(vals),
                     Agg::Pette => Value::Box(Box::new(vals.pop().unwrap_or(Value::Unit))),
                     Agg::Adt(_, v) => Value::Adt(*v, vals),
-                    Agg::Jodi => {
-                        let mut m = OrdMap::default();
+                    Agg::Jodi(map_ty) => {
+                        let (kt, vt) = match self.subst(map_ty) {
+                            Ty::App(_, a) if a.len() == 2 => (a[0].clone(), a[1].clone()),
+                            _ => (Ty::Error, Ty::Error),
+                        };
+                        let mark = self.heap.len();
+                        let base = self.alloc(Value::Map(Box::default()));
                         let mut it = vals.into_iter();
                         while let (Some(k), Some(v)) = (it.next(), it.next()) {
-                            m.insert(k, v);
+                            // A later equal key replaces the value; the old one is dropped.
+                            if let Some(old) = self.map_insert(&base, k, v, &kt)? {
+                                self.drop_value(old, &vt)?;
+                            }
                         }
-                        Value::Map(Box::new(m))
+                        let m = std::mem::replace(self.read_mut(&base), Value::Uninit);
+                        self.release(mark);
+                        m
                     }
                     Agg::Closure(body) => Value::Closure(Rc::new(Closure {
                         body: *body,

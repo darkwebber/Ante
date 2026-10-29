@@ -19,8 +19,10 @@
 //! memory: a program that type-checks but misuses a moved value must not be
 //! able to corrupt memory. Destructors (`sardhu`) still run on time.
 
+mod ffi;
 mod func;
 mod glue;
+mod map;
 mod native;
 mod peephole;
 
@@ -47,6 +49,8 @@ enum Item {
     Cmp(Ty),
     Xerox(Ty),
     Drop(Ty),
+    /// `i64 hash(ptr v, i64 h)`: mixes a map key into `h` (§21.2 `jodi`).
+    Hash(Ty),
     /// `int (*)(const void *, const void *, void *)` for the runtime's sort.
     SortCmp(Ty),
     /// Sort callback that calls a `pani` comparator passed as the context.
@@ -92,6 +96,18 @@ pub struct Gen<'a> {
     intrinsics: std::collections::BTreeSet<String>,
     errors: Vec<String>,
     counter: usize,
+    /// C glue for the FFI boundary (§22): struct definitions and functions.
+    c_glue: String,
+    c_structs: HashMap<Ty, String>,
+    /// The glue function of each `bayata "C"` function called.
+    ffi: HashMap<FnId, String>,
+}
+
+/// A program ready for the C toolchain.
+pub struct Emitted {
+    pub ir: String,
+    /// C source for the FFI boundary, if the program crosses it.
+    pub glue: Option<String>,
 }
 
 pub fn emit_llvm(
@@ -100,7 +116,7 @@ pub fn emit_llvm(
     files: &[SourceFile],
     entry: FnId,
     stack: u64,
-) -> Result<String, Vec<String>> {
+) -> Result<Emitted, Vec<String>> {
     let mut gen = Gen {
         prog,
         tc,
@@ -117,6 +133,9 @@ pub fn emit_llvm(
         intrinsics: Default::default(),
         errors: Vec::new(),
         counter: 0,
+        c_glue: String::new(),
+        c_structs: HashMap::new(),
+        ffi: HashMap::new(),
     };
     let Some(&body) = prog.fn_bodies.get(&entry) else {
         return Err(vec!["`modhalu` ki body ledhu".into()]);
@@ -126,6 +145,7 @@ pub fn emit_llvm(
         gen.emit_item(&item);
     }
     gen.emit_main(&main_fn, &tc.globals.fns[entry].ret.clone(), stack);
+    ffi::exports(&mut gen);
     while let Some(item) = gen.queue.pop_front() {
         gen.emit_item(&item);
     }
@@ -141,6 +161,7 @@ pub fn emit_llvm(
         "%str = type { ptr, i64, i64 }\n%vec = type { ptr, i64, i64 }\n%slice = type { ptr, i64 }\n",
     );
     out.push_str("%pani = type { ptr, ptr }\n%iter = type { i32, i8, i64, i64, ptr, i64 }\n");
+    out.push_str("%map = type { ptr, i64, i64, ptr, i64, i64 }\n");
     out.push_str("%loc = type { ptr, i64, i32, i32 }\n");
     out.push_str(&gen.type_defs);
     out.push('\n');
@@ -153,7 +174,18 @@ pub fn emit_llvm(
     }
     out.push('\n');
     out.push_str(&gen.funcs);
-    Ok(out)
+    let glue = (!gen.c_glue.is_empty()).then(|| format!("#include <stdint.h>\n\n{}", gen.c_glue));
+    Ok(Emitted { ir: out, glue })
+}
+
+/// Whether the program, its runtime or its C glue already uses `name` as a
+/// symbol, so `@bayata` can't export under it (§22.4).
+pub fn reserved_symbol(name: &str) -> bool {
+    name == "main"
+        || name.starts_with("ante_ffi_")
+        || name.starts_with("ante_exp_")
+        || DECLS.contains(&format!("@{name}("))
+        || RUNTIME_C.contains(&format!(" {name}("))
 }
 
 const DECLS: &str = "\
@@ -206,6 +238,28 @@ declare void @ante_os(ptr)
 declare void @ante_arch(ptr)
 declare i64 @ante_now_ns()
 declare i1 @ante_char_in(i32, ptr, i64)
+declare i64 @ante_map_find(ptr, i64, ptr, i64, i64, ptr)
+declare i64 @ante_map_add(ptr, i64, i64)
+declare void @ante_map_remove(ptr, i64, i64)
+declare void @ante_map_free(ptr)
+declare i64 @ante_hash_text(i64, ptr)
+declare ptr @ante_mem_alloc(i64, i64)
+declare void @ante_mem_release(ptr, i64, i64)
+declare ptr @ante_mem_realloc(ptr, i64, i64, i64)
+declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1)
+declare i32 @ante_file_read_bytes(ptr, ptr, ptr)
+declare i32 @ante_file_write_bytes(ptr, ptr, i64, ptr)
+declare i32 @ante_file_is_folder(ptr)
+declare i32 @ante_file_list(ptr, ptr, ptr)
+declare i32 @ante_file_mkdirs(ptr, ptr)
+declare i32 @ante_file_remove(ptr, ptr)
+declare void @ante_path_join(ptr, ptr, ptr)
+declare void @ante_path_name(ptr, ptr)
+declare void @ante_path_folder(ptr, ptr)
+declare i32 @ante_path_extension(ptr, ptr)
+declare i32 @ante_run(ptr, ptr, ptr, ptr, ptr, ptr)
+declare i32 @ante_str_from_bytes(ptr, i64, ptr, ptr)
+declare i32 @ante_str_byte_part(ptr, i64, i64, ptr, ptr)
 declare double @tan(double)
 declare float @tanf(float)
 ";
@@ -244,6 +298,7 @@ impl<'a> Gen<'a> {
             Item::Cmp(_) => "cmp".into(),
             Item::Xerox(_) => "xerox".into(),
             Item::Drop(_) => "drop".into(),
+            Item::Hash(_) => "hash".into(),
             Item::SortCmp(_) => "sortcmp".into(),
             Item::SortBy(_) => "sortby".into(),
             Item::Next(_) => "next".into(),
@@ -267,6 +322,7 @@ impl<'a> Gen<'a> {
             Item::Cmp(t) => glue::cmp(self, &name, t),
             Item::Xerox(t) => glue::xerox(self, &name, t),
             Item::Drop(t) => glue::drop_glue(self, &name, t),
+            Item::Hash(t) => glue::hash(self, &name, t),
             Item::EnvDrop(caps) => glue::env_drop(self, &name, caps),
             Item::SortCmp(t) => glue::sort_cmp(self, &name, t),
             Item::SortBy(t) => glue::sort_by(self, &name, t),
@@ -446,6 +502,7 @@ impl<'a> Gen<'a> {
                 format!("{{ {i}, {i}, i1 }}")
             }
             Ty::App(Con::Pravaham, _) => "%iter".into(),
+            Ty::App(Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => "%map".into(),
             Ty::Fn(..) => "%pani".into(),
             Ty::App(Con::Undochu | Con::SareThappu | Con::Adt(_), _) => self.named_type(ty),
             // A type inference left open: the value is never looked at.
@@ -544,6 +601,7 @@ impl<'a> Gen<'a> {
             }
             Ty::App(Con::Pette, _) => (8, 8),
             Ty::App(Con::Pravaham, _) => (40, 8),
+            Ty::App(Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => (48, 8),
             Ty::App(Con::Paridhi, a) => {
                 let e = self.size_align(&a[0]);
                 structure(vec![e, e, (1, 1)])

@@ -1,0 +1,39 @@
+# category: run-pass
+# expect-stdout: avunu
+# expect-stdout: avunu
+# expect-stdout: kaadhu
+# expect-stdout: 2
+# expect-stdout: avunu
+# expect-stdout: avunu
+# expect-stdout: kaadhu
+# expect-stdout: {(1, a)}
+# expect-stdout: undhi(one-two)
+# expect-stdout: 1
+# expect-stdout: 37
+# level: core
+# `gumpu` and `gajibiji_jodi`, with tuple and record keys.
+@automatic Polchochu, HashCheyochu, Choopinchochu
+rakam Bindhu ante:
+    x: ankam
+    y: ankam
+
+modhalu() -> khali ante:
+    maare g: gumpu[jatha[ankam, padham]] ante gumpu.kotthadhi()
+    (1, "a") ni g.cherchu() |> choopinchu()
+    (2, "b") ni g.cherchu() |> choopinchu()
+    (1, "a") ni g.cherchu() |> choopinchu()
+    g.enni() ni choopinchu()
+    k ante (2, "b")
+    &k ni g.undhaa() |> choopinchu()
+    &k ni g.theesey() |> choopinchu()
+    &k ni g.theesey() |> choopinchu()
+    g ni choopinchu()
+    maare h: gajibiji_jodi[Bindhu, padham] ante gajibiji_jodi.kotthadhi()
+    Bindhu{x: 1, y: 2} ni, "one-two" tho h.cherchu()
+    p ante Bindhu{x: 1, y: 2}
+    &p ni h.thechu() |> choopinchu()
+    h.enni() ni choopinchu()
+    maare seen: gumpu[ankam] ante gumpu.kotthadhi()
+    0 nunchi 1000 lopu okko i ki:
+        (i % 37) ni seen.cherchu()
+    seen.enni() ni choopinchu()

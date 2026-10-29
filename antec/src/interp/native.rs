@@ -167,7 +167,7 @@ impl Machine<'_> {
         Value::Ref(self.alloc(v))
     }
 
-    fn release(&mut self, mark: usize) {
+    pub(super) fn release(&mut self, mark: usize) {
         self.heap.truncate(mark);
     }
 
@@ -640,17 +640,30 @@ impl Machine<'_> {
                     Ty::App(_, args) if args.len() > 1 => args[1].clone(),
                     _ => Ty::Error,
                 };
+                let kt = match &ty {
+                    Ty::App(_, args) => args.first().cloned().unwrap_or(Ty::Error),
+                    _ => Ty::Error,
+                };
+                // Look each key of `a` up in `b`, held where `map_find` can see it.
+                let mark = self.heap.len();
+                let nb = self.alloc(b.clone());
+                let mut same = true;
                 for i in m.positions() {
-                    match n.find(m.key(i)) {
-                        Some(j) => {
+                    match self.map_find(&nb, m.key(i), &kt)? {
+                        (_, Some(j)) => {
                             if !self.values_eq(m.val(i), n.val(j), &vt)? {
-                                return Ok(false);
+                                same = false;
+                                break;
                             }
                         }
-                        None => return Ok(false),
+                        (_, None) => {
+                            same = false;
+                            break;
+                        }
                     }
                 }
-                true
+                self.release(mark);
+                same
             }
             _ => {
                 let (ia, xa) = self.parts(&a);
@@ -763,8 +776,19 @@ impl Machine<'_> {
                 Ok(Value::Str(Rc::from(s)))
             }
             "HashCheyochu.hash_cheyyi" => {
-                let k = key_of(self.target(&arg(0)));
-                self.hash_into(&arg(1), &k);
+                // The built-in (and `@automatic`) hashing: by structure.
+                let base = self.ref_addr(&arg(1));
+                let h = match self.read(&base) {
+                    Value::Adt(_, fs) => fs.first().map_or(0, Value::int) as u64,
+                    _ => 0,
+                };
+                let v = self.target(&arg(0)).clone();
+                let h = self.hash_structure(h, &v, &ty)?;
+                if let Value::Adt(_, fs) = self.read_mut(&base) {
+                    if let Some(f) = fs.first_mut() {
+                        *f = Value::Int(i128::from(h));
+                    }
+                }
                 Ok(Value::Unit)
             }
             "Sardhukochu.sardhu" => Ok(Value::Unit),
@@ -805,20 +829,140 @@ impl Machine<'_> {
         }
     }
 
-    fn hash_into(&mut self, h: &Value, k: &super::value::Key) {
-        use std::hash::{Hash, Hasher};
-        let mut s = std::collections::hash_map::DefaultHasher::new();
-        k.hash(&mut s);
-        let bits = s.finish();
-        self.with_target_mut(h, |v| {
-            if let Value::Adt(_, fs) = v {
-                let old = fs.first().map(|f| f.int()).unwrap_or(0) as u64;
-                let mixed = (old ^ bits).wrapping_mul(0x100_0000_01b3).rotate_left(5);
-                if let Some(f) = fs.first_mut() {
-                    *f = Value::Int(i128::from(mixed));
-                }
+    // ── hashing (§13.5 `HashCheyochu`, §21.2 `jodi`) ───────────────────────
+    //
+    // The same algorithm as native code (codegen/map.rs), so `Hasher` results
+    // agree: integers (as 64 bits), `ato_ito`, `aksharam` and float bits mix
+    // in with `mix`; text is FNV-1a after mixing in its length; sequences mix
+    // their length, then the items; enums their variant index, then fields.
+    // A type with its own `HashCheyochu` hashes the way it says.
+
+    /// Mixes `v` (of type `ty`) into `h`.
+    pub(super) fn key_hash(&mut self, h: u64, v: &Value, ty: &Ty) -> R<u64> {
+        let v = self.target(v).clone();
+        let ty = strip_ref(ty).clone();
+        if let Ty::App(Con::Adt(_), _) = ty {
+            if let Some(h2) = self.hash_with_impl(h, &v, &ty)? {
+                return Ok(h2);
             }
-        });
+        }
+        self.hash_structure(h, &v, &ty)
+    }
+
+    /// Runs the type's `hash_cheyyi` on a `Hasher` holding `h`, if it has one.
+    fn hash_with_impl(&mut self, h: u64, v: &Value, ty: &Ty) -> R<Option<u64>> {
+        let g = &self.tc.globals;
+        let Some(def) = g.std_trait("HashCheyochu") else { return Ok(None) };
+        let solver = crate::typeck::solve::Solver { g, generics: &[] };
+        let tref = TraitRef { def, args: Vec::new() };
+        if solver.find_impl(&mut InferTable::default(), ty, &tref, 0).is_none() {
+            return Ok(None);
+        }
+        let fid = g.traits[&def].methods[0].1;
+        let mark = self.heap.len();
+        let this = self.scratch(v.clone());
+        let hasher = self.alloc(Value::Adt(0, vec![Value::Int(i128::from(h))]));
+        self.call_trait(fid, vec![ty.clone()], vec![this, Value::Ref(hasher.clone())], Span::default())?;
+        let out = match self.read(&hasher) {
+            Value::Adt(_, fs) => fs.first().map_or(0, Value::int) as u64,
+            _ => h,
+        };
+        self.release(mark);
+        Ok(Some(out))
+    }
+
+    /// Hashes by structure (the built-in and `@automatic` `HashCheyochu`).
+    fn hash_structure(&mut self, h: u64, v: &Value, ty: &Ty) -> R<u64> {
+        let mix = |h: u64, x: u64| (h.rotate_left(5) ^ x).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        Ok(match (v, ty) {
+            (Value::Int(x), Ty::Int(it)) => mix(h, if it.signed { *x as i64 as u64 } else { *x as u64 }),
+            (Value::Int(x), _) => mix(h, *x as u64),
+            (Value::Bool(b), _) => mix(h, u64::from(*b)),
+            (Value::Char(c), _) => mix(h, u64::from(*c as u32)),
+            (Value::F32(x), _) => mix(h, u64::from(x.to_bits())),
+            (Value::F64(x), _) => mix(h, x.to_bits()),
+            (Value::Unit, _) => h,
+            (Value::Str(_) | Value::Buf(_), _) => {
+                let text = v.str();
+                let mut h = h ^ text.len() as u64;
+                for b in text.bytes() {
+                    h ^= u64::from(b);
+                    h = h.wrapping_mul(0x0100_0000_01b3);
+                }
+                h
+            }
+            (Value::Box(b), _) => {
+                let inner = match ty {
+                    Ty::App(Con::Pette, a) => a[0].clone(),
+                    other => other.clone(),
+                };
+                let b = (**b).clone();
+                self.key_hash(h, &b, &inner)?
+            }
+            (Value::Tuple(_) | Value::Array(_) | Value::Vec(_) | Value::Slice(..), _) => {
+                let xs = self.seq(v);
+                let tys = self.field_types(ty, v);
+                let mut h = if matches!(v, Value::Tuple(_)) { h } else { mix(h, xs.len() as u64) };
+                for (i, x) in xs.iter().enumerate() {
+                    let t = tys.get(i).or(tys.first()).cloned().unwrap_or(Ty::Error);
+                    h = self.key_hash(h, x, &t)?;
+                }
+                h
+            }
+            (Value::Adt(tag, xs), _) => {
+                let enum_like = match ty {
+                    Ty::App(Con::Undochu | Con::SareThappu, _) => true,
+                    Ty::App(Con::Adt(d), _) => {
+                        matches!(self.tc.globals.adts.get(d).map(|a| &a.kind), Some(AdtKind::Enum(_)))
+                    }
+                    _ => false,
+                };
+                let mut h = if enum_like { mix(h, u64::from(*tag)) } else { h };
+                let tys = self.field_types(ty, v);
+                for (i, x) in xs.clone().iter().enumerate() {
+                    let t = tys.get(i).cloned().unwrap_or(Ty::Error);
+                    h = self.key_hash(h, x, &t)?;
+                }
+                h
+            }
+            _ => h,
+        })
+    }
+
+    /// Where key `k` (of type `kt`) is in the map at `base`, and its hash.
+    pub(super) fn map_find(&mut self, base: &Addr, k: &Value, kt: &Ty) -> R<(u64, Option<usize>)> {
+        let h = self.key_hash(MAP_SEED, k, kt)?;
+        let found: Vec<(usize, Value)> = match self.read(base) {
+            Value::Map(m) => m.with_hash(h).into_iter().map(|i| (i, m.key(i).clone())).collect(),
+            _ => Vec::new(),
+        };
+        for (i, c) in found {
+            if self.values_eq(&c, k, kt)? {
+                return Ok((h, Some(i)));
+            }
+        }
+        Ok((h, None))
+    }
+
+    /// `cherchu`: inserts, or replaces the value of an equal key (which keeps
+    /// its place); returns the old value.
+    pub(super) fn map_insert(&mut self, base: &Addr, k: Value, v: Value, kt: &Ty) -> R<Option<Value>> {
+        let (h, at) = self.map_find(base, &k, kt)?;
+        let (old, unused) = match self.read_mut(base) {
+            Value::Map(m) => match at {
+                Some(i) => (Some(std::mem::replace(m.val_mut(i), v)), Some(k)),
+                None => {
+                    m.push(h, k, v);
+                    (None, None)
+                }
+            },
+            _ => (None, None),
+        };
+        // The key passed in isn't kept when an equal one is there already.
+        if let Some(k) = unused {
+            self.drop_value(k, kt)?;
+        }
+        Ok(old)
     }
 
     // ── standard functions (§21) ───────────────────────────────────────────
@@ -1105,29 +1249,21 @@ impl Machine<'_> {
             "jodi.kotthadhi" | "gajibiji_jodi.kotthadhi" | "gumpu.kotthadhi" => {
                 Ok(Value::Map(Box::default()))
             }
-            "jodi.cherchu" | "gajibiji_jodi.cherchu" => {
-                let (k, v) = (arg(1), arg(2));
-                let old = self.with_target_mut(&arg(0), |m| match m {
-                    Value::Map(m) => m.insert(k, v),
-                    _ => None,
-                });
+            "jodi.cherchu" | "gajibiji_jodi.cherchu" | "gumpu.cherchu" => {
+                let base = self.ref_addr(&arg(0));
+                let kt = map_key_ty(tys);
+                let set = name == "gumpu.cherchu";
+                let v = if set { Value::Unit } else { arg(2) };
+                let old = self.map_insert(&base, arg(1), v, &kt)?;
+                if set {
+                    return Ok(bool_v(old.is_none()));
+                }
                 Ok(old.map_or_else(Value::none, Value::some))
-            }
-            "gumpu.cherchu" => {
-                let k = arg(1);
-                let old = self.with_target_mut(&arg(0), |m| match m {
-                    Value::Map(m) => m.insert(k, Value::Unit),
-                    _ => None,
-                });
-                Ok(bool_v(old.is_none()))
             }
             "jodi.thechu" | "jodi.maare_thechu" | "gajibiji_jodi.thechu" => {
                 let k = self.target(&arg(1)).clone();
                 let base = self.ref_addr(&arg(0));
-                let found = match self.read(&base) {
-                    Value::Map(m) => m.find(&k),
-                    _ => None,
-                };
+                let (_, found) = self.map_find(&base, &k, &map_key_ty(tys))?;
                 Ok(match found {
                     Some(i) => Value::some(Value::Ref(base.with(Elem::MapVal(i)))),
                     None => Value::none(),
@@ -1136,32 +1272,38 @@ impl Machine<'_> {
             "jodi.lekapothe_cherchu" => {
                 let (k, d) = (arg(1), arg(2));
                 let base = self.ref_addr(&arg(0));
-                let i = match self.read_mut(&base) {
-                    Value::Map(m) => match m.find(&k) {
-                        Some(i) => i,
-                        None => {
-                            m.insert(k.clone(), d);
-                            m.find(&k).unwrap_or(0)
-                        }
-                    },
+                let kt = map_key_ty(tys);
+                let (h, found) = self.map_find(&base, &k, &kt)?;
+                let i = match (found, self.read_mut(&base)) {
+                    (Some(i), _) => {
+                        // Neither the key nor the default is kept.
+                        self.drop_value(k, &kt)?;
+                        let vt = map_val_ty(tys);
+                        self.drop_value(d, &vt)?;
+                        i
+                    }
+                    (None, Value::Map(m)) => m.push(h, k, d),
                     _ => 0,
                 };
                 Ok(Value::Ref(base.with(Elem::MapVal(i))))
             }
             "jodi.theesey" | "gajibiji_jodi.theesey" | "gumpu.theesey" => {
                 let k = self.target(&arg(1)).clone();
-                let old = self.with_target_mut(&arg(0), |m| match m {
-                    Value::Map(m) => m.remove(&k),
+                let base = self.ref_addr(&arg(0));
+                let (h, found) = self.map_find(&base, &k, &map_key_ty(tys))?;
+                let old = match (found, self.read_mut(&base)) {
+                    (Some(i), Value::Map(m)) => m.remove_at(h, i),
                     _ => None,
-                });
+                };
                 if name == "gumpu.theesey" {
                     return Ok(bool_v(old.is_some()));
                 }
-                Ok(old.map_or_else(Value::none, Value::some))
+                Ok(old.map_or_else(Value::none, |(_, v)| Value::some(v)))
             }
             "jodi.undhaa" | "gajibiji_jodi.undhaa" | "gumpu.undhaa" => {
                 let k = self.target(&arg(1)).clone();
-                Ok(bool_v(matches!(self.target(&arg(0)), Value::Map(m) if m.find(&k).is_some())))
+                let base = self.ref_addr(&arg(0));
+                Ok(bool_v(self.map_find(&base, &k, &map_key_ty(tys))?.1.is_some()))
             }
             "jodi.enni" | "gajibiji_jodi.enni" | "gumpu.enni" => Ok(Value::Int(match self.target(&arg(0)) {
                 Value::Map(m) => m.len() as i128,
@@ -1299,8 +1441,17 @@ impl Machine<'_> {
                 Ok(Value::Str(s))
             }
             "Hasher.kalupu" => {
-                let k = key_of(self.target(&arg(1)));
-                self.hash_into(&arg(0), &k);
+                let base = self.ref_addr(&arg(0));
+                let h = match self.read(&base) {
+                    Value::Adt(_, fs) => fs.first().map_or(0, Value::int) as u64,
+                    _ => 0,
+                };
+                let h = self.key_hash(h, &arg(1), &ty(1))?;
+                if let Value::Adt(_, fs) = self.read_mut(&base) {
+                    if let Some(f) = fs.first_mut() {
+                        *f = Value::Int(i128::from(h));
+                    }
+                }
                 Ok(Value::Unit)
             }
             "Hasher.chaalu" => Ok(match self.target(&arg(0)) {
@@ -1352,8 +1503,17 @@ impl Machine<'_> {
                 Ok(file_result(std::fs::remove_file(&*self.arg_str(&arg(0))).map(|_| Value::Unit)))
             }
             "file.path_kalupu" => {
+                // Joined with `/` on every system, the same as the native runtime.
                 let (a, b) = (self.arg_str(&arg(0)), self.arg_str(&arg(1)));
-                Ok(Value::Str(Rc::from(std::path::Path::new(&*a).join(&*b).to_string_lossy().into_owned())))
+                let sep = |c: char| c == '/' || (cfg!(windows) && c == '\\');
+                let joined = if b.starts_with(sep) || a.is_empty() {
+                    b.to_string()
+                } else if a.ends_with(sep) {
+                    format!("{a}{b}")
+                } else {
+                    format!("{a}/{b}")
+                };
+                Ok(Value::Str(Rc::from(joined)))
             }
             "file.path_peru" | "file.path_folder" | "file.path_extension" => {
                 let p = self.arg_str(&arg(0));
@@ -1717,4 +1877,27 @@ fn elem_ty(ty: &Ty) -> Ty {
         Ty::App(_, a) if !a.is_empty() => a[0].clone(),
         _ => Ty::Error,
     }
+}
+
+/// The seed for map keys: the FNV offset basis (the same in native code).
+pub(super) const MAP_SEED: u64 = 0xcbf2_9ce4_8422_2325;
+
+/// The value type of a map method's type arguments.
+fn map_val_ty(tys: &[Ty]) -> Ty {
+    for t in tys {
+        if let Ty::App(Con::Jodi | Con::GajibijiJodi, a) = strip_ref(t) {
+            return a.get(1).cloned().unwrap_or(Ty::Error);
+        }
+    }
+    tys.get(2).cloned().unwrap_or(Ty::Error)
+}
+
+/// The key type of a map method's type arguments (the map type comes first).
+fn map_key_ty(tys: &[Ty]) -> Ty {
+    for t in tys {
+        if let Ty::App(Con::Jodi | Con::GajibijiJodi | Con::Gumpu, a) = strip_ref(t) {
+            return a.first().cloned().unwrap_or(Ty::Error);
+        }
+    }
+    tys.get(1).cloned().unwrap_or(Ty::Error)
 }

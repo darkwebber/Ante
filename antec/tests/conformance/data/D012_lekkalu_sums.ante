@@ -1,0 +1,23 @@
+# category: run-pass
+# expect-stdout: 6.6
+# expect-stdout: 5.06
+# expect-stdout: 1.0
+# expect-stdout: 77
+# expect-stdout: 25
+# expect-stdout: Kramam.Ekkuva Kramam.Thakkuva Kramam.Samaanam
+# level: core
+# `lekkalu.motham`, `dot` (the documented blocked order) and `polchu_amsam`.
+lekkalu thechuko
+
+modhalu() -> khali ante:
+    xs: varusa[amsam32] ante [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1]
+    xs[0 nunchi 11 lopu] ni lekkalu.motham() |> choopinchu()
+    xs[0 nunchi 11 lopu] ni, xs[0 nunchi 11 lopu] tho lekkalu.dot() |> choopinchu()
+    ys: varusa[amsam64] ante [1e16, 1.0, -1e16, 1.0]
+    ys[0 nunchi 4 lopu] ni lekkalu.motham() |> choopinchu()
+    zs: varusa[ankam8] ante [100, 27, -50]
+    zs[0 nunchi 3 lopu] ni lekkalu.motham() |> choopinchu()
+    is: varusa[ankam32] ante [3, 4]
+    is[0 nunchi 2 lopu] ni, is[0 nunchi 2 lopu] tho lekkalu.dot() |> choopinchu()
+    nan ante lekkalu.NAN
+    f"{nan ni, 1.0 tho lekkalu.polchu_amsam()} {-0.0 ni, 0.0 tho lekkalu.polchu_amsam()} {2.0 ni, 2.0 tho lekkalu.polchu_amsam()}" ni choopinchu()

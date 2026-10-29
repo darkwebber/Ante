@@ -499,6 +499,10 @@ impl<'a> Parser<'a> {
                 _ => {}
             }
             let start = self.pos;
+            if self.at(&TokenKind::Keyword(Keyword::NaaRisk)) {
+                self.parse_risky_impls(&mut items);
+                continue;
+            }
             match self.parse_item() {
                 Ok(item) => items.push(item),
                 Err(()) => {
@@ -511,6 +515,47 @@ impl<'a> Parser<'a> {
             }
         }
         Module { items }
+    }
+
+    /// A module-level `naa_risk:` block: implementations the programmer
+    /// vouches for, such as `CopyKottochu` on a type with raw pointers (§22.2).
+    fn parse_risky_impls(&mut self, items: &mut Vec<Item>) {
+        let kw = self.advance().span;
+        if !self.eat(&TokenKind::Colon) || !self.eat(&TokenKind::Newline) || !self.eat(&TokenKind::Indent) {
+            self.error(
+                "E0201",
+                kw,
+                "module level lo `naa_risk:` tharvatha indent chesina `gunam undhi` lines raavali",
+            );
+            self.recover_line();
+            return;
+        }
+        loop {
+            while self.eat(&TokenKind::Newline) {}
+            if matches!(self.peek(), TokenKind::Dedent | TokenKind::Eof) {
+                self.eat(&TokenKind::Dedent);
+                return;
+            }
+            let start = self.pos;
+            match self.parse_item() {
+                Ok(mut item) => {
+                    if let ItemKind::Impl(i) = &mut item.kind {
+                        i.naa_risk = true;
+                        items.push(item);
+                    } else {
+                        self.error(
+                            "E0201",
+                            item.span,
+                            "module level `naa_risk:` lo `gunam undhi` lines matrame raayochu",
+                        );
+                    }
+                }
+                Err(()) => {
+                    self.pos = start;
+                    self.recover_line();
+                }
+            }
+        }
     }
 
     /// `name` or `module.Name` in an annotation argument, kept as one
@@ -529,7 +574,13 @@ impl<'a> Parser<'a> {
         let mut annotations = Vec::new();
         while self.at(&TokenKind::At) {
             let start = self.advance().span;
-            let name = self.expect_ident("annotation peru")?;
+            // `@bayata "name"` exports a function (§22.4), keyword or not.
+            let name = if self.at(&TokenKind::Keyword(Keyword::Bayata)) {
+                let span = self.advance().span;
+                Ident { name: "bayata".into(), span }
+            } else {
+                self.expect_ident("annotation peru")?
+            };
             let arg = match self.peek().clone() {
                 TokenKind::Str(s) => {
                     self.advance();
@@ -896,7 +947,7 @@ impl<'a> Parser<'a> {
         } else {
             self.expect_newline()?;
         }
-        Ok(ImplDecl { generics, self_ty, trait_ref, items })
+        Ok(ImplDecl { generics, self_ty, trait_ref, items, naa_risk: false })
     }
 
     fn parse_trait(&mut self) -> PResult<TraitDecl> {

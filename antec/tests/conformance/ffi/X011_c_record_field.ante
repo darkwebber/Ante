@@ -1,0 +1,11 @@
+# category: compile-fail
+# expect-error: E1002 @ 7:7
+# level: core
+# `@C` records hold only FFI-safe fields (§22.3).
+
+@C
+rakam Peru ante:
+    text: padham
+
+modhalu() -> khali ante:
+    icchey

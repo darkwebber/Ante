@@ -79,6 +79,8 @@ struct Outcome {
     warnings: Vec<String>,
     header: String,
     run: Option<antec::interp::RunOutput>,
+    /// Code generation or link errors, for cases that run natively (§22.6).
+    backend: Vec<String>,
 }
 
 /// Runs one test (a file or a package folder): checks it, and runs it when
@@ -109,7 +111,7 @@ fn run_test(path: &Path) -> Outcome {
             warnings.push(entry);
         }
     }
-    Outcome { errors, warnings, header: text, run: checked.run }
+    Outcome { errors, warnings, header: text, run: checked.run, backend: checked.backend_errors }
 }
 
 #[test]
@@ -151,6 +153,8 @@ fn conformance_suite() {
                     failures.push(format!("{name}: expected no errors, found {errors:?}"));
                 } else if let Some(run) = &out.run {
                     check_run(&name.to_string(), category, &expect, run, &mut failures);
+                } else if matches!(category, "run-pass" | "runtime-trap") {
+                    failures.push(format!("{name}: didn't run: {:?}", out.backend));
                 }
             }
         }

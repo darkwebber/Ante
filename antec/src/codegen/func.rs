@@ -780,9 +780,11 @@ impl<'g, 'a> Fx<'g, 'a> {
                 self.emit(format!("{b} = insertvalue %pani {a}, ptr {env}, 1"));
                 b
             }
-            Agg::Jodi => {
-                self.gen.error("native backend lo `jodi` ippatiki ledhu; `antec run` vaadandi");
-                "zeroinitializer".into()
+            Agg::Jodi(_) => {
+                let (k, v) = super::map::key_val(want).unwrap_or((Ty::Unit, Ty::Unit));
+                let pairs: Vec<(String, String)> =
+                    ops.chunks(2).map(|p| (self.operand(&p[0], &k), self.operand(&p[1], &v))).collect();
+                super::map::literal(self, want, &pairs)
             }
         }
     }
@@ -1164,9 +1166,7 @@ impl<'g, 'a> Fx<'g, 'a> {
                 if crate::mir::trait_method_of(self.gen.g, *fid).is_some() {
                     return self.call_trait(*fid, &tys, args, dest_ty, span);
                 }
-                let name = self.gen.g.fns[*fid].name.clone();
-                self.gen.error(format!("`{name}` (bayata \"C\") native backend lo inka ledhu (M11)"));
-                ("undef".into(), dest_ty.clone())
+                super::ffi::import_call(self, *fid, args)
             }
             Callee::Trait(fid, tys) => {
                 let tys: Vec<Ty> = tys.iter().map(|t| self.subst(t)).collect();

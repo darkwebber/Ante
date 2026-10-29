@@ -1,0 +1,9 @@
+# category: compile-fail
+# expect-error: E1002 @ 5:1
+# level: core
+# Only C's calling convention exists (§22.1).
+bayata "Rust" ante:
+    tholi() -> khali
+
+modhalu() -> khali ante:
+    icchey

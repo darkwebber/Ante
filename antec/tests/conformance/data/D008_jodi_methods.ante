@@ -1,0 +1,47 @@
+# category: run-pass
+# expect-stdout: ledhu
+# expect-stdout: ledhu
+# expect-stdout: undhi(1)
+# expect-stdout: undhi(3)
+# expect-stdout: ledhu
+# expect-stdout: kaadhu
+# expect-stdout: undhi(103)
+# expect-stdout: ledhu
+# expect-stdout: {b: 2, c: 16, a: 7}
+# expect-stdout: 3
+# expect-stdout: {b: 4, c: 32, a: 14}
+# expect-stdout: avunu
+# expect-stdout: avunu
+# level: core
+# Every `jodi` method, and a removed key going to the end when it comes back.
+modhalu() -> khali ante:
+    maare m: jodi[padham, ankam] ante jodi.kotthadhi()
+    "a" ni, 1 tho m.cherchu() |> choopinchu()
+    "b" ni, 2 tho m.cherchu() |> choopinchu()
+    "a" ni, 3 tho m.cherchu() |> choopinchu()
+    a ante "a"
+    z ante "z"
+    &a ni m.thechu() |> choopinchu()
+    &z ni m.thechu() |> choopinchu()
+    &z ni m.undhaa() |> choopinchu()
+    e ante "c" ni, 10 tho m.lekapothe_cherchu()
+    *e += 5
+    e2 ante "c" ni, 99 tho m.lekapothe_cherchu()
+    *e2 += 1
+    &a ni m.maare_thechu() batti:
+        undhi(v) aithe:
+            *v += 100
+        ledhu aithe:
+            "?" ni choopinchu()
+    &a ni m.theesey() |> choopinchu()
+    &a ni m.theesey() |> choopinchu()
+    "a" ni, 7 tho m.cherchu()
+    m ni choopinchu()
+    m.enni() ni choopinchu()
+    &maare m lo okko (k, v) ki:
+        *v *= 2
+    m ni choopinchu()
+    n ante m.xerox()
+    (n == m) ni choopinchu()
+    lit: jodi[padham, ankam] ante {"c": 32, "b": 4, "a": 14}
+    (lit == m) ni choopinchu()

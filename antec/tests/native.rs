@@ -12,7 +12,7 @@ use std::process::Command;
 use antec::package::Action;
 
 /// Programs that use features the native backend doesn't have yet.
-const NOT_YET_NATIVE: &[&str] = &["D001_jodi_order", "D002_jodi_replace"];
+const NOT_YET_NATIVE: &[&str] = &[];
 
 fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
     let mut entries: Vec<PathBuf> =
@@ -193,4 +193,119 @@ fn native_welcome_program() {
     let out = Command::new(&exe).output().expect("runs");
     let _ = fs::remove_dir_all(&dir);
     assert_eq!(String::from_utf8_lossy(&out.stdout), expected);
+}
+
+/// Files, folders and child programs (§21.3) do the same thing natively as
+/// in the interpreter. Each backend works in its own temp folder, given as
+/// the program's first argument.
+#[test]
+fn native_files_and_processes_match_the_interpreter() {
+    if !clang_available() {
+        return;
+    }
+    let program = r#"file thechuko
+system thechuko
+
+modhalu() -> khali ante:
+    base ante system.args()[0].xerox()
+    sub ante &base ni, "a/b" tho file.path_kalupu()
+    &sub ni file.folder_cheyyi() |> choopinchu()
+    &sub ni file.folder_cheyyi() |> choopinchu()
+    &sub ni file.folderaa() |> choopinchu()
+    t ante &sub ni, "x.txt" tho file.path_kalupu()
+    &t ki, "namaste\n" ni file.raayi() |> choopinchu()
+    &t ni file.chadhuvu() |> choopinchu()
+    &t ni file.undhaa() |> choopinchu()
+    raw: varusa[aasajeevi ankam8] ante [0, 255, 10]
+    r ante &sub ni, "raw.bin" tho file.path_kalupu()
+    &r ki, raw[0 nunchi 3 lopu] ni file.baitlu_raayi() |> choopinchu()
+    &r ni file.baitlu_chadhuvu() |> choopinchu()
+    &r ni file.chadhuvu() |> choopinchu()
+    &sub ni file.list_cheyyi() |> choopinchu()
+    inside ante &t ni, "y" tho file.path_kalupu()
+    &inside ni file.folder_cheyyi() |> choopinchu()
+    &t ni file.theesey() |> choopinchu()
+    &t ni file.theesey() |> choopinchu()
+    &t ni file.undhaa() |> choopinchu()
+    &sub ni file.list_cheyyi() |> choopinchu()
+    "ee_program_ledhu_antec_test" ni, [] tho system.nadupu() |> choopinchu()
+    maare shell ante "sh"
+    maare script ante ["-c", "echo out; echo err 1>&2; exit 3"]
+    system.os() == "windows" aithe:
+        shell lo "cmd" pettu
+        script lo ["/c", "echo out& echo err 1>&2& exit 3"] pettu
+    &shell ni, script[0 nunchi 2 lopu] tho system.nadupu() batti:
+        sare(ph) aithe:
+            f"{ph.status} [{ph.stdout.kathirinchu()}] [{ph.stderr.kathirinchu()}]" ni choopinchu()
+        thappu(e) aithe:
+            e ni choopinchu()
+"#;
+    let dir = std::env::temp_dir().join(format!("antec-native-files-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("temp dir");
+    let src = dir.join("files.ante");
+    fs::write(&src, program).expect("write");
+    let run_dir = dir.join("run");
+    let native_dir = dir.join("native");
+    let interp = Command::new(env!("CARGO_BIN_EXE_antec"))
+        .args(["run", src.to_str().unwrap(), "--", run_dir.to_str().unwrap()])
+        .output()
+        .expect("antec runs");
+    let exe = dir.join(if cfg!(windows) { "files.exe" } else { "files" });
+    let action = Action::Build { output: exe.clone(), release: false };
+    let checked = antec::on_big_stack(|| antec::package::process(&src, action)).expect("readable");
+    assert!(checked.built.is_some(), "build failed: {:?}", checked.backend_errors);
+    let native = Command::new(&exe).arg(&native_dir).output().expect("runs");
+    let _ = fs::remove_dir_all(&dir);
+    let (a, b) = (String::from_utf8_lossy(&interp.stdout), String::from_utf8_lossy(&native.stdout));
+    assert!(interp.status.success(), "interpreter failed: {}", String::from_utf8_lossy(&interp.stderr));
+    assert_eq!(a, b, "native stderr: {}", String::from_utf8_lossy(&native.stderr));
+    assert!(a.contains("3 [out] [err]"), "unexpected output:\n{a}");
+}
+
+/// The complete programs of spec Appendix D (except D.7, which needs Python,
+/// Annex T) print the same and exit the same natively as in the interpreter.
+#[test]
+fn appendix_d_programs_match_the_interpreter() {
+    if !clang_available() {
+        return;
+    }
+    let spec =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../spec/ante_language_spec_1_0.md"))
+            .expect("spec");
+    let appendix = spec.split("# Appendix D").nth(1).and_then(|r| r.split("# Appendix E").next()).expect("D");
+    let dir = std::env::temp_dir().join(format!("antec-native-appendix-d-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("temp dir");
+    let mut checked = 0;
+    for (i, block) in appendix.split("```ante\n").skip(1).enumerate() {
+        let code = block.split("```").next().unwrap_or("");
+        if !code.contains("modhalu()") || code.contains("torch") {
+            continue;
+        }
+        let src = dir.join(format!("d{i}.ante"));
+        fs::write(&src, code).expect("write");
+        let interp = Command::new(env!("CARGO_BIN_EXE_antec"))
+            .current_dir(&dir)
+            .args(["run", src.to_str().unwrap()])
+            .output()
+            .expect("antec runs");
+        let exe = dir.join(if cfg!(windows) { format!("d{i}.exe") } else { format!("d{i}") });
+        let action = Action::Build { output: exe.clone(), release: true };
+        let checked_build = antec::on_big_stack(|| antec::package::process(&src, action)).expect("readable");
+        assert!(
+            checked_build.built.is_some(),
+            "D program {i}: build failed: {:?}",
+            checked_build.backend_errors
+        );
+        let native = Command::new(&exe).current_dir(&dir).output().expect("runs");
+        assert_eq!(
+            String::from_utf8_lossy(&interp.stdout),
+            String::from_utf8_lossy(&native.stdout),
+            "D program {i}: stdout differs"
+        );
+        assert_eq!(interp.status.code(), native.status.code(), "D program {i}: exit differs");
+        checked += 1;
+    }
+    let _ = fs::remove_dir_all(&dir);
+    assert!(checked >= 5, "expected D.1–D.5, ran {checked}");
 }

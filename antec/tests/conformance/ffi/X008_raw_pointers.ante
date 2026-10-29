@@ -1,0 +1,29 @@
+# category: run-pass
+# expect-stdout: 16
+# expect-stdout: 0
+# expect-stdout: 2
+# expect-stdout: 30
+# level: core
+# Raw memory: allocate, write through `*maare`, shift with `jarugu`, and
+# convert pointers to integers, all inside `naa_risk` (§22.2).
+memory thechuko
+
+modhalu() -> khali ante:
+    naa_risk:
+        raw ante 16 ni, 8 tho memory.allocate()
+        q ante raw ni kolpothu_maarchu[*maare ankam64]()
+        *q lo 7 pettu
+        r ante 1 ni q.jarugu()
+        *r lo 9 pettu
+        (*q + *r) ni choopinchu()
+        n ante q ni kolpothu_maarchu[aasajeevi ankam64]()
+        (n % 8) ni choopinchu()
+        raw ni, 16 tho, 8 tho memory.release()
+    xs ante [1, 2, 3]
+    p ante (&xs[0 nunchi 3 lopu]).pointer()
+    naa_risk:
+        s ante 1 ni p.jarugu()
+        *s ni choopinchu()
+        c ante 2 ni p.jarugu()
+        b ante c ni kolpothu_maarchu[*aasajeevi ankam8]()
+        (*b * 10) ni choopinchu()

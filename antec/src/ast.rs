@@ -199,6 +199,8 @@ pub struct ImplDecl {
     pub self_ty: Type,
     pub trait_ref: Type,
     pub items: Vec<FnDecl>,
+    /// Written inside a module-level `naa_risk:` block (§22.2).
+    pub naa_risk: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

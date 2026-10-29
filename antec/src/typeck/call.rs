@@ -103,7 +103,7 @@ impl BodyCx<'_, '_> {
         let pre = prepared.pre.take();
         let args = self.bind_and_check(&prepared, phrases, injected, pre, span);
         if let Some((kind, src, dst)) = prepared.conv.clone() {
-            self.conversions.push((kind, src, dst, span));
+            self.conversions.push((kind, src, dst, span, self.unsafe_depth > 0));
         }
         let plan = CallPlan {
             target: prepared.target.clone(),
@@ -345,10 +345,20 @@ impl BodyCx<'_, '_> {
         } else {
             conv
         };
+        let mut ret = sig.ret.subst(&fresh);
+        // Shifting a `*maare T` gives a `*maare T` (§22.2).
+        if sig.name == "jarugu" && sig.owner.as_deref() == Some("pointer") {
+            self.require_unsafe(span, "pointer arithmetic (`jarugu`)");
+            if let (Some(Ty::Ptr(true, _)), Ty::Ptr(_, inner)) =
+                (self_ty.as_ref().map(|t| self.infer.resolve(t)), &ret)
+            {
+                ret = Ty::Ptr(true, inner.clone());
+            }
+        }
         Some(Prepared {
             name: sig.name.clone(),
             formals: sig.params.iter().map(|f| Formal { ty: f.ty.subst(&fresh), ..f.clone() }).collect(),
-            ret: sig.ret.subst(&fresh),
+            ret,
             pre: None,
             conv,
             target: Target::Fn { fid, tys: fresh },

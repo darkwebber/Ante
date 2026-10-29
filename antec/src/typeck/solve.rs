@@ -54,6 +54,8 @@ pub fn coerce(t: &mut InferTable, actual: &Ty, expected: &Ty) -> bool {
         (Ty::Ref(m1, x), Ty::Ref(m2, y)) if *m1 || !*m2 => coerce_pointee(t, x, y),
         // `&x` where a raw pointer is expected (§22.2).
         (Ty::Ref(m1, x), Ty::Ptr(m2, y)) if *m1 || !*m2 => unify(t, x, y),
+        // `*maare T` → `*T` (§9.4.2f).
+        (Ty::Ptr(true, x), Ty::Ptr(false, y)) => unify(t, x, y),
         _ => unify(t, &a, &e),
     }
 }

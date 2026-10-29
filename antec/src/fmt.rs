@@ -344,6 +344,13 @@ impl<'a> Printer<'a> {
                 }
                 self.block_end(depth + 1, col, item.span.end);
             }
+            ItemKind::Impl(i) if i.naa_risk => {
+                self.code(depth, "naa_risk:", start, start);
+                self.no_blank = true;
+                let plain = ImplDecl { naa_risk: false, ..i.clone() };
+                let inner = Item { kind: ItemKind::Impl(plain), ..item.clone() };
+                self.item(&inner, depth + 1);
+            }
             ItemKind::Impl(i) => {
                 let g = self.generics(&i.generics);
                 let g = if g.is_empty() { g } else { format!("{g} ") };

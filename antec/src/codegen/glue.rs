@@ -10,7 +10,7 @@ use crate::types::{Con, Ty};
 
 /// The implementation of a standard trait method for `ty`: a body, or
 /// `None` for the built-in behavior.
-fn user_impl(gen: &Gen, trait_name: &str, ty: &Ty) -> Option<(crate::mir::BodyId, Vec<Ty>)> {
+pub(super) fn user_impl(gen: &Gen, trait_name: &str, ty: &Ty) -> Option<(crate::mir::BodyId, Vec<Ty>)> {
     let def = gen.g.std_trait(trait_name)?;
     let fid = gen.g.traits.get(&def)?.methods.first()?.1;
     match gen.resolve(fid, std::slice::from_ref(ty))? {
@@ -20,7 +20,7 @@ fn user_impl(gen: &Gen, trait_name: &str, ty: &Ty) -> Option<(crate::mir::BodyId
 }
 
 /// Element data pointer and length of a sequence value at `v`.
-fn seq_at(fx: &mut Fx, ty: &Ty, v: &str) -> Option<(String, String, Ty)> {
+pub(super) fn seq_at(fx: &mut Fx, ty: &Ty, v: &str) -> Option<(String, String, Ty)> {
     match ty {
         Ty::Array(e, n) => Some((v.to_string(), n.unwrap_or(0).to_string(), (**e).clone())),
         Ty::App(Con::Varusa, a) => {
@@ -46,7 +46,7 @@ fn seq_at(fx: &mut Fx, ty: &Ty, v: &str) -> Option<(String, String, Ty)> {
 }
 
 /// `for i in 0..len { body(elem_ptr) }`; `body` may jump to `exit`.
-fn each(fx: &mut Fx, data: &str, len: &str, elem: &Ty, body: &mut dyn FnMut(&mut Fx, &str, &str)) {
+pub(super) fn each(fx: &mut Fx, data: &str, len: &str, elem: &Ty, body: &mut dyn FnMut(&mut Fx, &str, &str)) {
     let et = fx.ll(elem);
     let i = fx.alloca("i64");
     fx.emit(format!("store i64 0, ptr {i}"));
@@ -72,7 +72,7 @@ fn each(fx: &mut Fx, data: &str, len: &str, elem: &Ty, body: &mut dyn FnMut(&mut
     fx.start(&done);
 }
 
-fn push_text(fx: &mut Fx, buf: &str, text: &str) {
+pub(super) fn push_text(fx: &mut Fx, buf: &str, text: &str) {
     if text.is_empty() {
         return;
     }
@@ -88,9 +88,9 @@ fn field_ptrs(fx: &mut Fx, st: &Ty, base: &str, n: usize) -> Vec<String> {
 /// Calls `f(variant index, payload pointer, field types)` for each variant
 /// of the enum at `v`, after a switch on its tag.
 /// Called per variant with its index, payload pointer and field types.
-type VariantFn<'f> = dyn FnMut(&mut Fx, u32, &str, &[Ty]) + 'f;
+pub(super) type VariantFn<'f> = dyn FnMut(&mut Fx, u32, &str, &[Ty]) + 'f;
 
-fn by_variant(fx: &mut Fx, ty: &Ty, v: &str, f: &mut VariantFn) {
+pub(super) fn by_variant(fx: &mut Fx, ty: &Ty, v: &str, f: &mut VariantFn) {
     let et = fx.ll(ty);
     let tp = fx.gep(&et, v, &["0".into(), "0".into()]);
     let tag = fx.load("i32", &tp);
@@ -270,6 +270,7 @@ fn show_into(fx: &mut Fx, ty: &Ty, buf: &str, v: &str) {
             }
         }
         Ty::Fn(..) => push_text(fx, buf, "<pani>"),
+        Ty::App(Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => super::map::show_map(fx, ty, buf, v),
         _ => push_text(fx, buf, "?"),
     }
 }
@@ -421,6 +422,7 @@ fn eq_into(fx: &mut Fx, ty: &Ty, a: &str, b: &str, _res: &str, fail: &str) {
                 }
             });
         }
+        Ty::App(Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => super::map::eq_map(fx, ty, a, b, fail),
         _ => {}
     }
 }
@@ -664,6 +666,7 @@ fn xerox_value(fx: &mut Fx, ty: &Ty, v: &str) -> String {
             let inner = call_xerox(fx, &a[0], &p);
             fx.boxed(&a[0], &inner)
         }
+        Ty::App(Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => super::map::xerox_map(fx, ty, v),
         Ty::Tuple(items) => {
             let ptrs = field_ptrs(fx, ty, v, items.len());
             let vals: Vec<String> = ptrs.iter().zip(items).map(|(p, t)| call_xerox(fx, t, p)).collect();
@@ -705,7 +708,9 @@ fn needs_deep(gen: &Gen, ty: &Ty) -> bool {
             return true;
         }
         match ty {
-            Ty::Str | Ty::Fn(..) | Ty::App(Con::Varusa | Con::Pette, _) => true,
+            Ty::Str
+            | Ty::Fn(..)
+            | Ty::App(Con::Varusa | Con::Pette | Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => true,
             Ty::Tuple(items) => items.iter().any(|t| go(gen, t, depth + 1)),
             Ty::Array(e, _) => go(gen, e, depth + 1),
             Ty::App(Con::Undochu | Con::SareThappu | Con::Adt(_), _) => {
@@ -803,19 +808,27 @@ fn drop_into(fx: &mut Fx, ty: &Ty, v: &str) {
             });
         }
         Ty::App(Con::Pravaham, a) => drop_iter(fx, &a[0], v),
+        Ty::App(Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => super::map::drop_map(fx, ty, v),
         _ => {}
     }
 }
 
 /// Drops an iterator (`%iter`, see native.rs): an owned sequence drops the
-/// items not yet taken and frees its buffer; an adapter runs its own drop.
+/// items not yet taken and frees its buffer; an adapter runs its own drop;
+/// a map iterator drops a map it owns.
 fn drop_iter(fx: &mut Fx, item: &Ty, v: &str) {
     let kp = fx.gep("%iter", v, &["0".into(), "0".into()]);
     let kind = fx.load("i32", &kp);
     let seq = fx.label();
     let adapter = fx.label();
     let end = fx.label();
-    fx.emit(format!("switch i32 {kind}, label %{end} [ i32 1, label %{seq} i32 3, label %{adapter} ]"));
+    let map = fx.label();
+    fx.emit(format!(
+        "switch i32 {kind}, label %{end} [ i32 1, label %{seq} i32 3, label %{adapter} i32 4, label %{map} ]"
+    ));
+    fx.start(&map);
+    super::map::drop_iter(fx, item, v);
+    fx.emit(format!("br label %{end}"));
     fx.start(&seq);
     let op = fx.gep("%iter", v, &["0".into(), "1".into()]);
     let owned = fx.load("i8", &op);
@@ -847,6 +860,13 @@ fn drop_iter(fx: &mut Fx, item: &Ty, v: &str) {
     fx.emit(format!("call void {d}(ptr {state})"));
     fx.emit(format!("br label %{end}"));
     fx.start(&end);
+}
+
+/// `i64 hash(ptr %v, i64 %h)` for a map key type.
+pub(super) fn hash(gen: &mut Gen, name: &str, ty: &Ty) -> String {
+    let mut fx = Fx::new_for_glue(gen);
+    let r = super::map::hash_glue(&mut fx, ty);
+    format!("define internal i64 {name}(ptr %v, i64 %h) {{\nentry:\n{}  ret i64 {r}\n}}\n", fx.code())
 }
 
 // ── sort callbacks and thunks ──────────────────────────────────────────────

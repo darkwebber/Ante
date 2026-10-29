@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r11. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r13. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -177,7 +177,8 @@ Tokens are formed by maximal munch:
 module        ::= item* EOF
 item          ::= import
                 | annotation* 'andhariki'? declaration
-annotation    ::= '@' NAME annotation_arg? NEWLINE
+                | 'naa_risk' ':' NEWLINE INDENT impl_decl+ DEDENT   /* §22.2 */
+annotation    ::= '@' (NAME | 'bayata') annotation_arg? NEWLINE
 annotation_arg ::= STRING | module_path (',' module_path)*
 
 import        ::= module_path 'thechuko' NEWLINE
@@ -487,7 +488,8 @@ Module items shadow prelude names. Standard library modules (`lekkalu`, `file`, 
 - (b) `&varusa[T]`, `&[T; N]` → `&mukka[T]`, and the same for `&maare` versions;
 - (c) `&pette[T]` → `&T`, and the same for `&maare`;
 - (d) `raadhu` → any type;
-- (e) the automatic borrow at call sites (§11.3).
+- (e) the automatic borrow at call sites (§11.3);
+- (f) `*maare T` → `*T` (raw pointers, §22; giving up write access is always allowed).
 
 There are no numeric coercions.
 
@@ -1020,7 +1022,7 @@ Signatures are normative; the descriptions are summaries. Functions marked †in
 | Module | Contents |
 |---|---|
 | `lekkalu` (math) | the §18.2 families; `sqrt sin cos tan exp log abs min max pow floor ceil round`; `PI E INF NAN`; `lekkalu.motham(xs)` (sum) and `a ni, b tho lekkalu.dot()` over `&mukka[amsam32/64]` using a documented blocked order (vectorizable without `@twaraga`); `lekkalu.polchu_amsam(a, b) -> Kramam` (IEEE totalOrder) |
-| `file` | `p ni file.chadhuvu() -> sare_thappu[padham, FileThappu]` ("read"); `p ki, text ni file.raayi() -> sare_thappu[khali, FileThappu]` ("write"); `p ni file.baitlu_chadhuvu()`, `p ki, b ni file.baitlu_raayi()`; `p ni file.undhaa() -> ato_ito`; `p ni file.folderaa() -> ato_ito`; `p ni file.list_cheyyi() -> sare_thappu[varusa[padham], FileThappu]` (sorted names); `p ni file.folder_cheyyi()` (create, including parents); `p ni file.theesey()` (delete a file); `a ni, b tho file.path_kalupu() -> padham`; `p ni file.path_peru()`, `p ni file.path_folder()`, `p ni file.path_extension() -> undochu[padham]` |
+| `file` | `p ni file.chadhuvu() -> sare_thappu[padham, FileThappu]` ("read"); `p ki, text ni file.raayi() -> sare_thappu[khali, FileThappu]` ("write"); `p ni file.baitlu_chadhuvu()`, `p ki, b ni file.baitlu_raayi()`; `p ni file.undhaa() -> ato_ito`; `p ni file.folderaa() -> ato_ito`; `p ni file.list_cheyyi() -> sare_thappu[varusa[padham], FileThappu]` (sorted names); `p ni file.folder_cheyyi()` (create, including parents); `p ni file.theesey()` (delete a file); `a ni, b tho file.path_kalupu() -> padham` (joins with `/` on every system; `b` alone when it starts with `/`); `p ni file.path_peru()`, `p ni file.path_folder()`, `p ni file.path_extension() -> undochu[padham]` |
 | `system` | `system.args() -> varusa[padham]`; `k ni system.env() -> undochu[padham]`; `system.line_chadhuvu() -> undochu[padham]` (stdin); `system.flush()`; `n ni system.vellipo() -> raadhu` (exit); `prog ni, args tho system.nadupu() -> sare_thappu[Phalitham, SystemThappu]` ("run": waits for the program, where `Phalitham{status: ankam32, stdout: padham, stderr: padham}`); `system.os() -> padham`, `system.arch() -> padham` |
 | `memory` | †intrinsic, **`naa_risk` only**: `n ni, a tho memory.allocate() -> *maare khali`, `p ni, n tho, a tho memory.release()`, `p ni, n tho, a tho, m ki memory.reallocate()`, `src ni, dst ki, n tho memory.copy()`. Used to write runtime and collection code in "Ante" itself |
 | `samayam` (time) | `samayam.ippudu() -> Kshanam` (monotonic "now"); `k.gadichindhi() -> Kaalam` ("elapsed"); `Kaalam.millisec()`, `.nanosec()` |
@@ -1074,24 +1076,45 @@ bayata "C" ante:
     malloc(n: aasajeevi ankam64) -> *maare aasajeevi ankam8
 ```
 
-- Parameters have no roles. They bind in order, as unmarked formals.
-- FFI-safe types are integers, floats, `khali`, raw pointers and `@C` records (E1002 otherwise). `*khali` is C's `void *`, used for opaque handles such as `LLVMModuleRef`.
+- Parameters have no roles. They bind in order, as unmarked formals: `n ante 2, 3 kalupu()`.
+- FFI-safe types are integers, floats, `khali`, raw pointers and `@C` records (E1002 otherwise). `*khali` is C's `void *`, used for opaque handles such as `LLVMModuleRef`. `khali` as a result is C's `void`, and `raadhu` declares a function that never returns, such as `exit`.
 - Calling a `bayata` function is an unsafe operation.
+- `"C"` is the only ABI string (E1002 otherwise). A `bayata` function has a fixed parameter list: C's variadic functions, such as `printf`, are reached through a small C wrapper in the package (§22.6).
 
 22.2 **`naa_risk:`** ("my risk"). The following operations are allowed only inside a `naa_risk:` block (E1001):
 - calling `bayata` functions;
 - dereferencing raw pointers;
 - pointer arithmetic (`n ni p.jarugu()`, "shift over");
 - `kolpothu_maarchu` between pointers and integers;
-- `CopyKottochu` implemented on a type with raw-pointer fields.
+- `CopyKottochu` implemented on a type with raw-pointer fields, directly or through its fields. Implementations aren't statements, so they go in a module-level block that holds only implementations:
+
+```ante
+naa_risk:
+    Handle ki CopyKottochu gunam undhi
+```
+
+`@automatic CopyKottochu` on such a type is E1001 too.
+
+`n ni p.jarugu()` moves `p` by `n` whole elements (`n` may be negative); on `*khali` it moves by bytes. It keeps the pointer's `maare`. Converting with `kolpothu_maarchu` between two pointer types, or between a pointer and an integer, keeps the address unchanged (truncated to the integer's width).
 
 The programmer guarantees alignment, validity, lifetime, aliasing and the calling convention. A violation is undefined behavior. Getting a raw pointer is safe: `&x` coerces to `*T` where a raw pointer is expected, and `s.pointer()` works on `mukka`.
 
-22.3 **`@C` records** have the target's C layout, with fields in declaration order.
+22.3 **`@C` records** have the target's C layout, with fields in declaration order. They are non-generic records whose fields are FFI-safe or fixed-size arrays of FFI-safe types (`[T; N]` is C's `T f[N]`); anything else is E1002. They can be passed to and returned from C by value.
 
-22.4 **Exporting.** `@bayata "name"` before a function exports it with the C ABI under that symbol. Its parameters and result must be FFI-safe. Roles are ignored in the C signature. A trap inside an exported function aborts the process, and never unwinds into C.
+22.4 **Exporting.** `@bayata "name"` before a function exports it with the C ABI under that symbol. Its parameters and result must be FFI-safe (E1002). Roles are ignored in the C signature. A trap inside an exported function aborts the process, and never unwinds into C. The name must be a C identifier, unique in the program, and not a symbol the program's runtime already uses (such as `main`); generic functions and methods can't be exported (E1003 for all of these). Exporting doesn't need `naa_risk`, because the function itself is safe "Ante" code: the C caller is the one who must pass valid values.
 
 22.5 Internal types (`padham`, `varusa`, `jodi`, `undochu`, `sare_thappu`, `pani`) must not cross the C ABI directly. Pass pointers and lengths or opaque handles instead.
+
+22.6 **Building with C.** A package names its C code and libraries in `ante.toml`'s `[build]` table, each value a list on one line:
+
+```toml
+[build]
+c_sources = ["c/glue.c"]        # compiled into the program; paths inside the package
+libs = ["sqlite3"]              # linked like `-lsqlite3`
+lib_dirs = ["/opt/homebrew/lib"]  # where to find them (absolute, or inside the package)
+```
+
+The C standard library (and `libm`) is always linked. Bad entries are E0905. The MIR interpreter can't call C or address raw memory, so `antec run` compiles a program natively when it calls a `bayata` function, uses `memory`, `mukka.pointer`, `jarugu` or a pointer conversion, exports a function, or has `c_sources`. The program behaves the same either way (§23.1).
 
 ---
 
@@ -1134,7 +1157,7 @@ torch = false           # Annex T
 python = false          # Annex P
 ```
 
-A lockfile `ante.lock` pins exact versions, and builds with the lockfile are reproducible. An optional `[build]` table sets `stack = "64MB"` (main-thread stack size; the default is at least 8 MB), `task_stack = "1MB"` (the stack of every other task, §24.5.4) and `target = "<llvm triple>"`. Web packages also have a `[web]` table (Annex W.3.2), and packages that import Python a `[python]` table (Annex P.3.2).
+A lockfile `ante.lock` pins exact versions, and builds with the lockfile are reproducible. An optional `[build]` table sets `stack = "64MB"` (main-thread stack size; the default is at least 8 MB), `task_stack = "1MB"` (the stack of every other task, §24.5.4), `target = "<llvm triple>"`, and the C inputs `c_sources`, `libs` and `lib_dirs` (§22.6). Web packages also have a `[web]` table (Annex W.3.2), and packages that import Python a `[python]` table (Annex P.3.2).
 
 23.2.1 **Installation layout.** A toolchain installation is a directory `$ANTE_HOME` (default: the directory above the `antec` binary) with:
 
@@ -3110,11 +3133,28 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | D005 | `padham` counts characters, not bytes; parsing and splitting | stdout matches |
 | D006 | File errors (missing file, a folder); `file.undhaa` on a folder | stdout matches |
 | D007 | `+=` on `padham`, also appending a text to itself and through `&maare` | stdout matches |
+| D008 | Every `jodi` method; a removed key comes back at the end; `==` ignores order; `xerox` keeps it | stdout matches |
+| D009 | `gumpu` and `gajibiji_jodi`, with tuple and record keys | stdout matches |
+| D010 | `file` path helpers (`path_peru`, `path_folder`, `path_extension`, `path_kalupu` joining with `/`) | stdout matches |
+| D011 | `baitlu`, `baitlu_nunchi` and `byte_mukka`, and their `Utf8Thappu` texts | stdout matches |
+| D012 | `lekkalu.motham` and `dot` in the documented blocked order; `polchu_amsam` | stdout matches |
+| D013 | `xs[a nunchi b lopu]` without `&`, borrowed by a call, a method and a loop | stdout matches |
+| D014 | `lekkalu.motham` over integers leaving the type | T01 |
+| D015 | `lekkalu.dot` over pieces of different lengths | T05 |
+| D016 | Map keys compare with the key type's own `Polchochu` and hash with its `HashCheyochu`; `@automatic` ones hash by structure | stdout matches |
 | X001 | Program without `python`/`torch` imports | no CPython or LibTorch linkage |
 | X002 | `modhalu` returns `thappu(e)` | exit 1, stderr `thappu: …` |
 | X003 | `bayata` call outside `naa_risk` | E1001 |
 | X004 | `@bayata "ante_kalupu"` export callable from C | integration |
 | X005 | Async syntax | E1201 |
+| X006 | C library functions: `abs`, `sqrt`, `strlen` on a pointer from `mukka.pointer`, `toupper` | stdout matches |
+| X007 | `@C` records by value to C and back from an export, with narrow integers and `amsam32` | stdout matches (integration) |
+| X008 | `memory.allocate`, writes through `*maare`, `jarugu`, pointer ↔ integer inside `naa_risk` | stdout matches |
+| X009 | `jarugu` outside `naa_risk` | E1001 |
+| X010 | `CopyKottochu` on a type with a raw pointer, outside a `naa_risk:` block | E1001 |
+| X011 | `@C` record with a `padham` field | E1002 |
+| X012 | Exports with a bad C name, a non-FFI-safe parameter, and generics | E1003, E1002, E1003 |
+| X013 | `bayata "Rust"` | E1002 |
 | TT001 | Appendix D.6 training step, built without `python` | links LibTorch only (torch level) |
 | TT002 | `x[_, -1]` on a 2-D tensor | last column (torch level) |
 | TT003 | Shape-mismatched matmul | T05; `torch.choosi` variant returns `thappu` (torch level) |
@@ -3454,6 +3494,8 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r13 | `antec` 0.1.1 | M11, the C boundary: `bayata "C"` calls bind unmarked arguments in order, aren't variadic, and `"C"` is the only ABI (§22.1); `jarugu` steps by elements and keeps `maare`, and a module-level `naa_risk:` block holds `CopyKottochu` implementations for types with raw pointers (§22.2); `@C` record fields must be FFI-safe (§22.3); export rules and E1003 (§22.4); `[build] c_sources`, `libs` and `lib_dirs`, and `antec run` builds C-using programs natively (§22.6); seed cases X006–X013. |
+| r12 | `antec` 0.1.1 | M10, the standard library in every backend: `jodi`, `gajibiji_jodi` and `gumpu` find keys with the key type's own `Polchochu` and `HashCheyochu`, `@automatic` ones hashing by structure (§21.2); `file.path_kalupu` joins with `/` on every system (§21.3); `*maare T` → `*T` (§9.4.2f), so `memory.copy` can read what `memory.allocate` gave; seed cases D008–D016. |
 | r11 | `antec` 0.1.1 | Audit after M9: a callee may be a reference to a `pani` (§11.1); a condition is its own temporary scope (§15.5); seed cases O032–O034, G026–G028. |
 | r10 | `antec` 0.1.1 | Closures settled while implementing M9 (§10.7): no mutable captures (E0611), no raw-pointer captures and no `&maare` moved into a `theesuko` closure (E0612); `pani` isn't `CopyKottochu` but a place is shared, not moved, with captures dropped after the last handle (§10.7.4); every `pani` is `Pampochu` and `Panchukovochu`. `NunchiRavochu`'s method is `daani_nunchi` (`nunchi` is a keyword, so the method couldn't be written). G007 is E0606; seed cases G013–G025. |
 | r9 | `antec` 0.1.1 | Annex P rewritten in detail (P.1–P.22): the Python environment and `antec python`, imports and package-local Python, `edhaina` (now a type keyword, §4.4.2), bindings from stubs, calls, attributes, indexing, operators, conversions, arrays and buffers, errors with learner hints, iteration, context managers, callbacks, async Python, threads and the GIL, output and processes, bundling, notes for numpy, pandas, matplotlib, OpenCV, scipy, scikit-learn, OpenAI, Hugging Face and PyTorch, security; traps T13 and T14; E1501–E1508, W1501–W1502; interactive use (§23.7, `antec repl`, Jupyter); seed cases PY001–PY030; roadmap M22 detailed and M24 added; learning stages L0 and L6–L9. |
