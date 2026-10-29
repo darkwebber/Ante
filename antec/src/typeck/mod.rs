@@ -100,6 +100,8 @@ pub struct FnSig {
     pub span: Span,
     /// For standard methods, the `gunam <owner>_panulu` block they come from.
     pub owner: Option<String>,
+    /// `@bayata "name"`: the C symbol this function is exported as (§22.4).
+    pub export: Option<(String, Span)>,
 }
 
 #[derive(Clone, Debug)]
@@ -154,6 +156,8 @@ pub struct Impl {
     pub methods: HashMap<String, FnId>,
     pub file: FileId,
     pub span: Span,
+    /// Written inside `naa_risk:` (§22.2).
+    pub naa_risk: bool,
 }
 
 /// The outermost shape of a type, for method tables (§13.4).
@@ -406,6 +410,7 @@ impl<'a> Collector<'a> {
             file,
             span: sig.name.span,
             owner: None,
+            export: None,
         }
     }
 
@@ -582,6 +587,14 @@ impl<'a> Collector<'a> {
                         item.public,
                         module,
                     );
+                    let mut sig = sig;
+                    sig.export = item.annotations.iter().find(|a| a.name.name == "bayata").map(|a| {
+                        let name = match &a.arg {
+                            AnnotationArg::Str(s) => s.clone(),
+                            _ => String::new(),
+                        };
+                        (name, a.span)
+                    });
                     let id = self.add_fn(sig);
                     self.globals.fn_of_def.insert(def, id);
                 }
@@ -725,7 +738,15 @@ impl<'a> Collector<'a> {
             let id = self.add_fn(sig);
             methods.insert(f.sig.name.name.clone(), id);
         }
-        self.globals.impls.push(Impl { trait_ref, self_ty, generics, methods, file, span });
+        self.globals.impls.push(Impl {
+            trait_ref,
+            self_ty,
+            generics,
+            methods,
+            file,
+            span,
+            naa_risk: i.naa_risk,
+        });
     }
 }
 

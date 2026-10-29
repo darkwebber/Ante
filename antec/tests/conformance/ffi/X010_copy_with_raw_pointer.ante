@@ -1,0 +1,18 @@
+# category: compile-fail
+# expect-error: E1001 @ 15:1
+# level: core
+# `CopyKottochu` on a type holding a raw pointer is the programmer's promise,
+# so it goes inside a module-level `naa_risk:` block (§22.2).
+rakam Handle ante:
+    p: *maare khali
+
+rakam Vouched ante:
+    p: *maare khali
+
+naa_risk:
+    Vouched ki CopyKottochu gunam undhi
+
+Handle ki CopyKottochu gunam undhi
+
+modhalu() -> khali ante:
+    icchey

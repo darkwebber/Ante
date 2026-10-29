@@ -220,8 +220,8 @@ pub enum Agg {
     Tuple,
     Array,
     Varusa,
-    /// Operands alternate key, value.
-    Jodi,
+    /// Operands alternate key, value; the map type (keys are hashed).
+    Jodi(Ty),
     Adt(AdtRef, u32),
     Pette,
     Closure(BodyId),

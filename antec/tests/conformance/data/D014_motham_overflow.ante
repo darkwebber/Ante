@@ -1,0 +1,9 @@
+# category: runtime-trap
+# expect-trap: T01 @ 9:5
+# level: core
+# `lekkalu.motham` over integers traps when the sum leaves the type.
+lekkalu thechuko
+
+modhalu() -> khali ante:
+    zs: varusa[ankam8] ante [100, 28]
+    zs[0 nunchi 2 lopu] ni lekkalu.motham() |> choopinchu()

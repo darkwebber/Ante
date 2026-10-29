@@ -1,0 +1,17 @@
+bayata "C" ante:
+    padhi_saarlu(a: ankam32, b: ankam32) -> ankam32
+    pilupu() -> khali
+
+@bayata "ante_kalupu"
+kalupu(a: ankam32, b: ankam32) -> ankam32 ante:
+    (a + b) icchey
+
+@bayata "palakarinchu"
+palakarinchu() -> khali ante:
+    "C nunchi namaskaram!" ni choopinchu()
+
+modhalu() -> khali ante:
+    naa_risk:
+        r ante 2, 3 padhi_saarlu()
+        r ni choopinchu()
+        pilupu()

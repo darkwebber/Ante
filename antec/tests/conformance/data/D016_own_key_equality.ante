@@ -1,0 +1,75 @@
+# category: run-pass
+# expect-stdout: undhi(1)
+# expect-stdout: 1
+# expect-stdout: undhi(2)
+# expect-stdout: 1
+# expect-stdout: avunu
+# expect-stdout: kaadhu
+# expect-stdout: avunu
+# expect-stdout: avunu
+# expect-stdout: kaadhu
+# expect-stdout: avunu
+# expect-stdout: 2
+# expect-stdout: 10398250491926609917
+# expect-stdout: avunu
+# level: core
+# Map keys use the key type's own `Polchochu` and `HashCheyochu`; `Hasher` gives the same value in every backend.
+rakam Peru ante:
+    text: padham
+
+Peru ki Polchochu gunam undhi:
+    okateyna(naa: &idhi, inkokati: &idhi ni) -> ato_ito ante:
+        naa.text.enni() == inkokati.text.enni() icchey
+
+Peru ki HashCheyochu gunam undhi:
+    hash_cheyyi(naa: &idhi, h: &maare Hasher ni) -> khali ante:
+        naa.text.enni() ni h.kalupu()
+
+@automatic Polchochu, HashCheyochu, Choopinchochu
+edho_okati Aakaaram ante:
+    Gundram(ankam)
+    Chathurasram(ankam, ankam)
+
+rakam Anni ante:
+    n: ankam
+
+Anni ki Polchochu gunam undhi:
+    okateyna(naa: &idhi, inkokati: &idhi ni) -> ato_ito ante:
+        naa.n == inkokati.n icchey
+
+Anni ki HashCheyochu gunam undhi:
+    hash_cheyyi(naa: &idhi, h: &maare Hasher ni) -> khali ante:
+        naa.n ni h.kalupu()
+        "telugu" ni h.kalupu()
+        'అ' ni h.kalupu()
+        avunu ni h.kalupu()
+        (1, "x") ni h.kalupu()
+        [1, 2, 3] ni h.kalupu()
+        Aakaaram.Chathurasram(3, 4) ni h.kalupu()
+        Peru{text: "abc"} ni h.kalupu()
+        x: aasajeevi ankam8 ante 200
+        x ni h.kalupu()
+        y: ankam8 ante -5
+        y ni h.kalupu()
+        h.chaalu() ni choopinchu()
+
+modhalu() -> khali ante:
+    maare m: jodi[Peru, ankam] ante {}
+    Peru{text: "ab"} ni, 1 tho m.cherchu()
+    Peru{text: "cd"} ni, 2 tho m.cherchu() |> choopinchu()
+    m.enni() ni choopinchu()
+    k ante Peru{text: "zz"}
+    &k ni m.thechu() |> choopinchu()
+    lit: jodi[Peru, ankam] ante {Peru{text: "x"}: 1, Peru{text: "y"}: 2}
+    lit.enni() ni choopinchu()
+    maare g: gumpu[jatha[Peru, ankam]] ante gumpu.kotthadhi()
+    (Peru{text: "aa"}, 1) ni g.cherchu() |> choopinchu()
+    (Peru{text: "bb"}, 1) ni g.cherchu() |> choopinchu()
+    (Peru{text: "bb"}, 2) ni g.cherchu() |> choopinchu()
+    maare a: gumpu[Aakaaram] ante gumpu.kotthadhi()
+    Aakaaram.Gundram(2) ni a.cherchu() |> choopinchu()
+    Aakaaram.Gundram(2) ni a.cherchu() |> choopinchu()
+    Aakaaram.Chathurasram(2, 2) ni a.cherchu() |> choopinchu()
+    a.enni() ni choopinchu()
+    maare an: gumpu[Anni] ante gumpu.kotthadhi()
+    Anni{n: 7} ni an.cherchu() |> choopinchu()

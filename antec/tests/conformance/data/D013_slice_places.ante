@@ -1,0 +1,14 @@
+# category: run-pass
+# expect-stdout: [5, 6]
+# expect-stdout: 3
+# expect-stdout: bc
+# level: core
+# `xs[a nunchi b lopu]` without `&`: borrowed by a call, a method or a loop.
+modhalu() -> khali ante:
+    w ante [5, 6, 7, 8]
+    w[0 nunchi 2 lopu] ni choopinchu()
+    w[1 nunchi 3 varaku].enni() ni choopinchu()
+    xs ante ["a", "b", "c"]
+    xs[1 nunchi 3 lopu] lo okko x ki:
+        x ni cheppu()
+    "" ni choopinchu()

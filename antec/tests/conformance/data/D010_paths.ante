@@ -1,0 +1,33 @@
+# category: run-pass
+# expect-stdout: [a/b.txt] [b.txt] [a] undhi(txt)
+# expect-stdout: [a/b/] [b] [a] ledhu
+# expect-stdout: [/] [] [] ledhu
+# expect-stdout: [] [] [] ledhu
+# expect-stdout: [.] [] [] ledhu
+# expect-stdout: [..] [] [] ledhu
+# expect-stdout: [a/..] [] [a] ledhu
+# expect-stdout: [./a] [a] [.] ledhu
+# expect-stdout: [/./a] [a] [/] ledhu
+# expect-stdout: [a//b] [b] [a] ledhu
+# expect-stdout: [/a] [a] [/] ledhu
+# expect-stdout: [foo.tar.gz] [foo.tar.gz] [] undhi(gz)
+# expect-stdout: [.bashrc] [.bashrc] [] ledhu
+# expect-stdout: [foo.] [foo.] [] undhi()
+# expect-stdout: [a/.b.c] [.b.c] [a] undhi(c)
+# expect-stdout: [x/.] [x] [] ledhu
+# expect-stdout: /abs x/a a/a
+# level: core
+# `file` path helpers follow the same rules in every backend.
+file thechuko
+
+choopu(p: padham ni) -> khali ante:
+    f"[{p}] [{&p ni file.path_peru()}] [{&p ni file.path_folder()}] {&p ni file.path_extension()}" ni choopinchu()
+
+modhalu() -> khali ante:
+    paths ante ["a/b.txt", "a/b/", "/", "", ".", "..", "a/..", "./a", "/./a", "a//b", "/a", "foo.tar.gz", ".bashrc", "foo.", "a/.b.c", "x/."]
+    paths.anni_theesuko() lo okko p ki:
+        p ni choopu()
+    a ante "a"
+    b ante "/abs"
+    d ante "x/"
+    f"{&a ni, &b tho file.path_kalupu()} {&d ni, &a tho file.path_kalupu()} {&a ni, &a tho file.path_kalupu()}" ni choopinchu()

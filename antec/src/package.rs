@@ -73,6 +73,11 @@ pub struct BuildSettings {
     pub stack: u64,
     /// LLVM target triple; `None` builds for this machine.
     pub target: Option<String>,
+    /// C files compiled into the program (§22.6), resolved against the package.
+    pub c_sources: Vec<PathBuf>,
+    /// Libraries to link (`-l`), and folders to find them in (`-L`).
+    pub libs: Vec<String>,
+    pub lib_dirs: Vec<PathBuf>,
 }
 
 /// The smallest (and default) `[build] stack`: 8 MB.
@@ -80,7 +85,13 @@ pub const MIN_STACK: u64 = 8 << 20;
 
 impl Default for BuildSettings {
     fn default() -> Self {
-        BuildSettings { stack: MIN_STACK, target: None }
+        BuildSettings {
+            stack: MIN_STACK,
+            target: None,
+            c_sources: Vec::new(),
+            libs: Vec::new(),
+            lib_dirs: Vec::new(),
+        }
     }
 }
 
@@ -100,8 +111,9 @@ pub fn parse_size(text: &str) -> Option<u64> {
     n.checked_mul(mul)
 }
 
-/// Reads `[build]`, reporting bad values (E0905) at their line.
-fn build_settings(text: &str) -> (BuildSettings, Vec<Diagnostic>) {
+/// Reads `[build]`, reporting bad values (E0905) at their line. Paths are
+/// relative to the package `root`.
+fn build_settings(text: &str, root: &Path) -> (BuildSettings, Vec<Diagnostic>) {
     let mut settings = BuildSettings::default();
     let mut diags = Vec::new();
     let at = |key: &str| Span::point(manifest_offset(text, "build", key).unwrap_or(0));
@@ -134,7 +146,76 @@ fn build_settings(text: &str) -> (BuildSettings, Vec<Diagnostic>) {
             ));
         }
     }
+    let list = |key: &str, diags: &mut Vec<Diagnostic>| -> Vec<String> {
+        let Some(raw) = manifest_raw(text, "build", key) else { return Vec::new() };
+        match parse_string_list(&raw) {
+            Some(items) => items,
+            None => {
+                diags.push(Diagnostic::error(
+                    "E0905",
+                    at(key),
+                    format!("`{key} = {raw}` ardham kaaledhu. `[\"a\", \"b\"]` laaga oke line lo raayandi"),
+                ));
+                Vec::new()
+            }
+        }
+    };
+    let inside = |p: &str| {
+        let path = Path::new(p);
+        !p.is_empty()
+            && path.is_relative()
+            && path.components().all(|c| matches!(c, std::path::Component::Normal(_)))
+    };
+    for c in list("c_sources", &mut diags) {
+        if !inside(&c) || !c.ends_with(".c") {
+            diags.push(Diagnostic::error(
+                "E0905",
+                at("c_sources"),
+                format!("`{c}`: package lopala unna `.c` file kavali (`..` leka `/` tho start avvakoodadhu)"),
+            ));
+        } else if !root.join(&c).is_file() {
+            diags.push(Diagnostic::error("E0905", at("c_sources"), format!("`{c}` file dorakaledhu")));
+        } else {
+            settings.c_sources.push(root.join(&c));
+        }
+    }
+    for l in list("libs", &mut diags) {
+        let ok = !l.is_empty()
+            && !l.starts_with('-')
+            && l.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '+'));
+        if ok {
+            settings.libs.push(l);
+        } else {
+            diags.push(Diagnostic::error(
+                "E0905",
+                at("libs"),
+                format!("`{l}` library peru kaadhu. `\"sqlite3\"` laaga ivvandi (`-l` lekunda)"),
+            ));
+        }
+    }
+    for d in list("lib_dirs", &mut diags) {
+        let path = Path::new(&d);
+        settings.lib_dirs.push(if path.is_absolute() { path.to_path_buf() } else { root.join(path) });
+    }
     (settings, diags)
+}
+
+/// `["a", "b"]` on one line, as written in `ante.toml`.
+fn parse_string_list(raw: &str) -> Option<Vec<String>> {
+    let inner = raw.trim().strip_prefix('[')?.strip_suffix(']')?;
+    let mut out = Vec::new();
+    for part in inner.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let item = part.strip_prefix('"')?.strip_suffix('"')?;
+        if item.contains('"') || item.contains('\\') {
+            return None;
+        }
+        out.push(item.to_string());
+    }
+    Some(out)
 }
 
 /// The module name for a lone file: its file stem, if that's a valid name.
@@ -235,12 +316,25 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
             None => backend_errors.push("`modhalu()` function ledhu, native program build cheyyalem".into()),
             Some(fid) => match crate::codegen::emit_llvm(&program, &tc, &sources, fid, build.stack) {
                 Err(errs) => backend_errors = errs,
-                Ok(ir) => match &action {
-                    Action::Build { output, release } => match link_native(&ir, output, &build, *release) {
-                        Ok(()) => built = Some(output.clone()),
-                        Err(e) => backend_errors.push(e),
-                    },
-                    _ => mir = Some(ir),
+                Ok(emitted) => match &action {
+                    Action::Build { output, release } => {
+                        match link_native(&emitted, output, &build, *release) {
+                            Ok(()) => built = Some(output.clone()),
+                            Err(e) => backend_errors.push(e),
+                        }
+                    }
+                    _ => {
+                        let mut text = emitted.ir;
+                        if let Some(glue) = emitted.glue {
+                            text.push_str("\n; ── FFI glue (C) ──\n");
+                            for line in glue.lines() {
+                                text.push_str("; ");
+                                text.push_str(line);
+                                text.push('\n');
+                            }
+                        }
+                        mir = Some(text)
+                    }
                 },
             },
         },
@@ -251,6 +345,16 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
             let text: Vec<String> = program.bodies.iter().map(|b| b.render(&names, &ty_name)).collect();
             mir = Some(text.join("\n"));
         }
+        Action::Run { stream, args } if needs_native(&program, &tc.globals, &build) => match entry_fn() {
+            None => backend_errors.push("`modhalu()` function ledhu, program run cheyyalem".into()),
+            Some(fid) => match crate::codegen::emit_llvm(&program, &tc, &sources, fid, build.stack) {
+                Err(errs) => backend_errors = errs,
+                Ok(emitted) => match run_native(&emitted, &build, stream, &args) {
+                    Ok(out) => run = Some(out),
+                    Err(e) => backend_errors.push(e),
+                },
+            },
+        },
         Action::Run { stream, args } => {
             let module = match &entry {
                 Some(e) => resolution.module_by_name.get(e).copied(),
@@ -281,6 +385,64 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
     checked
 }
 
+/// Whether the program reaches outside what the interpreter can model: C
+/// functions, raw memory, or C code of its own. `antec run` builds those
+/// natively (§22.6); the semantics are the same either way.
+fn needs_native(program: &crate::mir::Program, g: &crate::typeck::Globals, build: &BuildSettings) -> bool {
+    use crate::mir::{Callee, Term};
+    use crate::typeck::FnOrigin;
+    if !build.c_sources.is_empty() || g.fns.iter().any(|f| f.export.is_some()) {
+        return true;
+    }
+    program.bodies.iter().flat_map(|b| &b.blocks).any(|block| match &block.term {
+        Term::Call { callee: Callee::Fn(fid, tys), .. } => {
+            let sig = &g.fns[*fid];
+            match sig.origin {
+                FnOrigin::Foreign | FnOrigin::StdUnsafe => true,
+                FnOrigin::Std => match (sig.owner.as_deref(), sig.name.as_str()) {
+                    (Some("mukka"), "pointer") | (Some("pointer"), "jarugu") => true,
+                    (None, "kolpothu_maarchu") => tys.iter().any(|t| matches!(t, crate::types::Ty::Ptr(..))),
+                    _ => false,
+                },
+                _ => false,
+            }
+        }
+        _ => false,
+    })
+}
+
+/// Builds the program in a private folder and runs it there.
+fn run_native(
+    emitted: &crate::codegen::Emitted,
+    build: &BuildSettings,
+    stream: bool,
+    args: &[String],
+) -> Result<RunOutput, String> {
+    let dir = private_temp_dir()?;
+    let result = (|| {
+        let exe = dir.join(if cfg!(windows) { "program.exe" } else { "program" });
+        link_native(emitted, &exe, build, false)?;
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.args(args);
+        let (stdout, stderr, status) = if stream {
+            let status = cmd.status().map_err(|e| format!("program start avvaledhu: {e}"))?;
+            (String::new(), String::new(), status)
+        } else {
+            let out = cmd.output().map_err(|e| format!("program start avvaledhu: {e}"))?;
+            (
+                String::from_utf8_lossy(&out.stdout).into_owned(),
+                String::from_utf8_lossy(&out.stderr).into_owned(),
+                out.status,
+            )
+        };
+        // A signal (a crash in C code) has no exit code; report it like a trap.
+        let exit_code = status.code().unwrap_or(101);
+        Ok(RunOutput { stdout, stderr, exit_code, trap: None })
+    })();
+    let _ = fs::remove_dir_all(&dir);
+    result
+}
+
 fn finish(
     sources: Vec<SourceFile>,
     mut diagnostics: Vec<(FileId, Diagnostic)>,
@@ -294,7 +456,12 @@ fn finish(
 /// Compiles LLVM IR plus the runtime with the C toolchain (`$ANTE_CC`, else
 /// `clang`). `release` turns on optimization (§7.4); the runtime itself is
 /// always optimized, and is compiled once and cached.
-pub fn link_native(ir: &str, output: &Path, build: &BuildSettings, release: bool) -> Result<(), String> {
+pub fn link_native(
+    emitted: &crate::codegen::Emitted,
+    output: &Path,
+    build: &BuildSettings,
+    release: bool,
+) -> Result<(), String> {
     if output.is_dir() {
         return Err(format!("`{}` oka folder. `-o` ki file peru ivvandi", output.display()));
     }
@@ -308,8 +475,26 @@ pub fn link_native(ir: &str, output: &Path, build: &BuildSettings, release: bool
     let dir = private_temp_dir()?;
     let result = (|| {
         let ll = dir.join("program.ll");
-        fs::write(&ll, ir).map_err(|e| e.to_string())?;
+        fs::write(&ll, &emitted.ir).map_err(|e| e.to_string())?;
         let runtime = runtime_object(&cc, build.target.as_deref(), &dir)?;
+        // The FFI glue (§22) declares C functions its own way, so clang's
+        // idea of library builtins must stay out of it.
+        let glue = match &emitted.glue {
+            Some(text) => {
+                let c = dir.join("ffi_glue.c");
+                fs::write(&c, text).map_err(|e| e.to_string())?;
+                let o = dir.join("ffi_glue.o");
+                let mut cmd = std::process::Command::new(&cc);
+                cmd.args(["-c", "-O2", "-w", "-fno-builtin"]);
+                if let Some(t) = &build.target {
+                    cmd.arg(format!("--target={t}"));
+                }
+                cmd.arg("-o").arg(&o).arg(&c);
+                run_cc(&cc, &mut cmd)?;
+                Some(o)
+            }
+            None => None,
+        };
         let mut cmd = std::process::Command::new(&cc);
         cmd.arg(if release { "-O2" } else { "-O0" }).arg("-w").arg("-Wno-override-module");
         if !release {
@@ -321,6 +506,14 @@ pub fn link_native(ir: &str, output: &Path, build: &BuildSettings, release: bool
             cmd.arg(format!("--target={t}"));
         }
         cmd.arg("-o").arg(output).arg(&ll).arg(&runtime);
+        cmd.args(&glue);
+        cmd.args(&build.c_sources);
+        for d in &build.lib_dirs {
+            cmd.arg("-L").arg(d);
+        }
+        for l in &build.libs {
+            cmd.arg(format!("-l{l}"));
+        }
         if !cfg!(windows) {
             cmd.arg("-lm").arg("-pthread");
         }
@@ -540,6 +733,11 @@ fn manifest_offset(text: &str, section: &str, key: &str) -> Option<usize> {
 /// Reads `key = "value"` from a `[section]` of a TOML manifest. Only the few
 /// keys `antec` needs are read, so this stays a tiny line-based reader.
 pub fn manifest_value(text: &str, section: &str, key: &str) -> Option<String> {
+    manifest_raw(text, section, key).map(|v| v.trim_matches('"').to_string())
+}
+
+/// The text after `key =`, unparsed.
+fn manifest_raw(text: &str, section: &str, key: &str) -> Option<String> {
     let mut current = String::new();
     for line in text.lines() {
         let line = line.split('#').next().unwrap_or("").trim();
@@ -548,7 +746,7 @@ pub fn manifest_value(text: &str, section: &str, key: &str) -> Option<String> {
         } else if current == section {
             if let Some((k, v)) = line.split_once('=') {
                 if k.trim() == key {
-                    return Some(v.trim().trim_matches('"').to_string());
+                    return Some(v.trim().to_string());
                 }
             }
         }
@@ -596,7 +794,7 @@ fn load_package(root: &Path) -> io::Result<Loaded> {
     let mut diagnostics: Vec<(FileId, Diagnostic)> = Vec::new();
 
     let kind = manifest_value(&manifest_text, "package", "kind").unwrap_or_else(|| "bin".into());
-    let (build, build_diags) = build_settings(&manifest_text);
+    let (build, build_diags) = build_settings(&manifest_text, root);
     diagnostics.extend(build_diags.into_iter().map(|d| (0, d)));
     if kind != "bin" && kind != "lib" {
         diagnostics.push((

@@ -157,6 +157,79 @@ fn push_lit(fx: &mut Fx, buf: &str, text: &str) {
     fx.emit(format!("call void @ante_buf_push(ptr {buf}, ptr {p}, i64 {n})"));
 }
 
+/// `sare(..)` or `thappu(E{text})` from a runtime call that returns `i32`
+/// 1 on success. `call` gets the error-text slot and emits the call; `ok`
+/// builds the success value.
+fn c_result(
+    fx: &mut Fx,
+    ret: &Ty,
+    call: &mut dyn FnMut(&mut Fx, &str) -> String,
+    ok: &mut dyn FnMut(&mut Fx) -> String,
+) -> String {
+    let err = fx.alloca("%str");
+    let flag = call(fx, &err);
+    let good = fx.r();
+    fx.emit(format!("{good} = icmp ne i32 {flag}, 0"));
+    let ok_ty = opt_inner(ret);
+    let err_ty = match ret {
+        Ty::App(Con::SareThappu, a) => a[1].clone(),
+        _ => Ty::Unit,
+    };
+    let lt = fx.ll(ret);
+    let slot = fx.alloca(&lt);
+    let (yes, no, done) = (fx.label(), fx.label(), fx.label());
+    fx.emit(format!("br i1 {good}, label %{yes}, label %{no}"));
+    fx.start(&yes);
+    let x = ok(fx);
+    let e = fx.build_enum(ret, 0, &[x], std::slice::from_ref(&ok_ty));
+    fx.emit(format!("store {lt} {e}, ptr {slot}"));
+    fx.emit(format!("br label %{done}"));
+    fx.start(&no);
+    let m = fx.load("%str", &err);
+    let et = fx.ll(&err_ty);
+    let rec = fx.r();
+    fx.emit(format!("{rec} = insertvalue {et} undef, %str {m}, 0"));
+    let e = fx.build_enum(ret, 1, &[rec], std::slice::from_ref(&err_ty));
+    fx.emit(format!("store {lt} {e}, ptr {slot}"));
+    fx.emit(format!("br label %{done}"));
+    fx.start(&done);
+    fx.load(&lt, &slot)
+}
+
+/// Calls a runtime function `@f(args…, ptr out, ptr err)` filling `out` of
+/// LLVM type `out_lt` on success, as a `sare_thappu`.
+fn c_result_out(fx: &mut Fx, ret: &Ty, f: &str, args: &str, out_lt: &str) -> String {
+    let out = fx.alloca(out_lt);
+    let (f, args, o) = (f.to_string(), args.to_string(), out.clone());
+    let lt = out_lt.to_string();
+    c_result(
+        fx,
+        ret,
+        &mut |fx, err| {
+            let r = fx.r();
+            let sep = if args.is_empty() { "" } else { ", " };
+            fx.emit(format!("{r} = call i32 @{f}({args}{sep}ptr {o}, ptr {err})"));
+            r
+        },
+        &mut |fx| fx.load(&lt, &out),
+    )
+}
+
+/// Like `c_result_out` for calls with no success value (`khali`).
+fn c_result_unit(fx: &mut Fx, ret: &Ty, f: &str, args: &str) -> String {
+    let (f, args) = (f.to_string(), args.to_string());
+    c_result(
+        fx,
+        ret,
+        &mut |fx, err| {
+            let r = fx.r();
+            fx.emit(format!("{r} = call i32 @{f}({args}, ptr {err})"));
+            r
+        },
+        &mut |_| "zeroinitializer".into(),
+    )
+}
+
 // ── intrinsics ─────────────────────────────────────────────────────────────
 
 pub(super) fn intrinsic(
@@ -282,7 +355,8 @@ fn materialize(fx: &mut Fx, v: &Value, ty: &Ty) -> String {
 //
 // `%iter = { i32 kind, i8 done, i64 a, i64 b, ptr p, i64 len }`:
 // kind 0 range (a = next, b = last), kind 1 sequence (p, len, a = position),
-// kind 2 text characters (p, len, a = byte position).
+// kind 2 text characters (p, len, a = byte position), kind 3 adapters,
+// kind 4 maps (map.rs).
 
 fn make_iter(fx: &mut Fx, kind: u32, done: &str, a: &str, b: &str, p: &str, len: &str) -> String {
     let parts = [
@@ -351,6 +425,16 @@ fn into_iter(fx: &mut Fx, v: &str, ty: &Ty, item: &Ty) -> String {
                     let _ = e;
                     make_iter(fx, 1, "1", "0", "0", &p, &n.unwrap_or(0).to_string())
                 }
+                Ty::App(Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => {
+                    // An owned map moves to the heap; the iterator frees it.
+                    let p = fx.r();
+                    fx.emit(format!("{p} = call ptr @ante_alloc(i64 48)"));
+                    fx.emit(format!("store %map {v}, ptr {p}"));
+                    make_iter(fx, 4, "1", "0", "0", &p, "0")
+                }
+                Ty::Ref(_, inner) if super::map::key_val(inner).is_some() => {
+                    make_iter(fx, 4, "0", "0", "0", v, "0")
+                }
                 _ => match user_iterator(fx, ty, item) {
                     Some(_) => {
                         let ptr = match ty {
@@ -397,9 +481,12 @@ fn iter_next(fx: &mut Fx, it: &str, item: &Ty, opt: &Ty) -> String {
     let k1 = fx.label();
     let k2 = fx.label();
     let k3 = fx.label();
+    let k4 = fx.label();
     fx.emit(format!(
-        "switch i32 {kind}, label %{done} [ i32 0, label %{k0} i32 1, label %{k1} i32 2, label %{k2} i32 3, label %{k3} ]"
+        "switch i32 {kind}, label %{done} [ i32 0, label %{k0} i32 1, label %{k1} i32 2, label %{k2} i32 3, label %{k3} i32 4, label %{k4} ]"
     ));
+    fx.start(&k4);
+    super::map::iter_next(fx, it, item, opt, &out, &done);
     // Adapters: a heap state whose first field is its `next` function.
     fx.start(&k3);
     {
@@ -828,6 +915,13 @@ pub(super) fn trait_call(
             (fx.load("%str", &buf), Ty::Str)
         }
         "Sardhukochu.sardhu" => ("zeroinitializer".into(), Ty::Unit),
+        "HashCheyochu.hash_cheyyi" => {
+            let p = fx.operand(&args[0], &r);
+            let hasher = fx.operand_ty(&args[1]).unwrap_or(Ty::Unit);
+            let hp = fx.operand(&args[1], &hasher);
+            super::map::hasher_add(fx, &hp, &ty, &p, true);
+            ("zeroinitializer".into(), Ty::Unit)
+        }
         "Kalupochu.kalupu"
         | "Theeseyochu.theesey"
         | "Guninchochu.guninchu"
@@ -1064,6 +1158,24 @@ pub(super) fn std_call(
             fx.emit(format!("call void @ante_str_split(ptr {out}, ptr {}, ptr {})", v(0), v(1)));
             (fx.load("%vec", &out), ret)
         }
+        "padham.baitlu" => {
+            let dp = fx.gep("%str", &v(0), &["0".into(), "0".into()]);
+            let d = fx.load("ptr", &dp);
+            let lp = fx.gep("%str", &v(0), &["0".into(), "1".into()]);
+            let n = fx.load("i64", &lp);
+            (fx.slice_value(&d, &n), ret)
+        }
+        "padham.baitlu_nunchi" => {
+            let d = fx.r();
+            fx.emit(format!("{d} = extractvalue %slice {}, 0", v(0)));
+            let n = fx.r();
+            fx.emit(format!("{n} = extractvalue %slice {}, 1", v(0)));
+            (c_result_out(fx, &ret, "ante_str_from_bytes", &format!("ptr {d}, i64 {n}"), "%str"), ret)
+        }
+        "padham.byte_mukka" => {
+            let args = format!("ptr {}, i64 {}, i64 {}", v(0), v(1), v(2));
+            (c_result_out(fx, &ret, "ante_str_byte_part", &args, "%str"), ret)
+        }
         "padham.kathirinchu" => {
             let out = fx.alloca("%str");
             fx.emit(format!("call void @ante_str_trim(ptr {out}, ptr {})", v(0)));
@@ -1137,6 +1249,24 @@ pub(super) fn std_call(
 
         // ── varusa and mukka ──
         "varusa.kotthadhi" => ("zeroinitializer".into(), ret),
+        // ── raw pointers (§22.2) ──
+        "mukka.pointer" => {
+            let Some((d, _, _)) = seq_val(fx, &v(0), &t(0)) else { return unsupported(fx, &key, dest) };
+            (d, ret)
+        }
+        "pointer.jarugu" => {
+            // Steps by whole elements; `*khali` steps by bytes, like C compilers do.
+            let elem = match &t(0) {
+                Ty::Ptr(_, e) => (**e).clone(),
+                _ => Ty::Unit,
+            };
+            let size = fx.gen.size_align(&elem).0.max(1);
+            let off = fx.r();
+            fx.emit(format!("{off} = mul i64 {}, {size}", v(1)));
+            let r = fx.r();
+            fx.emit(format!("{r} = getelementptr i8, ptr {}, i64 {off}", v(0)));
+            (r, ret)
+        }
         "varusa.enni" | "mukka.enni" | "varusa.khaaliyaa" | "mukka.khaaliyaa" => {
             let Some((_, n, _)) = seq_val(fx, &v(0), &t(0)) else { return unsupported(fx, &key, dest) };
             if key.ends_with("enni") {
@@ -1209,6 +1339,15 @@ pub(super) fn std_call(
             let Some((d, n, _)) = seq_val(fx, &v(0), &t(0)) else { return unsupported(fx, &key, dest) };
             let owned = if matches!(t(0), Ty::Ref(..)) { "0" } else { "1" };
             (make_iter(fx, 1, owned, "0", "0", &d, &n), ret)
+        }
+
+        // ── jodi, gajibiji_jodi, gumpu ──
+        k if k.starts_with("jodi.") || k.starts_with("gajibiji_jodi.") || k.starts_with("gumpu.") => {
+            let method = k.split_once('.').map_or("", |(_, m)| m);
+            match super::map::call(fx, method, &vals, &ftys, &ret) {
+                Some(r) => r,
+                None => unsupported(fx, &key, dest),
+            }
         }
 
         // ── undochu, sare_thappu, pette ──
@@ -1389,6 +1528,20 @@ pub(super) fn std_call(
             (r, ret)
         }
 
+        // ── Hasher ──
+        "Hasher.kalupu" => {
+            let t1 = tyarg(1);
+            let lt = fx.ll(&t1);
+            let p = fx.spill(&lt, &v(1));
+            super::map::hasher_add(fx, &v(0), &t1, &p, false);
+            super::glue::call_drop(fx, &t1, &p);
+            unit()
+        }
+        "Hasher.chaalu" => {
+            let sp = fx.gep("{ i64 }", &v(0), &["0".into(), "0".into()]);
+            (fx.load("i64", &sp), ret)
+        }
+
         // ── Raatha ──
         "Raatha.kotthadhi" => ("zeroinitializer".into(), ret),
         "Raatha.raayi" | "Raatha.akshara_raayi" => {
@@ -1426,43 +1579,93 @@ pub(super) fn std_call(
         k if k.starts_with("lekkalu.") => lekkalu(fx, &k["lekkalu.".len()..], &tyarg(0), &vals, &ret, span),
 
         // ── file, system, samayam ──
-        "file.chadhuvu" | "file.raayi" => {
+        "file.chadhuvu" => (c_result_out(fx, &ret, "ante_file_read", &format!("ptr {}", v(0)), "%str"), ret),
+        "file.baitlu_chadhuvu" => {
+            (c_result_out(fx, &ret, "ante_file_read_bytes", &format!("ptr {}", v(0)), "%vec"), ret)
+        }
+        "file.list_cheyyi" => {
+            (c_result_out(fx, &ret, "ante_file_list", &format!("ptr {}", v(0)), "%vec"), ret)
+        }
+        "file.raayi" => {
+            (c_result_unit(fx, &ret, "ante_file_write", &format!("ptr {}, ptr {}", v(0), v(1))), ret)
+        }
+        "file.baitlu_raayi" => {
+            let d = fx.r();
+            fx.emit(format!("{d} = extractvalue %slice {}, 0", v(1)));
+            let n = fx.r();
+            fx.emit(format!("{n} = extractvalue %slice {}, 1", v(1)));
+            let args = format!("ptr {}, ptr {d}, i64 {n}", v(0));
+            (c_result_unit(fx, &ret, "ante_file_write_bytes", &args), ret)
+        }
+        "file.folder_cheyyi" => (c_result_unit(fx, &ret, "ante_file_mkdirs", &format!("ptr {}", v(0))), ret),
+        "file.theesey" => (c_result_unit(fx, &ret, "ante_file_remove", &format!("ptr {}", v(0))), ret),
+        "file.folderaa" => {
+            let r = fx.r();
+            fx.emit(format!("{r} = call i32 @ante_file_is_folder(ptr {})", v(0)));
+            let b = fx.r();
+            fx.emit(format!("{b} = icmp ne i32 {r}, 0"));
+            (b, Ty::Bool)
+        }
+        "file.path_kalupu" | "file.path_peru" | "file.path_folder" => {
             let out = fx.alloca("%str");
-            let err = fx.alloca("%str");
-            let ok = fx.r();
-            if key == "file.chadhuvu" {
-                fx.emit(format!("{ok} = call i32 @ante_file_read(ptr {}, ptr {out}, ptr {err})", v(0)));
-            } else {
-                fx.emit(format!("{ok} = call i32 @ante_file_write(ptr {}, ptr {}, ptr {err})", v(0), v(1)));
-            }
-            let good = fx.r();
-            fx.emit(format!("{good} = icmp ne i32 {ok}, 0"));
-            let ok_ty = opt_inner(&ret);
-            let err_ty = match &ret {
-                Ty::App(Con::SareThappu, a) => a[1].clone(),
-                _ => Ty::Unit,
+            let (f, args) = match key.as_str() {
+                "file.path_kalupu" => ("ante_path_join", format!("ptr {}, ptr {}", v(0), v(1))),
+                "file.path_peru" => ("ante_path_name", format!("ptr {}", v(0))),
+                _ => ("ante_path_folder", format!("ptr {}", v(0))),
             };
-            let lt = fx.ll(&ret);
-            let slot = fx.alloca(&lt);
-            let yes = fx.label();
-            let no = fx.label();
-            let done = fx.label();
-            fx.emit(format!("br i1 {good}, label %{yes}, label %{no}"));
-            fx.start(&yes);
-            let x = if ok_ty == Ty::Str { fx.load("%str", &out) } else { "zeroinitializer".into() };
-            let e = fx.build_enum(&ret, 0, &[x], std::slice::from_ref(&ok_ty));
-            fx.emit(format!("store {lt} {e}, ptr {slot}"));
-            fx.emit(format!("br label %{done}"));
-            fx.start(&no);
-            let m = fx.load("%str", &err);
-            let et = fx.ll(&err_ty);
-            let rec = fx.r();
-            fx.emit(format!("{rec} = insertvalue {et} undef, %str {m}, 0"));
-            let e = fx.build_enum(&ret, 1, &[rec], std::slice::from_ref(&err_ty));
-            fx.emit(format!("store {lt} {e}, ptr {slot}"));
-            fx.emit(format!("br label %{done}"));
-            fx.start(&done);
-            (fx.load(&lt, &slot), ret)
+            fx.emit(format!("call void @{f}(ptr {out}, {args})"));
+            (fx.load("%str", &out), Ty::Str)
+        }
+        "file.path_extension" => {
+            let out = fx.alloca("%str");
+            let ok = fx.r();
+            fx.emit(format!("{ok} = call i32 @ante_path_extension(ptr {out}, ptr {})", v(0)));
+            let has = fx.r();
+            fx.emit(format!("{has} = icmp ne i32 {ok}, 0"));
+            let r = opt_select(fx, &ret, &has, &mut |fx| fx.load("%str", &out));
+            (r, ret)
+        }
+        "system.nadupu" => {
+            // `Phalitham{status, stdout, stderr}`.
+            let rec_ty = opt_inner(&ret);
+            let rl = fx.ll(&rec_ty);
+            let st = fx.alloca("i32");
+            let so = fx.alloca("%str");
+            let se = fx.alloca("%str");
+            let d = fx.r();
+            fx.emit(format!("{d} = extractvalue %slice {}, 0", v(1)));
+            let n = fx.r();
+            fx.emit(format!("{n} = extractvalue %slice {}, 1", v(1)));
+            // The runtime reads the arguments as a vector header.
+            let hdr = fx.alloca("%vec");
+            let h1 = fx.r();
+            fx.emit(format!("{h1} = insertvalue %vec zeroinitializer, ptr {d}, 0"));
+            let h2 = fx.r();
+            fx.emit(format!("{h2} = insertvalue %vec {h1}, i64 {n}, 1"));
+            fx.emit(format!("store %vec {h2}, ptr {hdr}"));
+            let prog = v(0);
+            let r = c_result(
+                fx,
+                &ret,
+                &mut |fx, err| {
+                    let r = fx.r();
+                    fx.emit(format!(
+                        "{r} = call i32 @ante_run(ptr {prog}, ptr {hdr}, ptr {st}, ptr {so}, ptr {se}, ptr {err})"
+                    ));
+                    r
+                },
+                &mut |fx| {
+                    let a = fx.load("i32", &st);
+                    let b = fx.load("%str", &so);
+                    let c = fx.load("%str", &se);
+                    fx.build_struct_vals(
+                        &rl,
+                        &[a, b, c],
+                        &[Ty::Int(IntTy { signed: true, bits: 32 }), Ty::Str, Ty::Str],
+                    )
+                },
+            );
+            (r, ret)
         }
         "file.undhaa" => {
             let r = fx.r();
@@ -1470,6 +1673,36 @@ pub(super) fn std_call(
             let b = fx.r();
             fx.emit(format!("{b} = icmp ne i32 {r}, 0"));
             (b, Ty::Bool)
+        }
+        // ── memory (`naa_risk` only) ──
+        "memory.allocate" => {
+            let r = fx.r();
+            fx.emit(format!("{r} = call ptr @ante_mem_alloc(i64 {}, i64 {})", v(0), v(1)));
+            (r, ret)
+        }
+        "memory.release" => {
+            fx.emit(format!("call void @ante_mem_release(ptr {}, i64 {}, i64 {})", v(0), v(1), v(2)));
+            unit()
+        }
+        "memory.reallocate" => {
+            let r = fx.r();
+            fx.emit(format!(
+                "{r} = call ptr @ante_mem_realloc(ptr {}, i64 {}, i64 {}, i64 {})",
+                v(0),
+                v(1),
+                v(2),
+                v(3)
+            ));
+            (r, ret)
+        }
+        "memory.copy" => {
+            fx.emit(format!(
+                "call void @llvm.memmove.p0.p0.i64(ptr {}, ptr {}, i64 {}, i1 false)",
+                v(1),
+                v(0),
+                v(2)
+            ));
+            unit()
         }
         "system.vellipo" => {
             fx.emit(format!("call void @ante_vellipo(i32 {})", v(0)));
@@ -1671,6 +1904,19 @@ fn convert(fx: &mut Fx, key: &str, v: &str, from: &Ty, to: &Ty, dest: &Ty, span:
             fx.emit(format!("{ok} = or i1 {lo}, {m2}"));
             (r, Some(ok))
         }
+        // Raw pointers (§22.2): the typechecker allows these only in `kolpothu_maarchu`.
+        (Ty::Ptr(..), Ty::Ptr(..)) => (v.to_string(), None),
+        (Ty::Ptr(..), Ty::Int(b)) => {
+            let r = fx.r();
+            fx.emit(format!("{r} = ptrtoint ptr {v} to i{}", b.bits));
+            (r, None)
+        }
+        (Ty::Int(a), Ty::Ptr(..)) => {
+            let w = fx.widen(v, *a);
+            let r = fx.r();
+            fx.emit(format!("{r} = inttoptr i64 {w} to ptr"));
+            (r, None)
+        }
         _ => return unsupported(fx, key, dest),
     };
     if checked {
@@ -1839,6 +2085,183 @@ fn lekkalu(fx: &mut Fx, name: &str, t: &Ty, vals: &[String], ret: &Ty, span: Spa
             fx.emit(format!("{r} = select i1 {c}, {lt} {a}, {lt} {b}"));
             (r, t.clone())
         }
+        ("motham" | "dot", Ty::Int(_) | Ty::Float(_)) => sum(fx, name == "dot", t, &a, &b, span),
+        ("polchu_amsam", _) => {
+            // IEEE totalOrder: flip the magnitude bits of negatives, compare signed.
+            let key = |fx: &mut Fx, x: &str| {
+                let bits = fx.r();
+                fx.emit(format!("{bits} = bitcast double {x} to i64"));
+                let sign = fx.r();
+                fx.emit(format!("{sign} = ashr i64 {bits}, 63"));
+                let mask = fx.r();
+                fx.emit(format!("{mask} = lshr i64 {sign}, 1"));
+                let k = fx.r();
+                fx.emit(format!("{k} = xor i64 {bits}, {mask}"));
+                k
+            };
+            let (x, y) = (key(fx, &a), key(fx, &b));
+            let lt_c = fx.r();
+            fx.emit(format!("{lt_c} = icmp slt i64 {x}, {y}"));
+            let gt_c = fx.r();
+            fx.emit(format!("{gt_c} = icmp sgt i64 {x}, {y}"));
+            let g = fx.r();
+            fx.emit(format!("{g} = select i1 {gt_c}, i32 2, i32 1"));
+            let tag = fx.r();
+            fx.emit(format!("{tag} = select i1 {lt_c}, i32 0, i32 {g}"));
+            let lt = fx.ll(ret);
+            let slot = fx.alloca(&lt);
+            let tp = fx.gep(&lt, &slot, &["0".into(), "0".into()]);
+            fx.emit(format!("store i32 {tag}, ptr {tp}"));
+            (fx.load(&lt, &slot), ret.clone())
+        }
         _ => unsupported(fx, &format!("lekkalu.{name}"), ret),
     }
+}
+
+/// `lekkalu.motham` and `lekkalu.dot` over `&mukka` values. Integers sum
+/// exactly and trap T01 when a partial sum leaves the type; floats sum in
+/// `amsam64` over eight lanes (element `i` into lane `i % 8`), then the
+/// lanes in order: the documented blocked order (§21.3).
+fn sum(fx: &mut Fx, dot: bool, t: &Ty, a: &str, b: &str, span: Span) -> (String, Ty) {
+    let parts = |fx: &mut Fx, s: &str| {
+        let d = fx.r();
+        fx.emit(format!("{d} = extractvalue %slice {s}, 0"));
+        let n = fx.r();
+        fx.emit(format!("{n} = extractvalue %slice {s}, 1"));
+        (d, n)
+    };
+    let (da, na) = parts(fx, a);
+    let db = if dot {
+        let (db, nb) = parts(fx, b);
+        let differ = fx.r();
+        fx.emit(format!("{differ} = icmp ne i64 {na}, {nb}"));
+        let (na2, nb2) = (na.clone(), nb.clone());
+        fx.guard(&differ, |fx| {
+            let buf = new_buf(fx);
+            push_lit(fx, &buf, "dot: podavulu veru (");
+            fx.emit(format!("call void @ante_buf_i64(ptr {buf}, i64 {na2})"));
+            push_lit(fx, &buf, " , ");
+            fx.emit(format!("call void @ante_buf_i64(ptr {buf}, i64 {nb2})"));
+            push_lit(fx, &buf, ")");
+            let loc = fx.loc(span);
+            fx.emit(format!("call void @ante_trap(ptr {buf}, ptr {loc})"));
+        });
+        db
+    } else {
+        String::new()
+    };
+    let et = fx.ll(t);
+    match t {
+        Ty::Int(it) => {
+            let ext = if it.signed { "sext" } else { "zext" };
+            let acc = fx.alloca("i128");
+            fx.emit(format!("store i128 0, ptr {acc}"));
+            let (lo, hi) = it.range();
+            let msg = format!("`{}` lo motham pattadhu", crate::interp::int_name(*it));
+            let elem = t.clone();
+            super::glue::each(fx, &da, &na, &elem, &mut |fx, p, _| {
+                let x = fx.load(&et, p);
+                let wx = fx.r();
+                fx.emit(format!("{wx} = {ext} {et} {x} to i128"));
+                let term = if dot {
+                    let off = elem_offset(fx, p, &da);
+                    let q = fx.r();
+                    fx.emit(format!("{q} = getelementptr i8, ptr {db}, i64 {off}"));
+                    let y = fx.load(&et, &q);
+                    let wy = fx.r();
+                    fx.emit(format!("{wy} = {ext} {et} {y} to i128"));
+                    let m = fx.r();
+                    fx.emit(format!("{m} = mul i128 {wx}, {wy}"));
+                    m
+                } else {
+                    wx
+                };
+                let cur = fx.load("i128", &acc);
+                let nv = fx.r();
+                fx.emit(format!("{nv} = add i128 {cur}, {term}"));
+                fx.emit(format!("store i128 {nv}, ptr {acc}"));
+                let below = fx.r();
+                fx.emit(format!("{below} = icmp slt i128 {nv}, {lo}"));
+                let above = fx.r();
+                fx.emit(format!("{above} = icmp sgt i128 {nv}, {hi}"));
+                let bad = fx.r();
+                fx.emit(format!("{bad} = or i1 {below}, {above}"));
+                let m = fx.gen.str_const(&msg);
+                let loc = fx.loc(span);
+                fx.guard(&bad, |fx| {
+                    let sp = fx.spill("%str", &m);
+                    fx.emit(format!("call void @ante_trap(ptr {sp}, ptr {loc})"));
+                });
+            });
+            let total = fx.load("i128", &acc);
+            let r = fx.r();
+            fx.emit(format!("{r} = trunc i128 {total} to {et}"));
+            (r, t.clone())
+        }
+        _ => {
+            let lanes = fx.alloca("[8 x double]");
+            fx.emit(format!("store [8 x double] zeroinitializer, ptr {lanes}"));
+            let wide = |fx: &mut Fx, x: &str| {
+                if et == "float" {
+                    let w = fx.r();
+                    fx.emit(format!("{w} = fpext float {x} to double"));
+                    w
+                } else {
+                    x.to_string()
+                }
+            };
+            let elem = t.clone();
+            super::glue::each(fx, &da, &na, &elem, &mut |fx, p, _| {
+                let x = fx.load(&et, p);
+                let wx = wide(fx, &x);
+                let off = elem_offset(fx, p, &da);
+                let v = if dot {
+                    let q = fx.r();
+                    fx.emit(format!("{q} = getelementptr i8, ptr {db}, i64 {off}"));
+                    let y = fx.load(&et, &q);
+                    let wy = wide(fx, &y);
+                    let m = fx.r();
+                    fx.emit(format!("{m} = fmul double {wx}, {wy}"));
+                    m
+                } else {
+                    wx
+                };
+                let (size, _) = fx.gen.size_align(&elem);
+                let i = fx.r();
+                fx.emit(format!("{i} = udiv i64 {off}, {size}"));
+                let lane = fx.r();
+                fx.emit(format!("{lane} = and i64 {i}, 7"));
+                let lp = fx.gep("[8 x double]", &lanes, &["0".into(), format!("i64 {lane}")]);
+                let cur = fx.load("double", &lp);
+                let nv = fx.r();
+                fx.emit(format!("{nv} = fadd double {cur}, {v}"));
+                fx.emit(format!("store double {nv}, ptr {lp}"));
+            });
+            let mut total = "0.0".to_string();
+            for k in 0..8 {
+                let lp = fx.gep("[8 x double]", &lanes, &["0".into(), k.to_string()]);
+                let x = fx.load("double", &lp);
+                let r = fx.r();
+                fx.emit(format!("{r} = fadd double {total}, {x}"));
+                total = r;
+            }
+            if et == "float" {
+                let r = fx.r();
+                fx.emit(format!("{r} = fptrunc double {total} to float"));
+                total = r;
+            }
+            (total, t.clone())
+        }
+    }
+}
+
+/// The byte offset of element pointer `p` from `base`.
+fn elem_offset(fx: &mut Fx, p: &str, base: &str) -> String {
+    let pi = fx.r();
+    fx.emit(format!("{pi} = ptrtoint ptr {p} to i64"));
+    let bi = fx.r();
+    fx.emit(format!("{bi} = ptrtoint ptr {base} to i64"));
+    let off = fx.r();
+    fx.emit(format!("{off} = sub i64 {pi}, {bi}"));
+    off
 }

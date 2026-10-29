@@ -1,7 +1,7 @@
 //! Checks on items as a whole (spec §9.2, §13.3, §13.5–13.6, §22.1):
 //! implementations, derives, infinite types and foreign signatures.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use super::solve::{self, Solver};
 use super::{AdtKind, FnOrigin, Globals, RecvMode, TraitRef};
@@ -100,6 +100,13 @@ pub fn check_items(g: &Globals, modules: &[SourceModule]) -> Vec<(FileId, Diagno
         if g.std_trait("CopyKottochu") == Some(imp.trait_ref.def) {
             if let Some(msg) = copy_problem(g, &imp.self_ty, &imp.generics) {
                 err(imp.file, "E0806", imp.span, msg);
+            } else if !imp.naa_risk && has_raw_pointer(g, &imp.self_ty) {
+                err(
+                    imp.file,
+                    "E1001",
+                    imp.span,
+                    "raw pointer unna type ki `CopyKottochu` `naa_risk:` block lopala matrame. Mee risk, mee bhaadhyatha 😅".into(),
+                );
             }
         }
     }
@@ -132,8 +139,16 @@ pub fn check_items(g: &Globals, modules: &[SourceModule]) -> Vec<(FileId, Diagno
                 }
             }
             if name == "CopyKottochu" {
-                if let Some(msg) = copy_problem(g, &Ty::App(Con::Adt(d), args.clone()), &adt.generics) {
+                let ty = Ty::App(Con::Adt(d), args.clone());
+                if let Some(msg) = copy_problem(g, &ty, &adt.generics) {
                     err(file, "E0806", adt.span, msg);
+                } else if has_raw_pointer(g, &ty) {
+                    err(
+                        file,
+                        "E1001",
+                        adt.span,
+                        "raw pointer unna type ki `CopyKottochu` derive cheyyalem. `naa_risk:` lo `… ki CopyKottochu gunam undhi` raayandi".into(),
+                    );
                 }
             }
         }
@@ -169,6 +184,79 @@ pub fn check_items(g: &Globals, modules: &[SourceModule]) -> Vec<(FileId, Diagno
             if sig.params.iter().any(|p| p.role.is_some()) {
                 err(file, "E1002", sig.span, "`bayata` functions ki roles undavu".into());
             }
+        }
+    }
+
+    // Only C's calling convention exists so far (§22.1). The standard
+    // library's `bayata "ante"` blocks aren't user modules.
+    for m in modules {
+        let Some(ast) = m.ast else { continue };
+        for item in &ast.items {
+            if let crate::ast::ItemKind::Extern(block) = &item.kind {
+                if block.abi != "C" {
+                    err(
+                        m.file,
+                        "E1002",
+                        item.span,
+                        format!("`bayata \"{}\"` teliyadhu. Ippatiki `bayata \"C\"` matrame", block.abi),
+                    );
+                }
+            }
+        }
+    }
+
+    // Exports (§22.4).
+    let mut exported: HashMap<&str, usize> = HashMap::new();
+    for (fid, sig) in g.fns.iter().enumerate() {
+        let (Some(file), Some((name, at))) = (sig.file, &sig.export) else { continue };
+        let valid = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if !valid {
+            err(file, "E1003", *at, format!("`@bayata \"{name}\"`: C peru letters, digits, `_` tho undali"));
+        } else if crate::codegen::reserved_symbol(name) {
+            err(file, "E1003", *at, format!("`{name}` peru runtime vaadukuntundhi, vere peru pettandi"));
+        } else if exported.contains_key(name.as_str()) {
+            err(file, "E1003", *at, format!("`{name}` ni rendu functions export chesthunnayi"));
+        } else {
+            exported.insert(name, fid);
+        }
+        if !sig.generics.is_empty() || sig.receiver.is_some() {
+            err(file, "E1003", *at, "generic functions, methods ni export cheyyalem".into());
+            continue;
+        }
+        let bad = sig.params.iter().map(|p| &p.ty).chain(std::iter::once(&sig.ret)).find(|t| !ffi_safe(g, t));
+        if let Some(t) = bad {
+            let shown = show(g, t);
+            err(
+                file,
+                "E1002",
+                sig.span,
+                format!("`{shown}` C ki pampalem. Integers, floats, pointers vaadandi"),
+            );
+        }
+    }
+
+    // `@C` records hold only what C understands (§22.3).
+    for (d, adt) in &g.adts {
+        let (true, Some(file)) = (adt.c_layout, adt.file) else { continue };
+        let field_ok = |t: &Ty| match t {
+            Ty::Array(e, Some(_)) => ffi_safe(g, e),
+            Ty::App(Con::Adt(x), _) if x == d => false,
+            t => ffi_safe(g, t),
+        };
+        match &adt.kind {
+            AdtKind::Record(fields) if adt.generics.is_empty() => {
+                if let Some(f) = fields.iter().find(|f| !field_ok(&f.ty)) {
+                    let shown = show(g, &f.ty);
+                    err(
+                        file,
+                        "E1002",
+                        adt.span,
+                        format!("`@C` record lo `{}: {shown}` undakoodadhu. C types matrame", f.name),
+                    );
+                }
+            }
+            _ => err(file, "E1002", adt.span, "`@C` records ki matrame, generics lekunda".into()),
         }
     }
     for m in modules {
@@ -253,6 +341,22 @@ fn direct_adts(t: &Ty) -> Vec<usize> {
         Ty::Array(e, _) => direct_adts(e),
         _ => Vec::new(),
     }
+}
+
+/// Whether a value of `ty` holds a raw pointer in its own fields (§22.2).
+fn has_raw_pointer(g: &Globals, ty: &Ty) -> bool {
+    fn walk(g: &Globals, ty: &Ty, seen: &mut HashSet<Ty>) -> bool {
+        match ty {
+            Ty::Ptr(..) => true,
+            Ty::Tuple(items) => items.iter().any(|t| walk(g, t, seen)),
+            Ty::Array(e, _) => walk(g, e, seen),
+            Ty::App(Con::Adt(d), args) if seen.insert(ty.clone()) => {
+                solve::adt_field_types(g, *d, args).iter().any(|t| walk(g, t, seen))
+            }
+            _ => false,
+        }
+    }
+    walk(g, ty, &mut HashSet::new())
 }
 
 fn ffi_safe(g: &Globals, t: &Ty) -> bool {

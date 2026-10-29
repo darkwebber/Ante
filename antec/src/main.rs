@@ -240,6 +240,9 @@ fn run(path: &str, args: Vec<String>) -> ExitCode {
     for (file, d) in checked.diagnostics.iter().filter(|(_, d)| d.is_error()) {
         eprint!("{}", d.render(&checked.sources[*file]));
     }
+    for e in &checked.backend_errors {
+        eprintln!("error: {e}");
+    }
     match checked.run {
         Some(out) => {
             print!("{}", out.stdout);

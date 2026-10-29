@@ -41,7 +41,8 @@ pub(super) struct BodyCx<'s, 'g> {
     /// Trait bounds to check once inference is done: type, trait, span, code.
     pub obligations: Vec<(Ty, TraitRef, Span, &'static str)>,
     pub int_lits: Vec<(Ty, i128, Span)>,
-    pub conversions: Vec<(Conv, Ty, Ty, Span)>,
+    /// Checked once types are known; the flag records being inside `naa_risk`.
+    pub conversions: Vec<(Conv, Ty, Ty, Span, bool)>,
     pub expr_types: HashMap<(usize, usize), Ty>,
     /// One flag per enclosing loop: has it seen an `aapey`?
     pub loops: Vec<bool>,
@@ -1551,6 +1552,8 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             Ty::Array(e, _) if place => by_ref(self, (**e).clone(), false),
             Ty::Array(e, _) => (**e).clone(),
             Ty::App(Con::Varusa, args) if place => by_ref(self, args[0].clone(), false),
+            // A `mukka` is only ever a place (`xs[a nunchi b lopu]`).
+            Ty::App(Con::Mukka, args) => by_ref(self, args[0].clone(), false),
             Ty::App(Con::Varusa, args) => args[0].clone(),
             Ty::App(Con::Jodi | Con::GajibijiJodi, args) => {
                 Ty::Tuple(vec![Ty::reference(false, args[0].clone()), Ty::reference(false, args[1].clone())])
@@ -1675,15 +1678,13 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                 }
             }
         }
-        for (src, dst, kind, span) in
-            std::mem::take(&mut self.conversions).into_iter().map(|(k, s, d, sp)| (s, d, k, sp))
-        {
+        for (kind, src, dst, span, risky) in std::mem::take(&mut self.conversions) {
             let s = self.infer.resolve(&src);
             let d = self.infer.resolve(&dst);
             if s.has_error() || d.has_error() || has_var(&s) || has_var(&d) {
                 continue;
             }
-            self.check_conversion(kind, &s, &d, span);
+            self.check_conversion(kind, &s, &d, span, risky);
         }
         let had_errors = self.diags.iter().any(|(_, d)| d.is_error());
         for (ty, tr, span, code) in std::mem::take(&mut self.obligations) {
@@ -1754,7 +1755,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
         done
     }
 
-    fn check_conversion(&mut self, kind: Conv, s: &Ty, d: &Ty, span: Span) {
+    fn check_conversion(&mut self, kind: Conv, s: &Ty, d: &Ty, span: Span, risky: bool) {
         let numeric = |t: &Ty| matches!(t, Ty::Int(_) | Ty::Float(_));
         let ok = match kind {
             Conv::Lossless => match (s, d) {
@@ -1773,7 +1774,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             }
             Conv::Lossy => {
                 let ptr_int = matches!((s, d), (Ty::Ptr(..), Ty::Int(_)) | (Ty::Int(_), Ty::Ptr(..)));
-                if ptr_int {
+                if ptr_int && !risky {
                     self.require_unsafe(span, "pointer ↔ integer maarpu");
                 }
                 (numeric(s) && numeric(d)) || ptr_int || matches!((s, d), (Ty::Ptr(..), Ty::Ptr(..)))

@@ -177,44 +177,53 @@ pub fn key_of(v: &Value) -> Key {
 }
 
 /// An insertion-ordered map; removed entries leave a hole so positions
-/// (and references into entries) stay put.
+/// (and references into entries) stay put. Entries are indexed by the key's
+/// hash (`Machine::key_hash`); the interpreter compares candidates with the
+/// key type's `==`, so a type's own `Polchochu` and `HashCheyochu` decide
+/// which keys are the same (§21.2).
 #[derive(Clone, Debug, Default)]
 pub struct OrdMap {
     entries: Vec<Option<(Value, Value)>>,
-    index: HashMap<Key, usize>,
+    index: HashMap<u64, Vec<usize>>,
+    live: usize,
 }
 
 impl OrdMap {
     pub fn len(&self) -> usize {
-        self.index.len()
+        self.live
     }
 
     pub fn is_empty(&self) -> bool {
-        self.index.is_empty()
+        self.live == 0
     }
 
-    pub fn find(&self, k: &Value) -> Option<usize> {
-        self.index.get(&key_of(k)).copied()
+    /// Live entry positions whose key has hash `h`.
+    pub fn with_hash(&self, h: u64) -> Vec<usize> {
+        self.index.get(&h).cloned().unwrap_or_default()
     }
 
-    /// Inserts or replaces (keeping the position); returns the old value.
-    pub fn insert(&mut self, k: Value, v: Value) -> Option<Value> {
-        match self.find(&k) {
-            Some(i) => {
-                let slot = self.entries[i].as_mut().expect("live entry");
-                Some(std::mem::replace(&mut slot.1, v))
-            }
-            None => {
-                self.index.insert(key_of(&k), self.entries.len());
-                self.entries.push(Some((k, v)));
-                None
+    /// Adds an entry for a key known to be missing; returns its position.
+    pub fn push(&mut self, h: u64, k: Value, v: Value) -> usize {
+        let i = self.entries.len();
+        self.entries.push(Some((k, v)));
+        self.index.entry(h).or_default().push(i);
+        self.live += 1;
+        i
+    }
+
+    /// Takes out entry `i`, whose key has hash `h`.
+    pub fn remove_at(&mut self, h: u64, i: usize) -> Option<(Value, Value)> {
+        if let Some(bucket) = self.index.get_mut(&h) {
+            bucket.retain(|&j| j != i);
+            if bucket.is_empty() {
+                self.index.remove(&h);
             }
         }
-    }
-
-    pub fn remove(&mut self, k: &Value) -> Option<Value> {
-        let i = self.index.remove(&key_of(k))?;
-        self.entries[i].take().map(|(_, v)| v)
+        let e = self.entries.get_mut(i)?.take();
+        if e.is_some() {
+            self.live -= 1;
+        }
+        e
     }
 
     /// Live entry positions in insertion order.

@@ -72,7 +72,19 @@ fn build_settings_are_checked() {
     let manifest = |build: &str| {
         format!("[package]\nname = \"p\"\nversion = \"0.1.0\"\nedition = \"1.0\"\n\n[build]\n{build}\n")
     };
-    for bad in ["stack = \"1KB\"", "stack = \"lots\"", "target = \"i686-pc-windows-msvc\""] {
+    fs::write(dir.join("helper.txt"), "").unwrap();
+    for bad in [
+        "stack = \"1KB\"",
+        "stack = \"lots\"",
+        "target = \"i686-pc-windows-msvc\"",
+        "c_sources = [\"../outside.c\"]",
+        "c_sources = [\"/etc/passwd.c\"]",
+        "c_sources = [\"helper.txt\"]",
+        "c_sources = [\"missing.c\"]",
+        "c_sources = \"glue.c\"",
+        "libs = [\"-fplugin=evil\"]",
+        "libs = [\"m; rm\"]",
+    ] {
         fs::write(dir.join("ante.toml"), manifest(bad)).unwrap();
         let out = antec(&["check", dir.to_str().unwrap()]);
         assert!(text(&out.stderr).contains("E0905"), "`{bad}` wasn't rejected: {}", text(&out.stderr));

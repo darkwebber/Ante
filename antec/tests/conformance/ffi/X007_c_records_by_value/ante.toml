@@ -1,0 +1,15 @@
+# category: run-pass
+# expect-stdout: 11 2
+# expect-stdout: 3.0 3.5 -4 122
+# expect-stdout: 6 8
+# expect-stdout: 32767 0 1.5
+# level: core
+# `@C` records cross the C ABI by value in both directions, along with
+# narrow integers and `amsam32` (§22.1, §22.3).
+[package]
+name = "x007"
+version = "0.1.0"
+edition = "1.0"
+
+[build]
+c_sources = ["c/records.c"]

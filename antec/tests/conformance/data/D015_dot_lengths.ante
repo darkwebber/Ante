@@ -1,0 +1,9 @@
+# category: runtime-trap
+# expect-trap: T05 @ 9:5
+# level: core
+# `lekkalu.dot` needs two pieces of the same length.
+lekkalu thechuko
+
+modhalu() -> khali ante:
+    a: varusa[amsam64] ante [1.0, 2.0]
+    a[0 nunchi 2 lopu] ni, a[0 nunchi 1 lopu] tho lekkalu.dot() |> choopinchu()

@@ -1,0 +1,13 @@
+# category: run-pass
+# expect-stdout: 50
+# expect-stdout: C nunchi namaskaram!
+# level: core
+# `@bayata "ante_kalupu"` exports an "Ante" function that C code in the
+# package calls back (§22.4, §22.6).
+[package]
+name = "x004"
+version = "0.1.0"
+edition = "1.0"
+
+[build]
+c_sources = ["c/pilupu.c"]

@@ -9,7 +9,7 @@
 
 Simple ga cheppalante: amma ki explain chesinattu code raayochu, kaani adhi C laaga fast ga run avthundhi. 😎
 
-> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8), generics, traits and closures (M9) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi! 🎉 Standard library (M10) next. 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
+> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8), generics, traits and closures (M9), standard library (M10), C FFI (M11) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi, C libraries tho kuda maatladathayi! Core 1.0 complete 🎉 Next: tasks, JSON, HTTP (M12–M14). 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
 
 ## "Ante" Sundharaniki! 🎬
 
@@ -107,7 +107,8 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 | M7 | LLVM codegen: native binaries (`antec build`) | ✅ done |
 | M8 | Borrow checker | ✅ done |
 | M9 | Generics, traits, closures | ✅ done |
-| M10–M11 | Full stdlib, FFI | 🔜 |
+| M10 | Standard library: `jodi`, `gumpu`, files, paths, bytes, `system.nadupu`, `lekkalu` (spec §21), anni backends lo okela | ✅ done |
+| M11 | FFI: `naa_risk`, `@C` records, `@bayata` exports, package lo C files, libraries link cheyyadam (spec §22) | ✅ done |
 | M12–M14 | Services: tasks, JSON, crypto, HTTP, SQL (spec Part IX) | 🔜 |
 | M15–M18 | Web apps "Ante" lone: pages, styles, routes, server functions, `antec web` deploy (spec Annex W) | 🔜 |
 | M19 | Official website, "Ante" lone raasindhi: playground, docs, learn | 🔜 |

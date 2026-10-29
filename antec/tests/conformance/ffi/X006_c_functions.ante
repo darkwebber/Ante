@@ -1,0 +1,26 @@
+# category: run-pass
+# expect-stdout: 5
+# expect-stdout: 1.4142135623730951
+# expect-stdout: 7
+# expect-stdout: 90
+# level: core
+# Calling C library functions with integers, floats and pointers (§22.1).
+bayata "C" ante:
+    abs(x: ankam32) -> ankam32
+    sqrt(x: amsam64) -> amsam64
+    strlen(s: *aasajeevi ankam8) -> aasajeevi ankam64
+    toupper(c: ankam32) -> ankam32
+
+modhalu() -> khali ante:
+    # "namaste", with C's closing 0 byte.
+    peru: [aasajeevi ankam8; 8] ante [110, 97, 109, 97, 115, 116, 101, 0]
+    naa_risk:
+        a ante -5 abs()
+        a ni choopinchu()
+        r ante 2.0 sqrt()
+        r ni choopinchu()
+        p ante (&peru[0 nunchi 8 lopu]).pointer()
+        n ante p strlen()
+        n ni choopinchu()
+        u ante 122 toupper()
+        u ni choopinchu()

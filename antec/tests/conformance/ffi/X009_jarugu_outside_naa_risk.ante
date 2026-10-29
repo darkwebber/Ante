@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E1001 @ 8:19
+# level: core
+# Pointer arithmetic is unsafe; getting the pointer isn't (§22.2).
+modhalu() -> khali ante:
+    xs ante [1, 2, 3]
+    p ante (&xs[0 nunchi 3 lopu]).pointer()
+    q ante 1 ni p.jarugu()

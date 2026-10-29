@@ -1,0 +1,36 @@
+@C
+rakam Point ante:
+    x: ankam32
+    y: ankam32
+
+@C
+rakam Mixed ante:
+    a: amsam64
+    b: amsam32
+    c: ankam8
+    tag: [aasajeevi ankam8; 3]
+
+bayata "C" ante:
+    move_point(p: Point, dx: ankam32) -> Point
+    mix(m: Mixed) -> Mixed
+    twice(p: Point) -> Point
+    neg16(v: ankam16) -> ankam16
+    inc8(v: aasajeevi ankam8) -> aasajeevi ankam8
+    half(f: amsam32) -> amsam32
+
+@bayata "scale"
+scale(p: Point, k: ankam32) -> Point ante:
+    Point{x: p.x * k, y: p.y * k} icchey
+
+modhalu() -> khali ante:
+    naa_risk:
+        p ante Point{x: 1, y: 2}, 10 move_point()
+        f"{p.x} {p.y}" ni choopinchu()
+        m ante Mixed{a: 1.5, b: 2.5, c: -3, tag: [97, 98, 99]} mix()
+        f"{m.a} {m.b} {m.c} {m.tag[2]}" ni choopinchu()
+        q ante Point{x: 3, y: 4} twice()
+        f"{q.x} {q.y}" ni choopinchu()
+        n ante -32767 neg16()
+        u ante 255 inc8()
+        h ante 3.0 half()
+        f"{n} {u} {h}" ni choopinchu()

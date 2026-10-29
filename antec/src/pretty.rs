@@ -187,7 +187,13 @@ fn write_item(out: &mut String, item: &Item, depth: usize) {
             line(
                 out,
                 depth,
-                &format!("(impl{} {} ki {}", generics(&i.generics), ty(&i.self_ty), ty(&i.trait_ref)),
+                &format!(
+                    "(impl{}{} {} ki {}",
+                    if i.naa_risk { " naa_risk" } else { "" },
+                    generics(&i.generics),
+                    ty(&i.self_ty),
+                    ty(&i.trait_ref)
+                ),
             );
             for f in &i.items {
                 write_fn(out, f, "", depth + 1);
