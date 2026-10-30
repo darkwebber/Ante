@@ -1,0 +1,24 @@
+# category: run-pass
+# expect-stdout: [[], [5, 6]]
+# expect-stdout: [7]
+# expect-stdout: [[[9]]]
+# expect-stdout: 2
+# level: core
+# A callee's receiver may be indexed: brackets followed by `.name` (or by
+# more brackets, then `.name`) index; they are never type arguments (D7).
+rakam P ante:
+    xs: varusa[ankam]
+
+modhalu() -> khali ante:
+    maare g: varusa[varusa[ankam]] ante [[], []]
+    5 ni g[1].cherchu()
+    6 ni g[1].cherchu()
+    g ni choopinchu()
+    maare ps: varusa[P] ante [P{xs: []}]
+    i ante 0
+    7 ni ps[i].xs.cherchu()
+    ps[0].xs ni choopinchu()
+    maare grid: varusa[varusa[varusa[ankam]]] ante [[[]]]
+    9 ni grid[0][0].cherchu()
+    grid ni choopinchu()
+    g[1].enni() ni choopinchu()

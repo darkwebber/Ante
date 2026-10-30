@@ -93,5 +93,10 @@
     "prefix": "naa_risk",
     "description": "Unsafe block: naa risk, nenu chusukunta",
     "body": ["naa_risk:", "\t$0"]
+  },
+  "pariksha (test)": {
+    "prefix": "pariksha",
+    "description": "Test: `antec pariksha` run chesthundhi",
+    "body": ["@pariksha", "${1:peru}() -> khali ante:", "\t(${2:sharathu}) nijame()$0"]
   }
 }

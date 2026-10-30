@@ -83,6 +83,7 @@ bayata "ante" ante:
     maarchu[T, S](vishayam: S ni) -> T
     kudhirithe_maarchu[T, S](vishayam: S ni) -> undochu[T]
     kolpothu_maarchu[T, S](vishayam: S ni) -> T
+    marpidi[T](ekkada: &maare T, kotthadhi: T ni) -> T
     size_of[T]() -> ankam
     align_of[T]() -> ankam
     kalipi[A, B](a: Pravaham[A], b: Pravaham[B]) -> Pravaham[jatha[A, B]]
@@ -120,6 +121,7 @@ gunam varusa_panulu ante:
     theesey[T](naa: &maare varusa[T]) -> undochu[T]
     thechu[T](naa: &varusa[T], i: ankam ni) -> undochu[&T]
     maare_thechu[T](naa: &maare varusa[T], i: ankam ni) -> undochu[&maare T]
+    marpidi[T](naa: &maare varusa[T], i: ankam ni, j: ankam tho) -> khali
     sort_cheyyi[T: VarusaPettochu](naa: &maare varusa[T]) -> khali
     ila_sort_cheyyi[T](naa: &maare varusa[T], f: pani[(&T ni, &T tho) -> Kramam] ni) -> khali
     anni_theesuko[T](naa: varusa[T]) -> Pravaham[T]

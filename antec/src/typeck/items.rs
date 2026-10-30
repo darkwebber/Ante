@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::solve::{self, Solver};
-use super::{AdtKind, FnOrigin, Globals, RecvMode, TraitRef};
+use super::{AdtKind, FnId, FnOrigin, Globals, RecvMode, TraitRef};
 use crate::diag::Diagnostic;
 use crate::resolve::{FileId, SourceModule};
 use crate::source::Span;
@@ -290,6 +290,46 @@ pub fn check_items(g: &Globals, modules: &[SourceModule]) -> Vec<(FileId, Diagno
                 sig.span,
                 "`modhalu` ki parameters undakoodadhu, return type `khali` leka `sare_thappu[khali, E]` undali".into(),
             );
+        }
+    }
+    // Tests (§23.3).
+    for (file, fid, annotation) in test_fns_with_spans(g, modules) {
+        let sig = &g.fns[fid];
+        let ret_ok = match &sig.ret {
+            Ty::Unit | Ty::Error => true,
+            Ty::App(Con::SareThappu, a) => a[0] == Ty::Unit,
+            _ => false,
+        };
+        if !sig.params.is_empty() || !ret_ok || !sig.generics.is_empty() || sig.owner.is_some() {
+            err(
+                file,
+                "E1307",
+                annotation,
+                format!(
+                    "`@pariksha` test ki parameters, generics undakoodadhu, return type `khali` leka `sare_thappu[khali, E]` undali (`{}` ala ledhu)",
+                    sig.name
+                ),
+            );
+        }
+    }
+    out
+}
+
+/// The `@pariksha` functions of the given modules (§23.3), in source order.
+pub fn test_fns(g: &Globals, modules: &[SourceModule]) -> Vec<FnId> {
+    test_fns_with_spans(g, modules).into_iter().map(|(_, f, _)| f).collect()
+}
+
+fn test_fns_with_spans(g: &Globals, modules: &[SourceModule]) -> Vec<(FileId, FnId, Span)> {
+    let mut out = Vec::new();
+    for m in modules {
+        let Some(ast) = m.ast else { continue };
+        for item in &ast.items {
+            let crate::ast::ItemKind::Fn(f) = &item.kind else { continue };
+            let Some(a) = item.annotations.iter().find(|a| a.name.name == "pariksha") else { continue };
+            if let Some(&fid) = g.fn_by_span.get(&(m.file, f.sig.name.span.start)) {
+                out.push((m.file, fid, a.span));
+            }
         }
     }
     out

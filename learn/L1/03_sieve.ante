@@ -1,0 +1,49 @@
+# L1.03 · Sieve of Eratosthenes: primes anni okesaari 🧹
+#
+# Prime ante 1 and adhe number tappa vere edhi bhaaginchani number: 2, 3, 5,
+# 7, 11 … Okko number ni prime aa kaadhaa ani check cheyyadam slow.
+#
+# Jalleda (sieve) idea: 2 nunchi n varaku anni numbers raasi pettandi. 2
+# prime, kaabatti 2 yokka multiples (4, 6, 8 …) anni kotteyandi. Migilina
+# tharvatha number 3, adhi prime; 9, 12, 15 … kotteyandi. Alaa continue.
+# Chivariki kottesaani anni primes!
+#
+# Chinna trick: `p` multiples ni `p * p` nunchi modhalupettochu, endhukante
+# chinna multiples (2p, 3p …) already chinna primes valla kottesi unnayi.
+# Motham pani O(n log log n): 10 million ki kuda okka second lopu.
+#
+# Run:   antec run learn/L1/03_sieve.ante
+# Test:  antec pariksha learn/L1/03_sieve.ante
+
+# `n` varaku unna primes anni, chinnadhi nunchi.
+primes(n: ankam ni) -> varusa[ankam] ante:
+    maare prime_aa: varusa[ato_ito] ante []
+    0 nunchi n varaku okko _i ki:
+        avunu ni prime_aa.cherchu()
+    maare out: varusa[ankam] ante []
+    2 nunchi n varaku okko p ki:
+        prime_aa[p] aithe:
+            p ni out.cherchu()
+            maare j ante p * p
+            j <= n unnanthasepu:
+                prime_aa[j] lo kaadhu pettu
+                j += p
+    out icchey
+
+modhalu() -> khali ante:
+    f"50 varaku primes: {50 ni primes()}" ni choopinchu()
+    f"10 lakhs varaku enni primes: {(1_000_000 ni primes()).enni()}" ni choopinchu()
+
+@pariksha
+chinna_primes() -> khali ante:
+    ((30 ni primes()) == [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]) nijame()
+
+@pariksha
+anchullu() -> khali ante:
+    (0 ni primes()).khaaliyaa() nijame()
+    (1 ni primes()).khaaliyaa() nijame()
+    ((2 ni primes()) == [2]) nijame()
+
+@pariksha
+lakh_varaku() -> khali ante:
+    ((100_000 ni primes()).enni() == 9592) nijame()

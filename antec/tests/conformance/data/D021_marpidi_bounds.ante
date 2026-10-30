@@ -1,0 +1,7 @@
+# category: runtime-trap
+# expect-trap: T03 @ 7:5
+# level: core
+# `varusa.marpidi` with an index past the end traps like indexing does.
+modhalu() -> khali ante:
+    maare xs ante [1, 2, 3]
+    1 ni, 3 tho xs.marpidi()

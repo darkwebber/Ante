@@ -1,0 +1,27 @@
+# category: run-pass
+# expect-stdout: undhi(m9)
+# expect-stdout: undhi(v9)
+# expect-stdout: 18
+# expect-stdout: undhi(m5)
+# expect-stdout: undhi(m8)
+# expect-stdout: undhi(v8)
+# expect-stdout: [m8, m7, m6, m5, m4, m3, m2, m1, m0, v0, v1, v2, v3, v4, v5, v6, v7, v8]
+# expect-stdout: ledhu
+# expect-stdout: [m8, m7, m6, m5, m4, m3, m2, m1, m0, v0, v1, v2, v3, v4, v5, v6, v7, v8]
+# level: core
+# `line`: join or leave at either end, index from the front, and keep
+# order across growth (§21.2).
+modhalu() -> khali ante:
+    maare l: line[padham] ante line.kotthadhi()
+    0 nunchi 10 lopu okko i ki:
+        f"v{i}" ni l.venaka_cherchu()
+        f"m{i}" ni l.mundhu_cherchu()
+    l.mundhu_theesey() ni choopinchu()
+    l.venaka_theesey() ni choopinchu()
+    l.enni() ni choopinchu()
+    3 ni l.thechu() |> choopinchu()
+    l.mundhu() ni choopinchu()
+    l.venaka() ni choopinchu()
+    l ni choopinchu()
+    18 ni l.thechu() |> choopinchu()
+    l.varusa_ga() ni choopinchu()

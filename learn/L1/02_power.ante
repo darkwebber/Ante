@@ -1,0 +1,52 @@
+# L1.02 · Binary exponentiation: power ni twaraga lekkapettadam ⚡
+#
+# 3^13 kavali anukondi. Simple ga 3 ni 13 saarlu guninchochu: 12
+# multiplications. 3^1,000,000,000 ayithe? Billion multiplications. Vaddhu.
+#
+# Trick: exponent ni binary lo choodandi. 13 = 1101 (binary) = 8 + 4 + 1.
+# Kaabatti 3^13 = 3^8 · 3^4 · 3^1. Mariyu 3^1, 3^2, 3^4, 3^8 … prathi okati
+# mundhu dhaani square! Ante prathi bit ki okka squaring, okka (avasaramaithe)
+# multiplication: O(log n) steps. Billion ki 30 steps chaalu.
+#
+# Pedda numbers overflow avvakunda `% m` (modulo) teesukuntam. Competitive
+# programming lo `m = 1_000_000_007` chaala common.
+#
+# "Ante" lo `ankam` overflow ayithe program aagipothundhi (trap T01): silent
+# ga thappu answer raadhu. `m` 3 billion lopu unte `b * b` eppudu pattesthundhi.
+#
+# Run:   antec run learn/L1/02_power.ante
+# Test:  antec pariksha learn/L1/02_power.ante
+
+# `base` ni `exp` saarlu guninchi, `m` tho migile remainder.
+power(base: ankam, exp: ankam ni, m: ankam tho) -> ankam ante:
+    maare result ante 1 % m
+    maare b ante base % m
+    maare e ante exp
+    e > 0 unnanthasepu:
+        e % 2 == 1 aithe:
+            result lo (result * b % m) pettu
+        b lo (b * b % m) pettu
+        e lo (e / 2) pettu
+    result icchey
+
+modhalu() -> khali ante:
+    m ante 1_000_000_007
+    f"3^13 = {3, 13 ni, 1_000_000_000 tho power()}" ni choopinchu()
+    f"2^1,000,000,000 mod 1e9+7 = {2, 1_000_000_000 ni, m tho power()}" ni choopinchu()
+
+@pariksha
+chinna_powers() -> khali ante:
+    ((3, 13 ni, 1_000_000_000 tho power()) == 1_594_323) nijame()
+    ((2, 10 ni, 1_000_000 tho power()) == 1024) nijame()
+    ((5, 0 ni, 7 tho power()) == 1) nijame()
+
+@pariksha
+modulo_tho() -> khali ante:
+    m ante 1_000_000_007
+    # Fermat: prime `m` ki a^(m-1) mod m = 1.
+    ((123_456, (m - 1) ni, m tho power()) == 1) nijame()
+    ((2, 30 ni, 1000 tho power()) == 1_073_741_824 % 1000) nijame()
+
+@pariksha
+mod_okati() -> khali ante:
+    ((9, 9 ni, 1 tho power()) == 0) nijame()

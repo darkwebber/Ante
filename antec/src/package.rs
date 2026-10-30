@@ -11,6 +11,7 @@ use crate::diag::Diagnostic;
 use crate::interp::RunOutput;
 use crate::resolve::{self, FileId, SourceModule};
 use crate::source::{SourceFile, Span};
+use crate::stdlib;
 
 /// Every source file read, and the diagnostics for them.
 pub struct Checked {
@@ -24,6 +25,23 @@ pub struct Checked {
     pub built: Option<PathBuf>,
     /// Problems in the native backend or the C toolchain.
     pub backend_errors: Vec<String>,
+    /// The results of `antec pariksha`, in source order.
+    pub tests: Vec<TestResult>,
+}
+
+/// One `@pariksha` function's run (§23.3).
+pub struct TestResult {
+    /// `module.name` in a package, else the function's name.
+    pub name: String,
+    pub output: RunOutput,
+}
+
+impl TestResult {
+    /// A test passes when it returns normally (with `sare`, for the
+    /// `sare_thappu` form).
+    pub fn passed(&self) -> bool {
+        self.output.exit_code == 0 && self.output.trap.is_none()
+    }
 }
 
 impl Checked {
@@ -41,13 +59,21 @@ impl Checked {
 pub enum Action {
     Check,
     /// Run `modhalu`; `stream` writes output as it is produced, `args` are
-    /// the program's own arguments.
+    /// the program's own arguments. `native` builds and runs a native
+    /// program when a C compiler is around (`antec run`); otherwise only
+    /// programs the interpreter can't model are built (§22.6).
     Run {
         stream: bool,
         args: Vec<String>,
+        native: bool,
     },
     EmitMir,
     EmitLlvm,
+    /// Run every `@pariksha` function whose name contains `filter`, each as
+    /// if in its own process (§23.3).
+    Test {
+        filter: Option<String>,
+    },
     /// Compile to a native executable at this path (M7); `release`
     /// optimizes.
     Build {
@@ -291,22 +317,27 @@ pub fn emit_llvm_source(src: &SourceFile) -> Checked {
 /// Checks and runs a lone file's `modhalu`, capturing its output.
 pub fn run_source(src: &SourceFile) -> Checked {
     let loaded = load_single(SourceFile::new(src.name.clone(), src.text.clone()));
-    compile(loaded, Action::Run { stream: false, args: Vec::new() })
+    compile(loaded, Action::Run { stream: false, args: Vec::new(), native: false })
 }
 
 /// The stages after parsing. Each runs only when the ones before it found
 /// no errors, so one mistake doesn't cascade; warnings are kept only when
 /// there are no errors at all.
 fn compile(loaded: Loaded, action: Action) -> Checked {
-    let Loaded { sources, modules: parsed, mut diagnostics, entry, build } = loaded;
+    let Loaded { mut sources, modules: mut parsed, mut diagnostics, entry, build } = loaded;
     let failed = |d: &[(FileId, Diagnostic)]| d.iter().any(|(_, d)| d.is_error());
     if failed(&diagnostics) && entry.is_none() {
         return finish(sources, diagnostics, None, None);
     }
+    // The standard library written in "Ante" is compiled with every program.
+    let std_file = sources.len();
+    sources.push(SourceFile::new(stdlib::ANTE_SOURCE_FILE, stdlib::ANTE_SOURCE));
+    parsed.push((stdlib::ANTE_SOURCE_MODULE.into(), std_file, Some(ante_source_ast().clone())));
     let modules: Vec<SourceModule> = parsed
         .iter()
         .map(|(name, file, ast)| SourceModule { name: name.clone(), file: *file, ast: ast.as_ref() })
         .collect();
+    let user_modules: Vec<SourceModule> = modules.iter().filter(|m| m.file != std_file).cloned().collect();
     let resolution = resolve::resolve(&modules);
     diagnostics.extend(resolution.diagnostics.iter().cloned());
     if let Some(entry) = &entry {
@@ -337,11 +368,12 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
         diagnostics.retain(|(_, d)| d.is_error());
         return finish(sources, diagnostics, None, None);
     }
-    diagnostics.extend(crate::lint::lint(&modules, &resolution));
+    diagnostics.extend(crate::lint::lint(&user_modules, &resolution));
     let mut run = None;
     let mut mir = None;
     let mut built = None;
     let mut backend_errors = Vec::new();
+    let mut tests = Vec::new();
     let entry_fn = || {
         let module = match &entry {
             Some(e) => resolution.module_by_name.get(e).copied(),
@@ -392,57 +424,167 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
         Action::EmitMir => {
             let names = |fid: usize| tc.globals.fns[fid].name.clone();
             let ty_name = |t: &crate::types::Ty| crate::typeck::show_ty(&tc.globals, t);
-            let text: Vec<String> = program.bodies.iter().map(|b| b.render(&names, &ty_name)).collect();
+            let text: Vec<String> = program
+                .bodies
+                .iter()
+                .filter(|b| b.file != Some(std_file))
+                .map(|b| b.render(&names, &ty_name))
+                .collect();
             mir = Some(text.join("\n"));
         }
-        Action::Run { stream, args } if needs_native(&program, &tc.globals, &build) => match entry_fn() {
-            None => backend_errors.push("`modhalu()` function ledhu, program run cheyyalem".into()),
-            Some(fid) => {
-                match crate::codegen::emit_llvm(
-                    &program,
-                    &tc,
-                    &sources,
-                    fid,
-                    build.stack,
-                    build.task_stack,
-                    build.unwinds(),
-                ) {
-                    Err(errs) => backend_errors = errs,
-                    Ok(emitted) => match run_native(&emitted, &sources, &build, stream, &args) {
-                        Ok(out) => run = Some(out),
-                        Err(e) => backend_errors.push(e),
+        Action::Test { filter } => {
+            let fids: Vec<usize> = crate::typeck::test_fns(&tc.globals, &user_modules)
+                .into_iter()
+                .filter(|&f| filter.as_deref().is_none_or(|w| tc.globals.fns[f].name.contains(w)))
+                .collect();
+            let name = |fid: usize| {
+                let sig = &tc.globals.fns[fid];
+                match &entry {
+                    Some(_) => format!("{}.{}", resolution.modules[sig.module].name, sig.name),
+                    None => sig.name.clone(),
+                }
+            };
+            let outputs = if needs_native(&program, &tc.globals, &build) || have_cc() {
+                let mut emitted = Vec::new();
+                for &fid in &fids {
+                    match crate::codegen::emit_llvm(
+                        &program,
+                        &tc,
+                        &sources,
+                        fid,
+                        build.stack,
+                        build.task_stack,
+                        build.unwinds(),
+                    ) {
+                        Ok(e) => emitted.push(e),
+                        Err(errs) => backend_errors.extend(errs),
+                    }
+                }
+                if backend_errors.is_empty() {
+                    run_native_all(&emitted, &sources, &build, &mut backend_errors)
+                } else {
+                    Vec::new()
+                }
+            } else {
+                let opts = crate::interp::RunOptions { stream: false, stack: build.stack, args: Vec::new() };
+                fids.iter()
+                    .map(|&fid| Some(crate::interp::run(&program, &tc, &sources, fid, &opts)))
+                    .collect()
+            };
+            for (&fid, out) in fids.iter().zip(outputs) {
+                if let Some(output) = out {
+                    tests.push(TestResult { name: name(fid), output });
+                }
+            }
+        }
+        Action::Run { stream, args, native } => {
+            // A program the interpreter can model falls back to it when the
+            // native build doesn't work out (no C compiler, say).
+            let needed = needs_native(&program, &tc.globals, &build);
+            if needed || (native && have_cc()) {
+                match entry_fn() {
+                    None if needed => {
+                        backend_errors.push("`modhalu()` function ledhu, program run cheyyalem".into())
+                    }
+                    None => {}
+                    Some(fid) => match crate::codegen::emit_llvm(
+                        &program,
+                        &tc,
+                        &sources,
+                        fid,
+                        build.stack,
+                        build.task_stack,
+                        build.unwinds(),
+                    ) {
+                        Err(errs) if needed => backend_errors = errs,
+                        Err(_) => {}
+                        Ok(emitted) => match run_native(&emitted, &sources, &build, stream, &args) {
+                            Ok(out) => run = Some(out),
+                            Err(e) if needed => backend_errors.push(e),
+                            Err(_) => {}
+                        },
                     },
                 }
             }
-        },
-        Action::Run { stream, args } => {
-            let module = match &entry {
-                Some(e) => resolution.module_by_name.get(e).copied(),
-                None => parsed.first().and_then(|(name, _, _)| resolution.module_by_name.get(name).copied()),
-            };
-            let fid = module
-                .and_then(|m| resolution.modules[m].values.get("modhalu").copied())
-                .and_then(|d| tc.globals.fn_of_def.get(&d).copied());
-            match fid {
-                Some(fid) => {
-                    let opts = crate::interp::RunOptions { stream, stack: build.stack, args };
-                    run = Some(crate::interp::run(&program, &tc, &sources, fid, &opts))
+            if run.is_none() && !needed {
+                match entry_fn() {
+                    Some(fid) => {
+                        let opts = crate::interp::RunOptions { stream, stack: build.stack, args };
+                        run = Some(crate::interp::run(&program, &tc, &sources, fid, &opts))
+                    }
+                    None => diagnostics.push((
+                        0,
+                        Diagnostic::error(
+                            "E0903",
+                            Span::point(0),
+                            "`modhalu()` function ledhu. Program ekkada start avvali? 🤔 `modhalu() -> khali ante:` raayandi",
+                        ),
+                    )),
                 }
-                None => diagnostics.push((
-                    0,
-                    Diagnostic::error(
-                        "E0903",
-                        Span::point(0),
-                        "`modhalu()` function ledhu. Program ekkada start avvali? 🤔 `modhalu() -> khali ante:` raayandi",
-                    ),
-                )),
             }
         }
     }
+    // Warnings about the standard library are its authors' business.
+    diagnostics.retain(|(file, d)| *file != std_file || d.is_error());
     let mut checked = finish(sources, diagnostics, run, mir);
     checked.built = built;
     checked.backend_errors = backend_errors;
+    checked.tests = tests;
     checked
+}
+
+/// Builds and runs several programs, a few at a time. A program that can't
+/// be built gets `None`, and its error is added to `errors`.
+fn run_native_all(
+    emitted: &[crate::codegen::Emitted],
+    sources: &[SourceFile],
+    build: &BuildSettings,
+    errors: &mut Vec<String>,
+) -> Vec<Option<RunOutput>> {
+    let workers = std::thread::available_parallelism().map_or(4, |n| n.get()).min(emitted.len().max(1));
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let results: std::sync::Mutex<Vec<Option<Result<RunOutput, String>>>> =
+        std::sync::Mutex::new((0..emitted.len()).map(|_| None).collect());
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| loop {
+                let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let Some(e) = emitted.get(i) else { break };
+                let r = run_native(e, sources, build, false, &[]);
+                if let Ok(mut all) = results.lock() {
+                    all[i] = Some(r);
+                }
+            });
+        }
+    });
+    let results = results.into_inner().unwrap_or_default();
+    results
+        .into_iter()
+        .map(|r| match r {
+            Some(Ok(out)) => Some(out),
+            Some(Err(e)) => {
+                errors.push(e);
+                None
+            }
+            None => None,
+        })
+        .collect()
+}
+
+/// The standard library written in "Ante", parsed once per process. The
+/// test suite checks that it parses without diagnostics.
+pub fn ante_source_ast() -> &'static Module {
+    static AST: std::sync::OnceLock<Module> = std::sync::OnceLock::new();
+    AST.get_or_init(|| {
+        let src = SourceFile::new(stdlib::ANTE_SOURCE_FILE, stdlib::ANTE_SOURCE);
+        crate::parse_source(&src).0.expect("the standard library parses (tests check it)")
+    })
+}
+
+/// Whether a C compiler (`$ANTE_CC`, else `clang`) answers `--version`.
+fn have_cc() -> bool {
+    let cc = std::env::var("ANTE_CC").unwrap_or_else(|_| "clang".into());
+    !cc_version(&cc).is_empty()
 }
 
 /// Whether the program reaches outside what the interpreter can model: C
@@ -544,7 +686,7 @@ fn finish(
     mir: Option<String>,
 ) -> Checked {
     diagnostics.sort_by_key(|(file, d)| (*file, d.span.start));
-    Checked { sources, diagnostics, run, mir, built: None, backend_errors: Vec::new() }
+    Checked { sources, diagnostics, run, mir, built: None, backend_errors: Vec::new(), tests: Vec::new() }
 }
 
 /// Compiles LLVM IR plus the runtime with the C toolchain (`$ANTE_CC`, else
@@ -693,10 +835,34 @@ fn runtime_object(cc: &str, target: Option<&str>, scratch: &Path) -> Result<Path
         && fs::copy(&fresh, &partial).is_ok()
         && fs::rename(&partial, &obj).is_ok()
     {
+        prune_runtime_cache(&cache);
         return Ok(obj);
     }
     let _ = fs::remove_file(&partial);
     Ok(fresh)
+}
+
+/// Keeps the newest few cached runtimes; each `antec` or clang upgrade
+/// leaves an old one behind.
+fn prune_runtime_cache(cache: &Path) {
+    const KEEP: usize = 8;
+    let Ok(entries) = fs::read_dir(cache) else { return };
+    let mut objs: Vec<(std::time::SystemTime, PathBuf)> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let name = e.file_name();
+            let name = name.to_string_lossy();
+            name.starts_with("ante_rt-") && name.ends_with(".o")
+        })
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .collect();
+    if objs.len() <= KEEP {
+        return;
+    }
+    objs.sort_by_key(|a| std::cmp::Reverse(a.0));
+    for (_, path) in objs.into_iter().skip(KEEP) {
+        let _ = fs::remove_file(path);
+    }
 }
 
 /// `cc --version`, asked once per compiler per process (it's part of the

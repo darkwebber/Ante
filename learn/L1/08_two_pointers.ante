@@ -1,0 +1,73 @@
+# L1.08 · Two pointers: rendu vaipula nunchi nadavadam 👣
+#
+# Sort chesina list lo motham `target` ayye pair undhaa? Prathi pair try
+# chesthe O(n²). Badhulu okka pointer modhatlo, inkokati chivarlo:
+#
+# - motham chinnadhi ayithe edama pointer ni mundhuki (pedda number kavali);
+# - pedhdhadhi ayithe kudi pointer ni venakki (chinna number kavali);
+# - samaanam ayithe dhorikindhi!
+#
+# Prathi step lo okka pointer kadhuluthundhi, kaabatti O(n).
+#
+# Inkaa oka use: sort chesina list nunchi duplicates theeseyadam. Okka
+# pointer chadhuvuthundhi, inkokati "ikkada raayi" ani choopisthundhi.
+#
+# Run:   antec run learn/L1/08_two_pointers.ante
+# Test:  antec pariksha learn/L1/08_two_pointers.ante
+
+# Sort chesina `xs` lo motham `target` ayye rendu positions, unte.
+pair_vethuku(xs: &varusa[ankam], target: ankam ni) -> undochu[jatha[ankam, ankam]] ante:
+    xs.enni() < 2 aithe:
+        ledhu icchey
+    maare i ante 0
+    maare j ante xs.enni() - 1
+    i < j unnanthasepu:
+        s ante xs[i] + xs[j]
+        s == target aithe:
+            undhi((i, j)) icchey
+        s < target aithe:
+            i += 1
+        ledhante:
+            j -= 1
+    ledhu icchey
+
+# Sort chesina list lo prathi value okkasaari matrame unchi, kotha length.
+duplicates_theesey(xs: &maare varusa[ankam]) -> ankam ante:
+    xs.khaaliyaa() aithe:
+        0 icchey
+    maare raayi ante 1
+    1 nunchi xs.enni() lopu okko chadhuvu ki:
+        xs[chadhuvu] != xs[raayi - 1] aithe:
+            xs[raayi] lo xs[chadhuvu] pettu
+            raayi += 1
+    raayi icchey
+
+modhalu() -> khali ante:
+    dharalu ante [99, 149, 199, 249, 301, 499]
+    f"500 ki rendu items: {&dharalu, 500 ni pair_vethuku()}" ni choopinchu()
+    maare xs ante [1, 1, 2, 3, 3, 3, 4]
+    n ante &maare xs |> duplicates_theesey()
+    f"duplicates lekunda: {xs[0 nunchi n lopu]}" ni choopinchu()
+
+@pariksha
+pair_dhorikindhi() -> khali ante:
+    xs ante [1, 4, 6, 8, 11]
+    ((&xs, 14 ni pair_vethuku()) == undhi((2, 3))) nijame()
+    ((&xs, 5 ni pair_vethuku()) == undhi((0, 1))) nijame()
+
+@pariksha
+pair_ledhu() -> khali ante:
+    xs ante [1, 4, 6]
+    ((&xs, 3 ni pair_vethuku()) == ledhu) nijame()
+    okkate ante [5]
+    ((&okkate, 10 ni pair_vethuku()) == ledhu) nijame()
+
+@pariksha
+duplicates() -> khali ante:
+    maare xs ante [2, 2, 2, 5, 7, 7, 9]
+    n ante &maare xs |> duplicates_theesey()
+    (n == 4) nijame()
+    maare migilinavi: varusa[ankam] ante []
+    xs[0 nunchi n lopu] lo okko x ki:
+        x ni migilinavi.cherchu()
+    (migilinavi == [2, 5, 7, 9]) nijame()

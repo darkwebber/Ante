@@ -9,7 +9,7 @@
 
 Simple ga cheppalante: amma ki explain chesinattu code raayochu, kaani adhi C laaga fast ga run avthundhi. 😎
 
-> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8), generics, traits and closures (M9), standard library (M10), C FFI (M11), tasks and sharing (M12) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi, C libraries tho maatladathayi, anni CPU cores meedha okesaari pani chesthayi! Core 1.0 complete 🎉 Next: JSON, crypto, HTTP (M13–M14). 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
+> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8), generics, traits and closures (M9), standard library (M10), C FFI (M11), tasks and sharing (M12) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi, C libraries tho maatladathayi, anni CPU cores meedha okesaari pani chesthayi! Core 1.0 complete 🎉 DSA nerchukovadaniki [`learn/`](learn) lessons kuda start ayyayi. Next: JSON, crypto, HTTP (M13–M14). 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
 
 ## "Ante" Sundharaniki! 🎬
 
@@ -116,7 +116,7 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 | M20–M22 | `@twaraga` performance, PyTorch binding, Python bridge (numpy, pandas, Hugging Face, OpenAI…) | 🔜 |
 | M23 | Native desktop, mobile apps | 🔭 |
 | M24 | `antec repl` and Jupyter notebooks | 🔜 |
-| Learn | Computer fundamentals, cp-algorithms lo unna algorithms anni, inka ML/DL/GenAI track: anni "Ante" lo, Tinglish explanations tho | 🔜 (M10 tharvatha) |
+| Learn | Computer fundamentals, cp-algorithms lo unna algorithms anni, inka ML/DL/GenAI track: anni "Ante" lo, Tinglish explanations tho ([`learn/`](learn)) | 🚧 L1 lo 10 lessons ready |
 | Later | Self-hosting ("Ante" lo raasina `antec`) | 🔭 |
 
 Full details kosam spec lo [Appendix E](spec/ante_language_spec_1_0.md#appendix-e--implementation-roadmap-for-antec) inka [Appendix I](spec/ante_language_spec_1_0.md#appendix-i--self-hosting-readiness) choodandi.
@@ -141,6 +141,14 @@ Mee modhati "Ante" program run cheyyandi:
 
 ```bash
 cargo run -p antec -- run examples/ante_sundharaniki.ante
+```
+
+`antec run` clang dorikithe program ni native ga build chesi run chesthundhi, kaabatti fast. Interpreter lo run cheyyalante `--interp` add cheyyandi.
+
+Tests (`@pariksha` functions) run cheyyadaniki, ex: DSA lessons anni:
+
+```bash
+cargo run -p antec -- pariksha learn
 ```
 
 Native binary ga compile cheyyandi (C laaga fast! 🚀):
@@ -180,6 +188,7 @@ VS Code extension (syntax highlighting, snippets, smart indentation) [`editors/v
 ```text
 spec/          Language spec (Edition 1.0)
 examples/      Example "Ante" programs ("Ante" Sundharaniki tho start cheyyandi 🎬)
+learn/         DSA lessons "Ante" lo, Tinglish explanations tho, prathi dhaaniki tests
 antec/         Rust lo raasina stage-0 compiler
 editors/       Editor support (VS Code extension, TextMate grammar)
 docs/          Versioning, release process, developer tools

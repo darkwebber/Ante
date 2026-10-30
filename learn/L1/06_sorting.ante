@@ -1,0 +1,91 @@
+# L1.06 · Sorting: insertion sort, merge sort 🃏
+#
+# **Insertion sort:** cards chethilo sort chesinattu. Edama vaipu cards
+# already sort ayyayi; kotha card ni dhaani place vachhe varaku edamaki
+# jaruputham (pakka card tho `marpidi`, ante exchange). Chinna lists ki
+# chaala manchidhi, kaani worst case O(n²): 1 lakh elements ki 500 crore steps.
+#
+# **Merge sort:** "divide and conquer". List ni sagam chesi, rendu sagaalu
+# vidi vidi ga sort chesi (recursion!), tharvatha rendu sorted lists ni
+# merge cheyyadam: rendu lists mundhu unna chinnadhi teesukuntu velladam.
+# Eppudu O(n log n). 1 lakh ki ~17 lakh steps matrame.
+#
+# `insertion_sort` generic: `T: VarusaPettochu` ante "line lo pettagalige"
+# edhaina (numbers, text, mee rakam kuda). Nijam project lo `xs.sort_cheyyi()`
+# vaadandi; idhi ela pani chesthundho nerchukovadaniki.
+#
+# Run:   antec run learn/L1/06_sorting.ante
+# Test:  antec pariksha learn/L1/06_sorting.ante
+
+insertion_sort[T: VarusaPettochu](xs: &maare varusa[T]) -> khali ante:
+    1 nunchi xs.enni() lopu okko i ki:
+        maare j ante i
+        j > 0 && xs[j - 1] > xs[j] unnanthasepu:
+            (j - 1) ni, j tho xs.marpidi()
+            j -= 1
+
+merge_sort(xs: &varusa[ankam] ni) -> varusa[ankam] ante:
+    n ante xs.enni()
+    n <= 1 aithe:
+        xs.xerox() icchey
+    mid ante n / 2
+    maare edama: varusa[ankam] ante []
+    maare kudi: varusa[ankam] ante []
+    0 nunchi n lopu okko i ki:
+        i < mid aithe:
+            xs[i] ni edama.cherchu()
+        ledhante:
+            xs[i] ni kudi.cherchu()
+    a ante &edama ni merge_sort()
+    b ante &kudi ni merge_sort()
+    # Merge: rendu lists mundhu unna chinnadhi teesuko.
+    maare out: varusa[ankam] ante []
+    maare i ante 0
+    maare j ante 0
+    i < a.enni() || j < b.enni() unnanthasepu:
+        j == b.enni() || i < a.enni() && a[i] <= b[j] aithe:
+            a[i] ni out.cherchu()
+            i += 1
+        ledhante:
+            b[j] ni out.cherchu()
+            j += 1
+    out icchey
+
+modhalu() -> khali ante:
+    maare pandlu ante ["mamidi", "arati", "jama", "draksha", "anasa"]
+    &maare pandlu |> insertion_sort()
+    pandlu ni choopinchu()
+    xs ante [38, 27, 43, 3, 9, 82, 10]
+    &xs ni merge_sort() |> choopinchu()
+
+@pariksha
+insertion_numbers() -> khali ante:
+    maare xs ante [5, 2, 9, 1, 5, 6]
+    &maare xs |> insertion_sort()
+    (xs == [1, 2, 5, 5, 6, 9]) nijame()
+
+@pariksha
+insertion_text() -> khali ante:
+    maare xs ante ["c", "a", "b"]
+    &maare xs |> insertion_sort()
+    (xs == ["a", "b", "c"]) nijame()
+
+@pariksha
+merge_motham() -> khali ante:
+    # Pseudo-random numbers, `sort_cheyyi` tho polchi choodham.
+    maare xs: varusa[ankam] ante []
+    maare seed ante 7
+    0 nunchi 2000 lopu okko _k ki:
+        seed lo ((seed * 1103515245 + 12345) % 2147483648) pettu
+        (seed % 1000) ni xs.cherchu()
+    sorted ante &xs ni merge_sort()
+    maare expected ante xs.xerox()
+    expected.sort_cheyyi()
+    (sorted == expected) nijame()
+
+@pariksha
+anchullu() -> khali ante:
+    khaali: varusa[ankam] ante []
+    ((&khaali ni merge_sort()) == khaali) nijame()
+    okkate ante [4]
+    ((&okkate ni merge_sort()) == [4]) nijame()

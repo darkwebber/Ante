@@ -1,0 +1,26 @@
+# category: run-pass
+# expect-stdout: undhi(apple)
+# expect-stdout: undhi(apple)
+# expect-stdout: 3
+# expect-stdout: [banana, kiwi, mango]
+# expect-stdout: [9, 7, 3, 1]
+# expect-stdout: ledhu
+# expect-stdout: avunu
+# level: core
+# `kuppa`: the smallest comes out first, or the biggest with
+# `pedhadhi_mundhu` (§21.2).
+modhalu() -> khali ante:
+    maare k: kuppa[padham] ante kuppa.kotthadhi()
+    ["mango", "apple", "kiwi", "banana"] lo okko x ki:
+        x ni k.cherchu()
+    k.paina() ni choopinchu()
+    k.theesey() ni choopinchu()
+    k.enni() ni choopinchu()
+    k.varusa_ga() ni choopinchu()
+    maare p: kuppa[ankam] ante kuppa.pedhadhi_mundhu()
+    [3, 9, 1, 7] lo okko x ki:
+        x ni p.cherchu()
+    p.varusa_ga() ni choopinchu()
+    maare e: kuppa[ankam] ante kuppa.kotthadhi()
+    e.theesey() ni choopinchu()
+    e.khaaliyaa() ni choopinchu()

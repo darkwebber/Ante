@@ -264,6 +264,7 @@ pub(crate) struct TyEnv<'x> {
 
 pub use body::is_place as is_place_expr;
 pub use items::show as show_ty;
+pub use items::test_fns;
 
 /// Everything the type checker produces.
 pub struct Typeck<'a> {
@@ -445,7 +446,8 @@ impl<'a> Collector<'a> {
         }
     }
 
-    /// E0608: a returned reference must borrow from exactly one parameter (§9.3.2c).
+    /// E0608: a returned reference must borrow from some parameter; callers
+    /// treat it as borrowing from every reference argument (§9.3.2c).
     fn check_rc_return(
         &mut self,
         file: FileId,
@@ -457,17 +459,15 @@ impl<'a> Collector<'a> {
         if !is_rc(ret) {
             return;
         }
-        let mut sources = params.iter().filter(|p| is_rc(&p.ty)).count();
-        if recv.is_some_and(|r| r.mode != RecvMode::Value || is_rc(&r.ty)) {
-            sources += 1;
-        }
-        if sources != 1 {
+        let from_params = params.iter().any(|p| is_rc(&p.ty));
+        let from_recv = recv.is_some_and(|r| r.mode != RecvMode::Value || is_rc(&r.ty));
+        if !from_params && !from_recv {
             self.error(
                 file,
                 "E0608",
                 sig.ret.span,
                 format!(
-                    "`{}` reference return chesthondhi, kaani adhi ae parameter nunchi vasthundho cheppalem. Reference parameter okkate undali (ippudu {sources})",
+                    "`{}` reference return chesthondhi, kaani reference parameter okkati kooda ledhu. Reference ekkadi nunchi vasthundhi? Value ga return cheyyandi",
                     sig.name.name
                 ),
             );

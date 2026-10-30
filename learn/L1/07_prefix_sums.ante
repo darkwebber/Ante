@@ -1,0 +1,76 @@
+# L1.07 · Prefix sums: running total tho range lekkalu 📊
+#
+# Cricket scorecard lo prathi over tharvatha "total" untundhi. 10 nunchi 20
+# overs madhya enni runs? Total(20) - Total(10). Prathi over malli
+# kalapakkarledhu!
+#
+# `pre[i]` = modhati `i` elements motham (`pre[0] = 0`). Appudu `l` nunchi `r`
+# mundhu varaku motham = `pre[r] - pre[l]`. Build cheyyadaniki O(n), tharvatha
+# prathi question O(1).
+#
+# Inkaa oka classic: motham `k` ayye continuous parts (subarrays) enni?
+# `pre[r] - pre[l] = k` ante `pre[l] = pre[r] - k`. Ippati varaku choosina
+# prefix sums ni `jodi` lo lekkapedithe, prathi `r` ki enni `l` lu kudhuruthayo
+# ventane telusthundhi. O(n²) badhulu O(n).
+#
+# Run:   antec run learn/L1/07_prefix_sums.ante
+# Test:  antec pariksha learn/L1/07_prefix_sums.ante
+
+prefix(xs: &varusa[ankam] ni) -> varusa[ankam] ante:
+    maare pre: varusa[ankam] ante [0]
+    maare motham ante 0
+    xs lo okko x ki:
+        motham += x
+        motham ni pre.cherchu()
+    pre icchey
+
+# `l` nunchi `r` mundhu varaku motham (`r` undadhu).
+range_motham(pre: &varusa[ankam], l: ankam ni, r: ankam tho) -> ankam ante:
+    (pre[r] - pre[l]) icchey
+
+# Motham `k` ayye continuous parts enni.
+k_motham_parts(xs: &varusa[ankam], k: ankam ni) -> ankam ante:
+    maare chusinavi: jodi[ankam, ankam] ante {0: 1}
+    maare motham ante 0
+    maare count ante 0
+    xs lo okko x ki:
+        motham += x
+        kavali ante motham - k
+        &kavali ni chusinavi.thechu() batti:
+            undhi(c) aithe:
+                count += *c
+            ledhu aithe:
+                count += 0
+        c ante motham ni, 0 tho chusinavi.lekapothe_cherchu()
+        *c += 1
+    count icchey
+
+modhalu() -> khali ante:
+    runs ante [4, 6, 1, 0, 12, 8, 2, 7, 3, 9]
+    pre ante &runs ni prefix()
+    f"overs 3 nunchi 7: {&pre, 3 ni, 7 tho range_motham()} runs" ni choopinchu()
+    f"motham 10 ayye parts: {&runs, 10 ni k_motham_parts()}" ni choopinchu()
+
+@pariksha
+prefix_build() -> khali ante:
+    ((&[1, 2, 3, 4] ni prefix()) == [0, 1, 3, 6, 10]) nijame()
+
+@pariksha
+range_lekkalu() -> khali ante:
+    xs ante [5, -2, 7, 1, 3]
+    pre ante &xs ni prefix()
+    ((&pre, 0 ni, 5 tho range_motham()) == 14) nijame()
+    ((&pre, 1 ni, 3 tho range_motham()) == 5) nijame()
+    ((&pre, 2 ni, 2 tho range_motham()) == 0) nijame()
+
+@pariksha
+parts_brute_force_tho() -> khali ante:
+    xs ante [1, 2, 3, -3, 3, 0, 1, 2]
+    maare brute ante 0
+    0 nunchi xs.enni() lopu okko l ki:
+        maare s ante 0
+        l nunchi xs.enni() lopu okko r ki:
+            s += xs[r]
+            s == 3 aithe:
+                brute += 1
+    ((&xs, 3 ni k_motham_parts()) == brute) nijame()

@@ -16,6 +16,7 @@
 | M10 Standard library (§21) | ✅ done |
 | M11 C FFI (§22) | ✅ done |
 | M12 Tasks and sharing (§24) | ✅ done |
+| Beginner pass: `kuppa`/`line`/`sardina_jodi`, `antec pariksha`, native `run`, [`learn/`](../learn) | ✅ done |
 | M13–M24 | inka start avvaledhu (spec Appendix E) |
 
 ## Build and test
@@ -32,6 +33,18 @@ cargo run -p antec -- check examples/ante_sundharaniki.ante
 
 ```bash
 cargo run -p antec -- run examples/ante_sundharaniki.ante
+```
+
+`run` clang unte native ga build chesi run chesthundhi (interpreter kante chaala fast); clang lekapothe leka `--interp` isthe MIR interpreter lo:
+
+```bash
+cargo run -p antec -- run --interp examples/ante_sundharaniki.ante
+```
+
+`@pariksha` tests (file, package, leka `ante.toml` leni folder lo prathi file):
+
+```bash
+cargo run -p antec -- pariksha learn
 ```
 
 ```bash
@@ -192,13 +205,15 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 | Lothu data (list, tree) | Drop ki limit ledhu: rendu backends lo okko step ga, stack vaadakunda. `xerox`, `==`, order, display matram recursion: interpreter lo 200,000 levels (≈100,000 list nodes) daatithe T08; native lo stack meedha aadharapadi (default 64MB ki ≈200,000 nodes varaku ok) |
 | File error text | Common errors (`aa file ledhu`, `permission ledhu`, `adhi file kaadhu, folder`, …) rendu backends lo same; migathavi OS message |
 | Diagnostics text | Tinglish, Unicode characters lo columns |
+| Standard library in "Ante" | `kuppa`, `line`, `sardina_jodi` [`std/ante/prelude.ante`](std/ante/prelude.ante) lo "Ante" lone raasinavi; prathi program tho kalisi compile avthayi. Vaati lopala trap ayithe position `<ante>/prelude.ante` ani chupisthundhi |
+| `antec run` backend | `$ANTE_CC` (leka `clang`) unte native, lekapothe interpreter. Output, traps rendu lo okate (T08/T09 position tappa, paina choodandi) |
+| `antec pariksha` | Prathi test ki vere native program (leka interpreter run), CPU cores anni vaadi okesaari |
 
 ## Telisina quirks (break cheyyalani try chesi kanukunnavi)
 
 Ivi bugs kaavu, kaani telisi undali:
 
-- **Text ni loop lo penchadam:** `s lo (s + x) pettu` prathisaari kotha `padham` chesthundhi, kaabatti loop lo quadratic. `s += x` vaadandi, adhi alaage penchuthundhi.
-- **Verb mundhu index:** `i ni ps[i].pampu()` parse avvadhu (`ps[i]` generic call laaga chadhuvuthundhi). Mundhu `p ante &ps[i]`, tharvatha `i ni p.pampu()`.
+- **Text ni loop lo penchadam:** `s lo (s + x) pettu`, `s += x` rendu alaage penchuthayi (O(1) amortized). Kaani `s lo (x + s) pettu` (mundhu cherchadam) prathisaari kotha `padham` chesthundhi; loop lo `Raatha` vaadandi.
 - **Rendu calls madhya operator:** `a ni f() + b ni g()` raayalem; `(a ni f()) + (b ni g())` raayandi (E0201 ade cheputhundhi).
 - **Chaala tasks okesaari wait chesthe:** anni okate condition variable meedha wait chesthayi, kaabatti prathi wake-up anni tasks ni leputhundhi. Vandala tasks ok; velalo block ayithe slow (2,000 tasks ki ≈15s).
 - **Deadlock:** anni tasks time limit lekunda wait chesthunte program hang avvadhu, T15 tho aagipothundhi (§24.4). Okati input kosam leka C code lo block ayithe adhi wait kaadhu, program alaage untundhi.

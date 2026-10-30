@@ -1,0 +1,27 @@
+# category: run-pass
+# expect-stdout: 7
+# expect-stdout: undhi(b)
+# level: core
+# A function may return a reference when several parameters carry one; the
+# result borrows from all of them (§9.3.2c).
+pedhdhadhi(a: &ankam, b: &ankam ni) -> &ankam ante:
+    *a > *b aithe:
+        a icchey
+    b icchey
+
+rakam Pette2 ante:
+    peru: padham
+
+Pette2 panulu ante:
+    peru_aa(naa: &idhi, p: &padham ni) -> undochu[&padham] ante:
+        naa.peru == *p aithe:
+            undhi(&naa.peru) icchey
+        ledhu icchey
+
+modhalu() -> khali ante:
+    x ante 3
+    y ante 7
+    (&x, &y ni pedhdhadhi()) ni choopinchu()
+    p ante Pette2{peru: "b"}
+    q ante "b"
+    &q ni p.peru_aa() |> choopinchu()

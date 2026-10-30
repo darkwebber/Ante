@@ -1,0 +1,44 @@
+# category: run-pass
+# expect-stdout: {apple: 2, banana: 1, kiwi: 1, mango: 1}
+# expect-stdout: undhi(2)
+# expect-stdout: undhi(kiwi)
+# expect-stdout: undhi(banana)
+# expect-stdout: undhi(apple)
+# expect-stdout: undhi(mango)
+# expect-stdout: undhi(1)
+# expect-stdout: ledhu
+# expect-stdout: undhi(2)
+# expect-stdout: [(apple, 10), (banana, 1), (mango, 1)]
+# expect-stdout: 1001 undhi(1) undhi(2002)
+# level: core
+# `sardina_jodi` keeps its keys sorted: lookups, replacing, removing,
+# `kanisam`/`minchakunda`, and display in key order (§21.2).
+modhalu() -> khali ante:
+    maare m: sardina_jodi[padham, ankam] ante sardina_jodi.kotthadhi()
+    ["mango", "apple", "kiwi", "banana", "apple"] lo okko x ki:
+        e ante &x ni m.maare_thechu()
+        e batti:
+            undhi(c) aithe:
+                *c += 1
+            ledhu aithe:
+                x ni, 1 tho m.cherchu()
+    m ni choopinchu()
+    a ante "apple"
+    &a ni m.thechu() |> choopinchu()
+    c ante "c"
+    &c ni m.kanisam() |> choopinchu()
+    &c ni m.minchakunda() |> choopinchu()
+    m.chinnadhi() ni choopinchu()
+    m.pedhadhi() ni choopinchu()
+    k ante "kiwi"
+    &k ni m.theesey() |> choopinchu()
+    &k ni m.theesey() |> choopinchu()
+    "apple" ni, 10 tho m.cherchu() |> choopinchu()
+    m.varusa_ga() ni choopinchu()
+    maare big: sardina_jodi[ankam, ankam] ante sardina_jodi.kotthadhi()
+    0 nunchi 2000 lopu okko i ki:
+        (i * 7919) % 2003 ni, i tho big.cherchu()
+    0 nunchi 2000 lopu okko i ki:
+        i % 2 == 0 aithe:
+            &i ni big.theesey()
+    f"{big.enni()} {big.chinnadhi()} {big.pedhadhi()}" ni choopinchu()

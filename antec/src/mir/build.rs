@@ -429,6 +429,14 @@ impl<'a, 'p> Builder<'a, 'p> {
                     }
                 }
             }
+            // `s lo (s + x) pettu` on text appends in place, like `s += x`
+            // (the two mean the same, §15.3), instead of copying `s`.
+            StmtKind::Assign {
+                place,
+                value: Expr { kind: ExprKind::Binary { op: BinOp::Add, lhs, rhs }, .. },
+            } if same_place(place, lhs) && self.ty_of(place) == Ty::Str => {
+                self.lower_compound(place, BinOp::Add, rhs)
+            }
             StmtKind::Assign { place, value } => {
                 let pt = self.ty_of(place);
                 let p = self.place_of(place);
@@ -2155,4 +2163,19 @@ pub fn needs_drop(
         cache.borrow_mut().insert(ty.clone(), v);
     }
     v
+}
+
+/// Whether two expressions name the same place without side effects:
+/// variables and fields only.
+fn same_place(a: &Expr, b: &Expr) -> bool {
+    match (&a.kind, &b.kind) {
+        (ExprKind::Path(x), ExprKind::Path(y)) => {
+            x.segments.len() == y.segments.len()
+                && x.segments.iter().zip(&y.segments).all(|(p, q)| p.name == q.name)
+        }
+        (ExprKind::Field { base: x, name: n }, ExprKind::Field { base: y, name: m }) => {
+            n.name == m.name && same_place(x, y)
+        }
+        _ => false,
+    }
 }
