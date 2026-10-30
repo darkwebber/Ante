@@ -1367,17 +1367,36 @@ impl<'a> Parser<'a> {
             TokenKind::Keyword(kw) if *kw == Keyword::Naa || is_type_keyword(*kw) => {}
             _ => return false,
         }
-        while self.toks[i + 1].kind == TokenKind::Dot && matches!(self.toks[i + 2].kind, TokenKind::Ident(_))
-        {
-            i += 2;
-        }
-        if self.toks[i + 1].kind == TokenKind::LBracket {
+        loop {
+            while self.toks[i + 1].kind == TokenKind::Dot
+                && matches!(self.toks[i + 2].kind, TokenKind::Ident(_))
+            {
+                i += 2;
+            }
+            if self.toks[i + 1].kind != TokenKind::LBracket {
+                break;
+            }
             match self.matching_close(i + 1) {
                 Some(close) => i = close,
                 None => return false,
             }
+            // `ps[i].pampu()`: brackets followed by `.name` index a receiver;
+            // type arguments are never followed by a dot.
+            if !self.index_then_field(i) {
+                break;
+            }
         }
         self.toks[i + 1].kind == TokenKind::LParen
+    }
+
+    /// Whether the `]` at `close` is followed by `.name`, possibly after
+    /// more brackets (`grid[0][1].f`).
+    fn index_then_field(&self, close: usize) -> bool {
+        match self.toks[close + 1].kind {
+            TokenKind::Dot => matches!(self.toks[close + 2].kind, TokenKind::Ident(_)),
+            TokenKind::LBracket => self.matching_close(close + 1).is_some_and(|c| self.index_then_field(c)),
+            _ => false,
+        }
     }
 
     /// If the next tokens are a literal or bracketed receiver followed by
@@ -1469,7 +1488,32 @@ impl<'a> Parser<'a> {
 
     fn parse_callee(&mut self, start: Span, phrases: Vec<Phrase>) -> PResult<Expr> {
         let path = self.parse_path()?;
-        let callee = mk(ExprKind::Path(path.clone()), path.span);
+        let mut callee = mk(ExprKind::Path(path.clone()), path.span);
+        // `x ni ps[i].pampu()`: an indexed receiver, then fields, then the verb.
+        while self.at(&TokenKind::LBracket)
+            && self.matching_close(self.pos).is_some_and(|close| self.index_then_field(close))
+        {
+            self.advance();
+            self.index_depth += 1;
+            let list = self.parse_list_until(&TokenKind::RBracket);
+            self.index_depth -= 1;
+            let (indices, _) = list?;
+            self.expect(&TokenKind::RBracket, "`]`")?;
+            if indices.is_empty() {
+                let span = self.since(path.span);
+                self.error("E0201", span, "`[]` lopala index kavali");
+                return Err(());
+            }
+            callee = mk(ExprKind::Index { base: Box::new(callee), indices }, self.since(path.span));
+            while !self.at(&TokenKind::LBracket)
+                && self.at(&TokenKind::Dot)
+                && matches!(self.peek_at(1), TokenKind::Ident(_))
+            {
+                self.advance();
+                let name = self.expect_ident("field peru")?;
+                callee = mk(ExprKind::Field { base: Box::new(callee), name }, self.since(path.span));
+            }
+        }
         let type_args = if self.at(&TokenKind::LBracket) { self.parse_type_args()? } else { Vec::new() };
         self.expect(&TokenKind::LParen, "`()`")?;
         if !self.at(&TokenKind::RParen) {

@@ -1,0 +1,17 @@
+# category: run-pass
+# expect-stdout: [c, b, a]
+# expect-stdout: paatha kotha
+# expect-stdout: undhi(x) ledhu
+# level: core
+# `marpidi` swaps two elements of a `varusa`, or puts a value in a place
+# and gives back what was there (§21.1, §21.2).
+modhalu() -> khali ante:
+    maare xs ante ["a", "b", "c"]
+    0 ni, 2 tho xs.marpidi()
+    xs ni choopinchu()
+    maare s ante "paatha"
+    old ante &maare s, "kotha" ni marpidi()
+    f"{old} {s}" ni choopinchu()
+    maare o: undochu[padham] ante undhi("x")
+    t ante &maare o, ledhu ni marpidi()
+    f"{t} {o}" ni choopinchu()

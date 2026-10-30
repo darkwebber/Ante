@@ -1,0 +1,11 @@
+# category: compile-fail
+# expect-error: E1307 @ 6:1
+# level: core
+# A `@pariksha` test takes no parameters and returns `khali` or
+# `sare_thappu[khali, E]` (§23.3).
+@pariksha
+rendu(x: ankam) -> khali ante:
+    ()
+
+modhalu() -> khali ante:
+    ()

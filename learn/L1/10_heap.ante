@@ -1,0 +1,95 @@
+# L1.10 · Heap: eppudu chinnadhi paina 🏔️
+#
+# Hospital emergency lo vachina order lo kaadhu, ekkuva serious unnavaallani
+# mundhu chustharu. Adhe priority queue: eppudu "most important" ventane
+# kaavali.
+#
+# `kuppa[T]` ("pile") lo `cherchu` chesina vaatilo athi chinnadhi eppudu
+# paina untundhi (`paina()`), `theesey()` adhe isthundhi. Rendu O(log n).
+# `kuppa.pedhadhi_mundhu()` ayithe athi peddhadhi paina.
+#
+# Lopala adhi oka `varusa`, kaani tree laaga chadhuvuthundhi: position `i`
+# pillalu `2i + 1`, `2i + 2`. Prathi parent dhaani pillala kante chinnadhi.
+# Kotha element chivarlo cheri, parent kante chinnadhi ayithe paiki
+# "theluthundhi"; `theesey` lo chivari element paiki vachhi kindhaki
+# "munuguthundhi".
+#
+# Classic: running median. Numbers okkokkati vasthunte prathi saari
+# madhyadhi (median) kaavali. Rendu heaps: chinna sagam `pedhadhi_mundhu`
+# kuppa lo, pedda sagam `kotthadhi` kuppa lo. Rendu paina unnavi madhyalo!
+#
+# Run:   antec run learn/L1/10_heap.ante
+# Test:  antec pariksha learn/L1/10_heap.ante
+
+# `xs` lo `k` athi chinnavi, chinnadhi nunchi.
+k_chinnavi(xs: &varusa[ankam], k: ankam ni) -> varusa[ankam] ante:
+    maare h: kuppa[ankam] ante kuppa.kotthadhi()
+    xs lo okko x ki:
+        x ni h.cherchu()
+    maare out: varusa[ankam] ante []
+    out.enni() < k && !h.khaaliyaa() unnanthasepu:
+        h.theesey().kachithanga() ni out.cherchu()
+    out icchey
+
+# Prathi kotha number tharvatha median (sagam chesthe kindhaki).
+running_median(xs: &varusa[ankam] ni) -> varusa[ankam] ante:
+    maare chinna: kuppa[ankam] ante kuppa.pedhadhi_mundhu()
+    maare pedda: kuppa[ankam] ante kuppa.kotthadhi()
+    maare out: varusa[ankam] ante []
+    xs lo okko x ki:
+        chinna_paina ante chinna.paina()
+        chinna_paina batti:
+            undhi(top) aithe:
+                *top < x aithe:
+                    x ni pedda.cherchu()
+                ledhante:
+                    x ni chinna.cherchu()
+            ledhu aithe:
+                x ni chinna.cherchu()
+        # Balance: chinna lo samaanam leka okati ekkuva.
+        chinna.enni() > pedda.enni() + 1 aithe:
+            chinna.theesey().kachithanga() ni pedda.cherchu()
+        pedda.enni() > chinna.enni() aithe:
+            pedda.theesey().kachithanga() ni chinna.cherchu()
+        chinna.enni() == pedda.enni() aithe:
+            a ante *chinna.paina().kachithanga()
+            b ante *pedda.paina().kachithanga()
+            ((a + b) / 2) ni out.cherchu()
+        ledhante:
+            *chinna.paina().kachithanga() ni out.cherchu()
+    out icchey
+
+modhalu() -> khali ante:
+    maare emergency: kuppa[jatha[ankam, padham]] ante kuppa.kotthadhi()
+    (3, "jalubu") ni emergency.cherchu()
+    (1, "accident") ni emergency.cherchu()
+    (2, "jvaram") ni emergency.cherchu()
+    emergency.khaaliyaa() != avunu unnanthasepu:
+        (_p, emi) ante emergency.theesey().kachithanga()
+        f"chudandi: {emi}" ni choopinchu()
+    f"3 chinnavi: {&[9, 4, 7, 1, 8, 2], 3 ni k_chinnavi()}" ni choopinchu()
+    f"running median: {&[5, 15, 1, 3, 8] ni running_median()}" ni choopinchu()
+
+@pariksha
+kuppa_order() -> khali ante:
+    maare h: kuppa[ankam] ante kuppa.kotthadhi()
+    [5, 3, 8, 1, 9, 2] lo okko x ki:
+        x ni h.cherchu()
+    (h.varusa_ga() == [1, 2, 3, 5, 8, 9]) nijame()
+
+@pariksha
+pedhadhi_mundhu_order() -> khali ante:
+    maare h: kuppa[padham] ante kuppa.pedhadhi_mundhu()
+    ["b", "c", "a"] lo okko x ki:
+        x ni h.cherchu()
+    (h.theesey() == undhi("c")) nijame()
+    (h.enni() == 2) nijame()
+
+@pariksha
+k_chinnavi_lekkalu() -> khali ante:
+    ((&[9, 4, 7, 1, 8, 2], 3 ni k_chinnavi()) == [1, 2, 4]) nijame()
+    ((&[3], 5 ni k_chinnavi()) == [3]) nijame()
+
+@pariksha
+median_lekkalu() -> khali ante:
+    ((&[5, 15, 1, 3, 8] ni running_median()) == [5, 10, 5, 4, 5]) nijame()

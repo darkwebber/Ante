@@ -1,5 +1,6 @@
 //! The `antec` command line: help and errors, `run -- args`, `build`
-//! safeguards, `[build]` settings and `fmt --check`.
+//! safeguards, `[build]` settings, `fmt --check`, `pariksha` and the
+//! `learn/` lessons.
 
 use std::fs;
 use std::path::PathBuf;
@@ -115,4 +116,80 @@ fn fmt_check_reports_without_writing() {
     let out = antec(&["fmt", "--check", file.to_str().unwrap()]);
     assert!(out.status.success());
     let _ = fs::remove_dir_all(&dir);
+}
+
+const TESTS: &str = "\
+@pariksha
+kalustundhi() -> khali ante:
+    (1 + 1 == 2) nijame()
+
+@pariksha
+padipothundhi() -> khali ante:
+    \"ikkada\" ni choopinchu()
+    (1 + 1 == 3), \"lekka thappu\" ni nijame()
+
+@pariksha
+sare_ga() -> sare_thappu[khali, padham] ante:
+    sare icchey
+";
+
+#[test]
+fn pariksha_reports_each_test() {
+    let dir = scratch("pariksha");
+    let file = dir.join("t.ante");
+    fs::write(&file, TESTS).unwrap();
+    let path = file.to_str().unwrap();
+    let both = |o: &Output| text(&o.stdout) + &text(&o.stderr);
+    for interp in [false, true] {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_antec"));
+        cmd.args(["pariksha", path]);
+        if interp {
+            // No C compiler: the interpreter runs the tests.
+            cmd.env("ANTE_CC", dir.join("no-such-cc"));
+        }
+        let out = cmd.output().unwrap();
+        assert_eq!(out.status.code(), Some(1), "{}", both(&out));
+        let shown = text(&out.stdout);
+        assert!(shown.contains("✅ kalustundhi") && shown.contains("✅ sare_ga"), "{shown}");
+        assert!(shown.contains("❌ padipothundhi"), "{shown}");
+        assert!(shown.contains("│ ikkada") && shown.contains("lekka thappu"), "{shown}");
+        assert!(shown.contains("2 pass, 1 fail"), "{shown}");
+    }
+    let out = antec(&["pariksha", path, "sare"]);
+    assert!(out.status.success(), "{}", both(&out));
+    assert!(text(&out.stdout).contains("(1/1)"));
+    let out = antec(&["test", path, "ledhu_asalu"]);
+    assert!(out.status.success());
+    assert!(text(&out.stdout).contains("pariksha lu emi levu"));
+    fs::write(&file, "@pariksha\nx(n: ankam) -> khali ante:\n    ()\n").unwrap();
+    let out = antec(&["pariksha", path]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains("E1307"));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn run_interp_flag() {
+    let dir = scratch("interp");
+    let file = dir.join("p.ante");
+    fs::write(&file, "modhalu() -> khali ante:\n    \"namaste\" ni choopinchu()\n").unwrap();
+    for args in [vec!["run", file.to_str().unwrap()], vec!["run", "--interp", file.to_str().unwrap()]] {
+        let out = antec(&args);
+        assert_eq!(text(&out.stdout), "namaste\n", "{args:?}: {}", text(&out.stderr));
+    }
+    let out = antec(&["check", "--interp", file.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Every lesson in `learn/` passes its tests and is formatted.
+#[test]
+fn learn_lessons_pass() {
+    let learn = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../learn");
+    let path = learn.to_str().unwrap();
+    let out = antec(&["pariksha", path]);
+    assert!(out.status.success(), "{}{}", text(&out.stdout), text(&out.stderr));
+    assert!(text(&out.stdout).contains("anni pass"));
+    let out = antec(&["fmt", "--check", path]);
+    assert!(out.status.success(), "{}", text(&out.stdout));
 }

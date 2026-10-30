@@ -1209,6 +1209,10 @@ impl Machine<'_> {
                 self.convert(name, &ty(1), &ty(0), arg!(0), span)
             }
             "prelude.size_of" | "prelude.align_of" => Ok(Value::Int(size_of(&ty(0)))),
+            "prelude.marpidi" => {
+                let new = take!(1);
+                Ok(self.with_target_mut(&arg!(0), |v| std::mem::replace(v, new)))
+            }
             "prelude.kalipi" => {
                 let a = self.take_iter(arg!(0));
                 let b = self.take_iter(arg!(1));
@@ -1341,6 +1345,23 @@ impl Machine<'_> {
                 self.with_target_mut(&arg!(0), |v| {
                     if let Value::Vec(xs) = v {
                         xs.push(x);
+                    }
+                });
+                Ok(Value::Unit)
+            }
+            "varusa.marpidi" => {
+                let len = self.seq_len_of(&arg!(0));
+                let (i, j) = (arg!(1).int(), arg!(2).int());
+                if let Some(&bad) = [i, j].iter().find(|&&k| k < 0 || k as usize >= len) {
+                    return Err(self.trap(
+                        "T03",
+                        format!("index {bad} bayatiki vellindhi (length {len})"),
+                        span,
+                    ));
+                }
+                self.with_target_mut(&arg!(0), |v| {
+                    if let Value::Vec(xs) = v {
+                        xs.swap(i as usize, j as usize);
                     }
                 });
                 Ok(Value::Unit)

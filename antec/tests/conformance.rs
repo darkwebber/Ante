@@ -107,7 +107,7 @@ fn run_test(path: &Path) -> Outcome {
     };
     let category = parse_header(&text).category;
     let action = if matches!(category.as_str(), "run-pass" | "runtime-trap") {
-        Action::Run { stream: false, args: Vec::new() }
+        Action::Run { stream: false, args: Vec::new(), native: false }
     } else {
         Action::Check
     };

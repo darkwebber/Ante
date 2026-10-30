@@ -1,0 +1,58 @@
+# L1.04 · Modular inverse: modulo lo bhaagaham ➗
+#
+# Modulo lekkalu lo `+`, `-`, `*` easy: prathi step tharvatha `% m`. Kaani
+# bhaagaham? `(a / b) % m` ki `b` yokka "inverse" kavali: `b * x % m = 1`
+# ayye `x`. Appudu `a / b` badhulu `a * x` chesthe saripothundhi.
+#
+# `x` ni ela vethakali? Extended Euclid: GCD tho paatu `a·x + b·y = gcd(a, b)`
+# ayye `x`, `y` kuda isthundhi. `gcd(b, m) = 1` ayithe `b·x + m·y = 1`, ante
+# `b·x % m = 1`. Adhe mana inverse! GCD 1 kaakapothe inverse ledhu, andhuke
+# answer `undochu[ankam]`.
+#
+# Recursion ela pani chesthundho choodandi: `ext_gcd(b, a % b)` answer nunchi
+# `ext_gcd(a, b)` answer ni build chesthunnam.
+#
+# Run:   antec run learn/L1/04_mod_inverse.ante
+# Test:  antec pariksha learn/L1/04_mod_inverse.ante
+
+# `(g, x, y)`: `g = gcd(a, b)` and `a·x + b·y = g`.
+ext_gcd(a: ankam, b: ankam ni) -> jatha[ankam, ankam, ankam] ante:
+    b == 0 aithe:
+        (a, 1, 0) icchey
+    (g, x, y) ante b, (a % b) ni ext_gcd()
+    (g, y, x - a / b * y) icchey
+
+# `a * x % m == 1` ayye `x` (0 nunchi m - 1 lopu), unte.
+inverse(a: ankam, m: ankam ni) -> undochu[ankam] ante:
+    (g, x, _y) ante a, m ni ext_gcd()
+    g != 1 aithe:
+        ledhu icchey
+    undhi((x % m + m) % m) icchey
+
+modhalu() -> khali ante:
+    f"3 inverse mod 11 = {3, 11 ni inverse()}" ni choopinchu()
+    f"6 inverse mod 9 = {6, 9 ni inverse()}" ni choopinchu()
+    (g, x, y) ante 240, 46 ni ext_gcd()
+    f"240·{x} + 46·{y} = {g}" ni choopinchu()
+
+@pariksha
+inverse_undhi() -> khali ante:
+    ((3, 11 ni inverse()) == undhi(4)) nijame()
+    ((10, 17 ni inverse()) == undhi(12)) nijame()
+
+@pariksha
+inverse_ledhu() -> khali ante:
+    ((6, 9 ni inverse()) == ledhu) nijame()
+
+@pariksha
+prathi_inverse_sariga() -> khali ante:
+    m ante 1_000_000_007
+    1 nunchi 1000 varaku okko a ki:
+        x ante (a, m ni inverse()).kachithanga()
+        (a * x % m == 1) nijame()
+
+@pariksha
+ext_gcd_samikaranam() -> khali ante:
+    (g, x, y) ante 240, 46 ni ext_gcd()
+    (g == 2) nijame()
+    (240 * x + 46 * y == g) nijame()

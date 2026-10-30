@@ -80,6 +80,7 @@ pub struct ModuleData {
     pub def: DefId,
 }
 
+#[derive(Clone)]
 pub struct SourceModule<'a> {
     pub name: String,
     pub file: FileId,
@@ -158,6 +159,8 @@ struct Resolver {
     modules: Vec<ModuleData>,
     module_by_name: HashMap<String, ModId>,
     prelude: ModId,
+    /// The standard library written in "Ante" (`stdlib::ANTE_SOURCE_MODULE`).
+    ante_source: Option<ModId>,
     variants: HashMap<DefId, Vec<String>>,
     fields: HashMap<DefId, Vec<String>>,
     members: HashMap<DefId, HashSet<String>>,
@@ -194,6 +197,7 @@ impl Resolver {
             modules: Vec::new(),
             module_by_name: HashMap::new(),
             prelude: 0,
+            ante_source: None,
             variants: HashMap::new(),
             fields: HashMap::new(),
             members: HashMap::new(),
@@ -293,6 +297,9 @@ impl Resolver {
         for source in sources {
             let m = self.add_module(source.name.clone(), Some(source.file), source.ast.is_none());
             self.module_by_name.insert(source.name.clone(), m);
+            if source.name == stdlib::ANTE_SOURCE_MODULE {
+                self.ante_source = Some(m);
+            }
             ids.push(m);
         }
         let parsed: Vec<(ModId, FileId, &Module)> =
@@ -554,6 +561,14 @@ impl Resolver {
             .or_else(|| module.imported_types.get(name))
             .or_else(|| self.modules[self.prelude].types.get(name))
             .copied()
+            .or_else(|| self.ante_source_item(name, Ns::Type))
+    }
+
+    /// A public item of the standard library written in "Ante".
+    fn ante_source_item(&self, name: &str, ns: Ns) -> Option<DefId> {
+        let m = &self.modules[self.ante_source?];
+        let d = *if ns == Ns::Value { m.values.get(name) } else { m.types.get(name) }?;
+        self.defs[d].public.then_some(d)
     }
 
     fn is_generic(&self, name: &str) -> bool {
@@ -1076,7 +1091,12 @@ impl Resolver {
             self.record(first.span, Res::SelfMember);
             return;
         }
-        if let Some(&d) = self.modules[self.prelude].values.get(name) {
+        if let Some(d) = self.modules[self.prelude]
+            .values
+            .get(name)
+            .copied()
+            .or_else(|| self.ante_source_item(name, Ns::Value))
+        {
             self.record(first.span, Res::Def(d));
             return;
         }

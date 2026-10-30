@@ -1139,6 +1139,12 @@ pub(super) fn std_call(
             }
             (fx.load(&al, &acc), acc_ty)
         }
+        "prelude.marpidi" => {
+            let et = fx.ll(&tyarg(0));
+            let old = fx.load(&et, &v(0));
+            fx.emit(format!("store {et} {}, ptr {}", v(1), v(0)));
+            (old, ret)
+        }
         "prelude.size_of" | "prelude.align_of" => {
             let (s, a) = fx.gen.size_align(&tyarg(0));
             ((if key == "prelude.size_of" { s } else { a }).to_string(), Ty::ANKAM)
@@ -1297,6 +1303,26 @@ pub(super) fn std_call(
             let et = fx.ll(&elem);
             let p = fx.spill(&et, &v(1));
             fx.emit(format!("call void @ante_vec_push(ptr {}, ptr {p}, i64 {size})", v(0)));
+            unit()
+        }
+        "varusa.marpidi" => {
+            let Some((d, n, elem)) = seq_val(fx, &v(0), &t(0)) else { return unsupported(fx, &key, dest) };
+            let loc = fx.loc(span);
+            for idx in [v(1), v(2)] {
+                let bad = fx.r();
+                fx.emit(format!("{bad} = icmp uge i64 {idx}, {n}"));
+                let n2 = n.clone();
+                fx.guard(&bad, |fx| {
+                    fx.emit(format!("call void @ante_trap_index(i64 {idx}, i64 {n2}, ptr {loc})"))
+                });
+            }
+            let et = fx.ll(&elem);
+            let pi = fx.gep(&et, &d, &[format!("i64 {}", v(1))]);
+            let pj = fx.gep(&et, &d, &[format!("i64 {}", v(2))]);
+            let a = fx.load(&et, &pi);
+            let b = fx.load(&et, &pj);
+            fx.emit(format!("store {et} {b}, ptr {pi}"));
+            fx.emit(format!("store {et} {a}, ptr {pj}"));
             unit()
         }
         "varusa.theesey" => {

@@ -1,0 +1,74 @@
+# L1.05 · Binary search: dictionary lo word vethikinattu 📖
+#
+# Dictionary lo "mamidi" vethakadaniki modhati page nunchi okko page tippam.
+# Madhyalo theristham; "m" mundhu unte venaka sagam, tharvatha unte mundhu
+# sagam vadilestham. Prathi saari migilina pages sagam avthayi.
+#
+# Sort chesina `varusa` lo kuda ade: 10 lakhs elements lo ekkuva ante 20 checks.
+# O(log n).
+#
+# Chinna mistakes ekkuva jarige chota idhi! Mana rule: `edama` nunchi `kudi`
+# mundhu varaku (`edama` untundhi, `kudi` undadhu) inka vethakaali. Rendu
+# samaanam ayithe vethakadaniki emi migalaledhu.
+#
+# `modhati_kanisam` ("first at least") inkaa useful: `x` kante chinnadhi
+# kaani modhati position. Insert ekkada cheyyali, enni chinnavi unnayi:
+# anni dheeni tho telusthayi.
+#
+# Run:   antec run learn/L1/05_binary_search.ante
+# Test:  antec pariksha learn/L1/05_binary_search.ante
+
+# Sort chesina `xs` lo `x` unna position, unte.
+vethuku(xs: &varusa[ankam], x: ankam ni) -> undochu[ankam] ante:
+    maare edama ante 0
+    maare kudi ante xs.enni()
+    edama < kudi unnanthasepu:
+        mid ante edama + (kudi - edama) / 2
+        xs[mid] == x aithe:
+            undhi(mid) icchey
+        xs[mid] < x aithe:
+            edama lo (mid + 1) pettu
+        ledhante:
+            kudi lo mid pettu
+    ledhu icchey
+
+# `xs[i] >= x` ayye modhati `i` (leka anni chinnavi ayithe `xs.enni()`).
+modhati_kanisam(xs: &varusa[ankam], x: ankam ni) -> ankam ante:
+    maare edama ante 0
+    maare kudi ante xs.enni()
+    edama < kudi unnanthasepu:
+        mid ante edama + (kudi - edama) / 2
+        xs[mid] < x aithe:
+            edama lo (mid + 1) pettu
+        ledhante:
+            kudi lo mid pettu
+    edama icchey
+
+modhalu() -> khali ante:
+    marks ante [35, 42, 42, 58, 61, 77, 90]
+    f"58 ekkada? {&marks, 58 ni vethuku()}" ni choopinchu()
+    f"60 ekkada? {&marks, 60 ni vethuku()}" ni choopinchu()
+    f"60 kante thakkuva marks enni mandhiki: {&marks, 60 ni modhati_kanisam()}" ni choopinchu()
+
+@pariksha
+dhorikindhi() -> khali ante:
+    xs ante [1, 3, 5, 7, 9, 11]
+    0 nunchi xs.enni() lopu okko i ki:
+        ((&xs, xs[i] ni vethuku()) == undhi(i)) nijame()
+
+@pariksha
+dhorakaledhu() -> khali ante:
+    xs ante [1, 3, 5]
+    ((&xs, 0 ni vethuku()) == ledhu) nijame()
+    ((&xs, 4 ni vethuku()) == ledhu) nijame()
+    ((&xs, 6 ni vethuku()) == ledhu) nijame()
+    khaali: varusa[ankam] ante []
+    ((&khaali, 1 ni vethuku()) == ledhu) nijame()
+
+@pariksha
+kanisam_positions() -> khali ante:
+    xs ante [2, 4, 4, 4, 8]
+    ((&xs, 1 ni modhati_kanisam()) == 0) nijame()
+    ((&xs, 4 ni modhati_kanisam()) == 1) nijame()
+    ((&xs, 5 ni modhati_kanisam()) == 4) nijame()
+    ((&xs, 9 ni modhati_kanisam()) == 5) nijame()

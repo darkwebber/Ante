@@ -1,9 +1,0 @@
-# category: compile-fail
-# expect-error: E0608 @ 5:44
-# level: core
-# Two reference parameters, reference returned.
-pedhdhadhi(a: &ankam ni, b: &ankam tho) -> &ankam ante:
-    a icchey
-
-modhalu() -> khali ante:
-    icchey

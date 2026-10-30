@@ -1,0 +1,60 @@
+# L1.01 · GCD: Euclid gaari trick 🧮
+#
+# Rendu numbers ni exact ga bhaaginche anni numbers lo athi peddhadhi GCD
+# (greatest common divisor). 12, 18 ki adhi 6.
+#
+# Brute force: 1 nunchi chinna number varaku prathi okkati try cheyyochu,
+# kaani number pedhdhadhi ayithe adhi chaala slow.
+#
+# Euclid idea (2,300 years kritham!): `a` ni `b` tho bhaagisthe vachhe
+# remainder `r` ki kuda adhe GCD untundhi. Kaabatti (a, b) → (b, a % b),
+# `b` sunna ayye varaku:
+#
+#     gcd(48, 18) → gcd(18, 12) → gcd(12, 6) → gcd(6, 0) = 6
+#
+# Prathi rendu steps lo numbers kanisam sagam avthayi, kaabatti O(log n).
+# 18 digits numbers ki kuda okka 90 steps lopu answer vachesthundhi.
+#
+# Run:   antec run learn/L1/01_gcd.ante
+# Test:  antec pariksha learn/L1/01_gcd.ante
+
+# Rendu numbers (sunna leka positive) GCD.
+gcd(a: ankam, b: ankam ni) -> ankam ante:
+    maare x ante a
+    maare y ante b
+    y != 0 unnanthasepu:
+        r ante x % y
+        x lo y pettu
+        y lo r pettu
+    x icchey
+
+# LCM: rendu numbers ki common ga unna athi chinna multiple.
+# `a * b` mundhu chesthe overflow avvochu, kaabatti mundhu bhaagisthunnam.
+lcm(a: ankam, b: ankam ni) -> ankam ante:
+    g ante a, b ni gcd()
+    (a / g * b) icchey
+
+modhalu() -> khali ante:
+    f"gcd(48, 18) = {48, 18 ni gcd()}" ni choopinchu()
+    f"lcm(4, 6) = {4, 6 ni lcm()}" ni choopinchu()
+    # 1 nunchi 10 varaku anni numbers tho bhaagame number:
+    maare l ante 1
+    1 nunchi 10 varaku okko i ki:
+        l lo (l, i ni lcm()) pettu
+    f"1..10 anni tho bhaagame chinna number: {l}" ni choopinchu()
+
+@pariksha
+gcd_chinna_lekkalu() -> khali ante:
+    ((12, 18 ni gcd()) == 6) nijame()
+    ((48, 18 ni gcd()) == 6) nijame()
+    ((17, 5 ni gcd()) == 1) nijame()
+
+@pariksha
+gcd_sunna_tho() -> khali ante:
+    ((0, 7 ni gcd()) == 7) nijame()
+    ((7, 0 ni gcd()) == 7) nijame()
+
+@pariksha
+lcm_lekkalu() -> khali ante:
+    ((4, 6 ni lcm()) == 12) nijame()
+    ((21, 6 ni lcm()) == 42) nijame()

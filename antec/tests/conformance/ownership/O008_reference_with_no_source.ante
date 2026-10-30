@@ -1,0 +1,9 @@
+# category: compile-fail
+# expect-error: E0608 @ 5:31
+# level: core
+# A reference returned with no reference parameter to borrow from.
+ekkadi_nunchi(n: ankam ni) -> &ankam ante:
+    kompa_munigindhi()
+
+modhalu() -> khali ante:
+    icchey

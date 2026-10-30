@@ -454,7 +454,8 @@ pub enum ExprKind {
     Hole,
     Path(Path),
     /// Every call, with or without phrases. `callee` is a path for phrase
-    /// calls; a zero-argument call may have any callee, as in `(f[0])()`.
+    /// calls, possibly through indexes (`ps[i].pampu`); a zero-argument call
+    /// may have any callee, as in `(f[0])()`.
     Call {
         callee: Box<Expr>,
         type_args: Vec<Type>,

@@ -1,0 +1,101 @@
+# L1.09 · Stack and queue: plates, cinema line 🍽️🎟️
+#
+# **Stack:** plates gutta. Chivarlo pettindhe modhata theestham (LIFO: last
+# in, first out). "Ante" lo `varusa` ne stack: `x ni s.cherchu()` paina
+# pettu, `s.theesey()` paina unnadhi theesuko.
+#
+# Classic use: brackets sariga moosaaraa? `(`, `[`, `{` vasthe stack lo
+# pettu; `)` vasthe stack paina `(` undaali, theeseyyi. Chivariki stack
+# khaali ga undaali.
+#
+# **Queue:** cinema ticket line. Modhata vachhinavaalle modhata velthaaru
+# (FIFO: first in, first out). `line[T]` lo rendu vaipula nunchi
+# cherchochu, theeseyochu (deque): `venaka_cherchu`, `mundhu_theesey`,
+# `mundhu_cherchu`, `venaka_theesey`. Annee O(1).
+#
+# Queue classic: Josephus game. `n` mandhi circle lo; prathi `k`-va vaadu
+# out. Chivariki evaru migulutharu? Line mundhu nunchi theesi venaka
+# pettadam ante circle lo thirugadame!
+#
+# Run:   antec run learn/L1/09_stack_queue.ante
+# Test:  antec pariksha learn/L1/09_stack_queue.ante
+
+# Brackets anni sariga open ayyi, sariga moosaaraa?
+brackets_sariga(s: &padham ni) -> ato_ito ante:
+    maare stack: varusa[aksharam] ante []
+    s.aksharaalu() lo okko c ki:
+        c batti:
+            '(' | '[' | '{' aithe:
+                c ni stack.cherchu()
+            ')' | ']' | '}' aithe:
+                kavali ante c ni jatha_bracket()
+                stack.theesey() batti:
+                    undhi(top) aithe:
+                        top != kavali aithe:
+                            kaadhu icchey
+                    ledhu aithe:
+                        kaadhu icchey
+            _ aithe:
+                vadhiley
+    stack.khaaliyaa() icchey
+
+# Moose bracket ki jatha open bracket.
+jatha_bracket(c: aksharam ni) -> aksharam ante:
+    c batti:
+        ')' aithe:
+            '(' icchey
+        ']' aithe:
+            '[' icchey
+        _ aithe:
+            '{' icchey
+
+# 1 nunchi `n` varaku circle lo, prathi `k`-va vaadu out; migilina vaadu.
+josephus(n: ankam, k: ankam ni) -> ankam ante:
+    maare circle: line[ankam] ante line.kotthadhi()
+    1 nunchi n varaku okko i ki:
+        i ni circle.venaka_cherchu()
+    circle.enni() > 1 unnanthasepu:
+        0 nunchi k - 1 lopu okko _s ki:
+            mundhu ante circle.mundhu_theesey().kachithanga()
+            mundhu ni circle.venaka_cherchu()
+        circle.mundhu_theesey()
+    circle.mundhu_theesey().kachithanga() icchey
+
+modhalu() -> khali ante:
+    ["(a[b]{c})", "(]", "((", "f(x[1]) + {y}"] lo okko s ki:
+        f"{s} → {&s ni brackets_sariga()}" ni choopinchu()
+    f"7 mandhi, prathi 3-va vaadu out: migiledhi {7, 3 ni josephus()}" ni choopinchu()
+    maare l: line[padham] ante line.kotthadhi()
+    "Ravi" ni l.venaka_cherchu()
+    "Sita" ni l.venaka_cherchu()
+    "Ammamma (VIP)" ni l.mundhu_cherchu()
+    f"line: {l}" ni choopinchu()
+
+@pariksha
+brackets_sare() -> khali ante:
+    (&"" ni brackets_sariga()) nijame()
+    (&"([]{})" ni brackets_sariga()) nijame()
+    (&"x = (a + b) * [c]" ni brackets_sariga()) nijame()
+
+@pariksha
+brackets_thappu() -> khali ante:
+    ((&"(" ni brackets_sariga()) == kaadhu) nijame()
+    ((&")(" ni brackets_sariga()) == kaadhu) nijame()
+    ((&"([)]" ni brackets_sariga()) == kaadhu) nijame()
+
+@pariksha
+josephus_lekkalu() -> khali ante:
+    ((7, 3 ni josephus()) == 4) nijame()
+    ((1, 5 ni josephus()) == 1) nijame()
+    ((41, 3 ni josephus()) == 31) nijame()
+
+@pariksha
+line_rendu_vaipula() -> khali ante:
+    maare l: line[ankam] ante line.kotthadhi()
+    0 nunchi 100 lopu okko i ki:
+        i ni l.venaka_cherchu()
+        (0 - i) ni l.mundhu_cherchu()
+    (l.enni() == 200) nijame()
+    (l.mundhu_theesey() == undhi(-99)) nijame()
+    (l.venaka_theesey() == undhi(99)) nijame()
+    (l.mundhu() == undhi(&(-98))) nijame()

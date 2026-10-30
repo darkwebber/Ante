@@ -2,6 +2,17 @@
 //! §13.5, §21). Until the standard library ships as "Ante" source (M10),
 //! these tables stand in for it during name resolution.
 
+/// The module holding the standard library written in "Ante" itself
+/// (`antec/std/ante/`). Its name can't be written in source, so programs
+/// reach its public items only through the prelude fallback.
+pub const ANTE_SOURCE_MODULE: &str = "<ante>";
+
+/// The "Ante" source of that module, compiled together with every program.
+pub const ANTE_SOURCE: &str = include_str!("../std/ante/prelude.ante");
+
+/// The file name its diagnostics and traps point at.
+pub const ANTE_SOURCE_FILE: &str = "<ante>/prelude.ante";
+
 /// Built-in type words. The parser keeps them as single-segment type paths.
 pub const BUILTIN_TYPES: &[&str] = &[
     "ankam",
@@ -41,6 +52,7 @@ pub const PRELUDE_VALUES: &[&str] = &[
     "maarchu",
     "kudhirithe_maarchu",
     "kolpothu_maarchu",
+    "marpidi",
     "size_of",
     "align_of",
     "kalipi",

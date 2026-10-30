@@ -1,0 +1,426 @@
+# The part of the prelude written in "Ante" itself (spec §21.5). Every
+# program is compiled together with this file, and its public types are
+# in scope everywhere, like the rest of the prelude.
+
+# ── kuppa: a pile where the smallest is always on top (binary heap) ─────────
+
+andhariki rakam kuppa[T] ante:
+    a: varusa[T]
+    pedhadhi: ato_ito
+
+[T: VarusaPettochu] kuppa[T] panulu ante:
+    # Smallest first.
+    andhariki kotthadhi() -> kuppa[T] ante:
+        kuppa{a: [], pedhadhi: kaadhu} icchey
+
+    # Biggest first.
+    andhariki pedhadhi_mundhu() -> kuppa[T] ante:
+        kuppa{a: [], pedhadhi: avunu} icchey
+
+    andhariki enni(naa: &idhi) -> ankam ante:
+        naa.a.enni() icchey
+
+    andhariki khaaliyaa(naa: &idhi) -> ato_ito ante:
+        naa.a.khaaliyaa() icchey
+
+    andhariki paina(naa: &idhi) -> undochu[&T] ante:
+        (0 ni naa.a.thechu()) icchey
+
+    andhariki cherchu(naa: &maare idhi, x: T ni) -> khali ante:
+        x ni naa.a.cherchu()
+        maare i ante naa.a.enni() - 1
+        i > 0 unnanthasepu:
+            p ante (i - 1) / 2
+            i, p ni naa.mundhaa() aithe:
+                i ni, p tho naa.a.marpidi()
+                i lo p pettu
+            ledhante:
+                aapey
+
+    andhariki theesey(naa: &maare idhi) -> undochu[T] ante:
+        n ante naa.a.enni()
+        n == 0 aithe:
+            ledhu icchey
+        0 ni, (n - 1) tho naa.a.marpidi()
+        top ante naa.a.theesey()
+        m ante n - 1
+        maare i ante 0
+        avunu unnanthasepu:
+            l ante 2 * i + 1
+            r ante l + 1
+            maare s ante i
+            l < m && (l, s ni naa.mundhaa()) aithe:
+                s lo l pettu
+            r < m && (r, s ni naa.mundhaa()) aithe:
+                s lo r pettu
+            s == i aithe:
+                aapey
+            i ni, s tho naa.a.marpidi()
+            i lo s pettu
+        top icchey
+
+    # Whether the element at `i` belongs above the one at `j`.
+    mundhaa(naa: &idhi, i: ankam, j: ankam ni) -> ato_ito ante:
+        naa.pedhadhi aithe:
+            (naa.a[i] > naa.a[j]) icchey
+        (naa.a[i] < naa.a[j]) icchey
+
+    andhariki varusa_ga(naa: idhi) -> varusa[T] ante:
+        maare k ante naa
+        maare out: varusa[T] ante []
+        avunu unnanthasepu:
+            k.theesey() batti:
+                undhi(x) aithe:
+                    x ni out.cherchu()
+                ledhu aithe:
+                    aapey
+        out icchey
+
+# ── line: a queue you can join or leave at either end (ring buffer) ────────
+
+andhariki rakam line[T] ante:
+    gadhulu: varusa[undochu[T]]
+    modhalu_: ankam
+    enni_: ankam
+
+[T] line[T] panulu ante:
+    andhariki kotthadhi() -> line[T] ante:
+        line{gadhulu: [], modhalu_: 0, enni_: 0} icchey
+
+    andhariki enni(naa: &idhi) -> ankam ante:
+        naa.enni_ icchey
+
+    andhariki khaaliyaa(naa: &idhi) -> ato_ito ante:
+        (naa.enni_ == 0) icchey
+
+    # The slot holding the `i`th element.
+    gadhi(naa: &idhi, i: ankam ni) -> ankam ante:
+        ((naa.modhalu_ + i) % naa.gadhulu.enni()) icchey
+
+    # Doubles the room, keeping the elements in order from slot 0.
+    penchu(naa: &maare idhi) -> khali ante:
+        paatha ante naa.gadhulu.enni()
+        maare kotha: varusa[undochu[T]] ante []
+        0 nunchi naa.enni_ lopu okko i ki:
+            g ante i ni naa.gadhi()
+            x ante &maare naa.gadhulu[g], ledhu ni marpidi()
+            x ni kotha.cherchu()
+        kotha_room ante paatha ni kotha_room()
+        kotha.enni() < kotha_room unnanthasepu:
+            ledhu ni kotha.cherchu()
+        naa.gadhulu lo kotha pettu
+        naa.modhalu_ lo 0 pettu
+
+    andhariki venaka_cherchu(naa: &maare idhi, x: T ni) -> khali ante:
+        naa.enni_ == naa.gadhulu.enni() aithe:
+            naa.penchu()
+        g ante naa.enni_ ni naa.gadhi()
+        naa.gadhulu[g] lo undhi(x) pettu
+        naa.enni_ += 1
+
+    andhariki mundhu_cherchu(naa: &maare idhi, x: T ni) -> khali ante:
+        naa.enni_ == naa.gadhulu.enni() aithe:
+            naa.penchu()
+        naa.modhalu_ lo ((naa.modhalu_ + naa.gadhulu.enni() - 1) % naa.gadhulu.enni()) pettu
+        naa.gadhulu[naa.modhalu_] lo undhi(x) pettu
+        naa.enni_ += 1
+
+    andhariki mundhu_theesey(naa: &maare idhi) -> undochu[T] ante:
+        naa.enni_ == 0 aithe:
+            ledhu icchey
+        g ante naa.modhalu_
+        naa.modhalu_ lo ((g + 1) % naa.gadhulu.enni()) pettu
+        naa.enni_ -= 1
+        (&maare naa.gadhulu[g], ledhu ni marpidi()) icchey
+
+    andhariki venaka_theesey(naa: &maare idhi) -> undochu[T] ante:
+        naa.enni_ == 0 aithe:
+            ledhu icchey
+        naa.enni_ -= 1
+        g ante naa.enni_ ni naa.gadhi()
+        (&maare naa.gadhulu[g], ledhu ni marpidi()) icchey
+
+    andhariki mundhu(naa: &idhi) -> undochu[&T] ante:
+        (0 ni naa.thechu()) icchey
+
+    andhariki venaka(naa: &idhi) -> undochu[&T] ante:
+        naa.enni_ == 0 aithe:
+            ledhu icchey
+        ((naa.enni_ - 1) ni naa.thechu()) icchey
+
+    andhariki thechu(naa: &idhi, i: ankam ni) -> undochu[&T] ante:
+        i < 0 || i >= naa.enni_ aithe:
+            ledhu icchey
+        g ante i ni naa.gadhi()
+        &naa.gadhulu[g] batti:
+            undhi(x) aithe:
+                undhi(x) icchey
+            ledhu aithe:
+                ledhu icchey
+
+    andhariki varusa_ga(naa: idhi) -> varusa[T] ante:
+        maare l ante naa
+        maare out: varusa[T] ante []
+        avunu unnanthasepu:
+            l.mundhu_theesey() batti:
+                undhi(x) aithe:
+                    x ni out.cherchu()
+                ledhu aithe:
+                    aapey
+        out icchey
+
+# Room after growing from `n` slots.
+kotha_room(n: ankam ni) -> ankam ante:
+    n == 0 aithe:
+        4 icchey
+    (n * 2) icchey
+
+[T: Choopinchochu] line[T] ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        maare s ante "["
+        0 nunchi naa.enni_ lopu okko i ki:
+            i > 0 aithe:
+                s += ", "
+            i ni naa.thechu() batti:
+                undhi(x) aithe:
+                    s += x.padham_ga()
+                ledhu aithe:
+                    vadhiley
+        s += "]"
+        s icchey
+
+# ── sardina_jodi: a map that keeps its keys sorted (treap) ─────────────────
+
+rakam Mudi[K, V] ante:
+    k: K
+    v: V
+    pri: ankam
+    l: undochu[pette[Mudi[K, V]]]
+    r: undochu[pette[Mudi[K, V]]]
+
+andhariki rakam sardina_jodi[K, V] ante:
+    root: undochu[pette[Mudi[K, V]]]
+    enni_: ankam
+    seed: ankam
+
+[K: VarusaPettochu, V] sardina_jodi[K, V] panulu ante:
+    andhariki kotthadhi() -> sardina_jodi[K, V] ante:
+        sardina_jodi{root: ledhu, enni_: 0, seed: 20240607} icchey
+
+    andhariki enni(naa: &idhi) -> ankam ante:
+        naa.enni_ icchey
+
+    andhariki khaaliyaa(naa: &idhi) -> ato_ito ante:
+        (naa.enni_ == 0) icchey
+
+    andhariki undhaa(naa: &idhi, k: &K ni) -> ato_ito ante:
+        (k ni naa.thechu()).undhaa() icchey
+
+    andhariki thechu(naa: &idhi, k: &K ni) -> undochu[&V] ante:
+        maare cur ante &naa.root
+        avunu unnanthasepu:
+            cur batti:
+                ledhu aithe:
+                    aapey
+                undhi(n) aithe:
+                    *k < n.k aithe:
+                        cur lo &n.l pettu
+                    ledhante:
+                        n.k < *k aithe:
+                            cur lo &n.r pettu
+                        ledhante:
+                            undhi(&n.v) icchey
+        ledhu icchey
+
+    andhariki maare_thechu(naa: &maare idhi, k: &K ni) -> undochu[&maare V] ante:
+        (&maare naa.root, k ni mudi_maare_thechu()) icchey
+
+    # Puts `v` at `k`, giving back the value that was there.
+    andhariki cherchu(naa: &maare idhi, k: K ni, v: V tho) -> undochu[V] ante:
+        &k ni naa.undhaa() aithe:
+            slot ante (&k ni naa.maare_thechu()).kachithanga()
+            old ante slot, v ni marpidi()
+            undhi(old) icchey
+        root ante &maare naa.root, ledhu ni marpidi()
+        (a, b) ante root ni, &k tho, kaadhu ki vidagottu()
+        naa.seed lo ((naa.seed * 1103515245 + 12345) % 2147483648) pettu
+        kotha ante Mudi{k: k, v: v, pri: naa.seed, l: ledhu, r: ledhu} ni pette.kotthadhi()
+        madhya ante undhi(kotha) ni, b tho kalupu_mudi()
+        naa.root lo (a ni, madhya tho kalupu_mudi()) pettu
+        naa.enni_ += 1
+        ledhu icchey
+
+    andhariki theesey(naa: &maare idhi, k: &K ni) -> undochu[V] ante:
+        root ante &maare naa.root, ledhu ni marpidi()
+        (a, migatha) ante root ni, k tho, kaadhu ki vidagottu()
+        (madhya, b) ante migatha ni, k tho, avunu ki vidagottu()
+        naa.root lo (a ni, b tho kalupu_mudi()) pettu
+        madhya batti:
+            undhi(n) aithe:
+                naa.enni_ -= 1
+                m ante *n
+                undhi(m.v) icchey
+            ledhu aithe:
+                ledhu icchey
+
+    # The smallest key.
+    andhariki chinnadhi(naa: &idhi) -> undochu[&K] ante:
+        maare cur ante &naa.root
+        maare best: undochu[&K] ante ledhu
+        avunu unnanthasepu:
+            cur batti:
+                ledhu aithe:
+                    aapey
+                undhi(n) aithe:
+                    best lo undhi(&n.k) pettu
+                    cur lo &n.l pettu
+        best icchey
+
+    # The biggest key.
+    andhariki pedhadhi(naa: &idhi) -> undochu[&K] ante:
+        maare cur ante &naa.root
+        maare best: undochu[&K] ante ledhu
+        avunu unnanthasepu:
+            cur batti:
+                ledhu aithe:
+                    aapey
+                undhi(n) aithe:
+                    best lo undhi(&n.k) pettu
+                    cur lo &n.r pettu
+        best icchey
+
+    # The smallest key that is at least `k`.
+    andhariki kanisam(naa: &idhi, k: &K ni) -> undochu[&K] ante:
+        maare cur ante &naa.root
+        maare best: undochu[&K] ante ledhu
+        avunu unnanthasepu:
+            cur batti:
+                ledhu aithe:
+                    aapey
+                undhi(n) aithe:
+                    n.k < *k aithe:
+                        cur lo &n.r pettu
+                    ledhante:
+                        best lo undhi(&n.k) pettu
+                        cur lo &n.l pettu
+        best icchey
+
+    # The biggest key that doesn't go over `k`.
+    andhariki minchakunda(naa: &idhi, k: &K ni) -> undochu[&K] ante:
+        maare cur ante &naa.root
+        maare best: undochu[&K] ante ledhu
+        avunu unnanthasepu:
+            cur batti:
+                ledhu aithe:
+                    aapey
+                undhi(n) aithe:
+                    *k < n.k aithe:
+                        cur lo &n.l pettu
+                    ledhante:
+                        best lo undhi(&n.k) pettu
+                        cur lo &n.r pettu
+        best icchey
+
+    # Every entry, smallest key first.
+    andhariki varusa_ga(naa: idhi) -> varusa[jatha[K, V]] ante:
+        maare j ante naa
+        maare out: varusa[jatha[K, V]] ante []
+        root ante &maare j.root, ledhu ni marpidi()
+        root ni, &maare out ki anni_cherchu()
+        out icchey
+
+[K: Choopinchochu, V: Choopinchochu] sardina_jodi[K, V] ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        maare s ante "{"
+        &naa.root ni, &maare s ki mudi_raayi()
+        s += "}"
+        s icchey
+
+mudi_maare_thechu[K: VarusaPettochu, V](
+    t: &maare undochu[pette[Mudi[K, V]]],
+    k: &K ni,
+) -> undochu[&maare V] ante:
+    t batti:
+        ledhu aithe:
+            ledhu icchey
+        undhi(n) aithe:
+            *k < n.k aithe:
+                (&maare n.l, k ni mudi_maare_thechu()) icchey
+            n.k < *k aithe:
+                (&maare n.r, k ni mudi_maare_thechu()) icchey
+            undhi(&maare n.v) icchey
+
+# Splits a tree into the keys before `k` and the rest; with `samaanam`, keys
+# equal to `k` go to the first part too.
+vidagottu[K: VarusaPettochu, V](
+    t: undochu[pette[Mudi[K, V]]] ni,
+    k: &K tho,
+    samaanam: ato_ito ki,
+) -> jatha[undochu[pette[Mudi[K, V]]], undochu[pette[Mudi[K, V]]]] ante:
+    t batti:
+        ledhu aithe:
+            (ledhu, ledhu) icchey
+        undhi(n) aithe:
+            maare n ante n
+            maare edama ante n.k < *k
+            samaanam aithe:
+                edama lo (n.k <= *k) pettu
+            edama aithe:
+                kudi ante &maare n.r, ledhu ni marpidi()
+                (a, b) ante kudi ni, k tho, samaanam ki vidagottu()
+                n.r lo a pettu
+                (undhi(n), b) icchey
+            edam ante &maare n.l, ledhu ni marpidi()
+            (a, b) ante edam ni, k tho, samaanam ki vidagottu()
+            n.l lo b pettu
+            (a, undhi(n)) icchey
+
+# Joins two trees whose keys are all in order, first before second.
+kalupu_mudi[K, V](
+    a: undochu[pette[Mudi[K, V]]] ni,
+    b: undochu[pette[Mudi[K, V]]] tho,
+) -> undochu[pette[Mudi[K, V]]] ante:
+    a batti:
+        ledhu aithe:
+            b icchey
+        undhi(x) aithe:
+            b batti:
+                ledhu aithe:
+                    undhi(x) icchey
+                undhi(y) aithe:
+                    maare x ante x
+                    maare y ante y
+                    x.pri > y.pri aithe:
+                        xr ante &maare x.r, ledhu ni marpidi()
+                        x.r lo (xr ni, undhi(y) tho kalupu_mudi()) pettu
+                        undhi(x) icchey
+                    yl ante &maare y.l, ledhu ni marpidi()
+                    y.l lo (undhi(x) ni, yl tho kalupu_mudi()) pettu
+                    undhi(y) icchey
+
+anni_cherchu[K, V](
+    t: undochu[pette[Mudi[K, V]]] ni,
+    out: &maare varusa[jatha[K, V]] ki,
+) -> khali ante:
+    t batti:
+        undhi(n) aithe:
+            m ante *n
+            m.l ni, out ki anni_cherchu()
+            (m.k, m.v) ni out.cherchu()
+            m.r ni, out ki anni_cherchu()
+        ledhu aithe:
+            icchey
+
+mudi_raayi[K: Choopinchochu, V: Choopinchochu](
+    t: &undochu[pette[Mudi[K, V]]] ni,
+    s: &maare padham ki,
+) -> khali ante:
+    t batti:
+        undhi(n) aithe:
+            &n.l ni, s ki mudi_raayi()
+            s.byte_len() > 1 aithe:
+                *s += ", "
+            *s += f"{n.k}: {n.v}"
+            &n.r ni, s ki mudi_raayi()
+        ledhu aithe:
+            icchey

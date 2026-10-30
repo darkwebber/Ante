@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r15. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r16. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -256,7 +256,8 @@ phrase        ::= '...' expr role? label?
                 | '_' role? label?
                 | expr role? label?
 label         ::= NAME 'ga'
-callee        ::= path type_args? '(' ')' '?'?
+callee        ::= path indexed* type_args? '(' ')' '?'?
+indexed       ::= ('[' expr_list ']')+ ('.' NAME)+   /* D7 */
 path          ::= (NAME | 'naa' | type_kw) ('.' NAME)*  /* type_kw: varusa.kotthadhi() */
 type_kw       ::= 'varusa' | 'jodi' | 'pette' | 'padham' | 'mukka' | 'undochu' | 'sare_thappu'
 
@@ -383,7 +384,7 @@ Anything else at module scope is E0209 (executable statement at module level). A
 
 **D6. Callee vs operand.** In `x f()`, `f()` is the callee: postfix parsing of `x` stops at `NAME`. A zero-argument call `f()` alone is a plain expression. `x f() g()` is E0201, because nested calls need parentheses or a pipe.
 
-**D7. Generic arguments vs indexing.** `postfix '[' … ']'` directly followed by `( )` is a generic call, and the bracket contents are parsed as types. Otherwise it's indexing. To index and then call, write `(handlers[0])()`.
+**D7. Generic arguments vs indexing.** `postfix '[' … ']'` directly followed by `( )` is a generic call, and the bracket contents are parsed as types. Otherwise it's indexing. To index and then call, write `(handlers[0])()`. Brackets followed by `.NAME`, possibly after more brackets, are always indexing, so a callee's receiver may be indexed: `i ni ps[i].pampu()`, `x ni grid[r][c].cherchu()`.
 
 **D8. Closures vs grouping.** `(` … `)` followed by `=>` is a closure parameter list. Otherwise it's grouping or a tuple. A closure body extends as far as a `pipe_expr` can, so a closure used as an argument phrase must be parenthesized: `xs, ((x) => x * 2) ni prathi_dhaaniki()`.
 
@@ -477,7 +478,7 @@ Module items shadow prelude names. Standard library modules (`lekkalu`, `file`, 
 
 - (a) RC types may appear in local bindings, temporaries, parameters and pattern bindings.
 - (b) An RC type may **not** be a field of a `rakam` or `edho_okati`, an element of `varusa`/`[T;N]`/`jodi`, or the contents of a `pette` (E0415).
-- (c) A function may return an RC type only if exactly one of its parameters (counting `naa`) has an RC type. The result then borrows from that parameter (E0608 otherwise).
+- (c) A function may return an RC type only if at least one of its parameters (counting `naa`) has an RC type (E0608 otherwise). At a call, the result borrows from every argument passed for those parameters, so the function may return a reference into any of them.
 
 ### 9.4 Type equivalence and coercions
 
@@ -952,6 +953,7 @@ Signatures are normative; the descriptions are summaries. Functions marked †in
 | `gola_pettu[T: Choopinchochu](vishayam: &T ni) -> khali` | writes to stderr with a newline ("make a fuss") |
 | `nijame(sharathu: ato_ito, message: padham ni = "") -> khali` | trap T07 if `kaadhu` ("it's true!"). Always enabled. Usage: `(x > 0) nijame()` |
 | `kompa_munigindhi(message: padham ni = "") -> raadhu` | trap T05 ("the house has sunk") |
+| `marpidi[T](ekkada: &maare T, kotthadhi: T ni) -> T` | puts `kotthadhi` in the place and gives back what was there ("exchange"). Usage: `paatha ante &maare x, kotha ni marpidi()` |
 | `maarchu[T]`, `kudhirithe_maarchu[T]`, `kolpothu_maarchu[T]` | †intrinsic; §18.4 |
 
 ### 21.2 Built-in type methods
@@ -981,6 +983,7 @@ Signatures are normative; the descriptions are summaries. Functions marked †in
 - `i ni v.maare_thechu() -> undochu[&maare T]`
 - `v.sort_cheyyi()` (needs `T: VarusaPettochu`); all sorts are **stable**
 - `f ni v.ila_sort_cheyyi()` with `f: pani[(&T ni, &T tho) -> Kramam]`: sort "like this"
+- `i ni, j tho v.marpidi()`: swaps two elements ("exchange"); trap T03 if either index is out of bounds
 - `v.xerox()`
 - indexing and slicing
 
@@ -997,6 +1000,28 @@ Signatures are normative; the descriptions are summaries. Functions marked †in
 - iteration yields `jatha[&K, &V]` in insertion order
 
 **`gajibiji_jodi[K, V]`** ("jumbled map"): the same API without any order guarantee. **`gumpu[T]`** ("group"): a set, with `cherchu`, `undhaa`, `theesey` and `enni`.
+
+The next three are written in "Ante" itself and compiled with every program (§23.2.1); they are in the prelude like the rest.
+
+**`kuppa[T: VarusaPettochu]`** ("pile"; a binary heap)
+- `kuppa.kotthadhi()` keeps the smallest on top; `kuppa.pedhadhi_mundhu()` the biggest ("biggest first")
+- `x ni k.cherchu()` and `k.theesey() -> undochu[T]`, both O(log n); `k.paina() -> undochu[&T]` ("on top")
+- `enni`, `khaaliyaa`; `k.varusa_ga() -> varusa[T]` in the order `theesey` would give them
+- equal elements come out in an unspecified order
+
+**`line[T]`** (a queue you can join or leave at either end)
+- `line.kotthadhi()`; `x ni l.venaka_cherchu()`, `x ni l.mundhu_cherchu()` join at the back ("behind") or the front
+- `l.mundhu_theesey()`, `l.venaka_theesey() -> undochu[T]`; `l.mundhu()`, `l.venaka() -> undochu[&T]`
+- `i ni l.thechu() -> undochu[&T]`, counting from the front; `enni`, `khaaliyaa`; `l.varusa_ga()` front to back
+- displays as `[a, b]`; every operation is amortized O(1)
+
+**`sardina_jodi[K: VarusaPettochu, V]`** ("arranged map", the tidy cousin of `gajibiji_jodi`): keys stay in order; two keys are the same when neither is `<` the other
+- `sardina_jodi.kotthadhi()`; `k ni, v tho m.cherchu() -> undochu[V]` (returns the old value)
+- `k ni m.thechu()`, `k ni m.maare_thechu()`, `k ni m.theesey()`, `k ni m.undhaa()`, `enni`, `khaaliyaa`
+- `m.chinnadhi()`, `m.pedhadhi() -> undochu[&K]`: the smallest and the biggest key
+- `k ni m.kanisam() -> undochu[&K]`: the smallest key that is at least `k` ("at least"); `k ni m.minchakunda() -> undochu[&K]`: the biggest key that doesn't go over `k` ("without going over")
+- `m.varusa_ga() -> varusa[jatha[K, V]]` and display (`{k: v, …}`) in key order
+- expected O(log n) per operation
 
 **`undochu[T]`**
 - `undhaa()`, `ledhaa()`
@@ -1128,8 +1153,8 @@ The C standard library (and `libm`) is always linked. Bad entries are E0905. The
 | Command | Action |
 |---|---|
 | `antec build [path] [-o out] [--release]` | compile a package or file to a native executable |
-| `antec run [path] [-- args]` | run the program; `args` become `system.args()` |
-| `antec pariksha` | build and run tests ("exam") |
+| `antec run [path] [--interp] [-- args]` | run the program; `args` become `system.args()`. Built natively when a C compiler is available, otherwise (or with `--interp`) run by the MIR interpreter; the semantics are the same |
+| `antec pariksha [path] [peru]` | build and run the tests ("exam", §23.3); `peru` keeps the tests whose name contains it; a folder without `ante.toml` has each of its files tested on its own |
 | `antec fmt [path] [--check]` | canonical formatting; must preserve the AST and evaluation order. `--check` changes nothing and fails if a file isn't formatted |
 | `antec check [path]` | check a file, or a package folder (default: the current folder), without generating code |
 | `antec migrate` | rewrite code for renamed words and new editions (§23.5) |
@@ -1172,7 +1197,7 @@ The standard library is ordinary "Ante" source compiled together with each progr
 
 23.2.2 **Determinism.** For identical inputs, flags, toolchain and target, `antec` must produce byte-identical outputs. A compiler written in "Ante" must therefore never let `gajibiji_jodi` iteration order or hash seeds affect its output.
 
-23.3 **Tests.** `@pariksha` marks a function `name() -> khali` or `name() -> sare_thappu[khali, E]` as a test. Each test runs as if in its own process. It passes if it returns normally (with `sare` for the second form), and fails on a trap or `thappu`. `nijame` is the assertion. Tests are compiled with the same semantics as release code.
+23.3 **Tests.** `@pariksha` marks a function `name() -> khali` or `name() -> sare_thappu[khali, E]` as a test. Each test runs as if in its own process. It passes if it returns normally (with `sare` for the second form), and fails on a trap or `thappu`. `nijame` is the assertion. Tests are compiled with the same semantics as release code. `@pariksha` on a function with parameters, generics or another return type is E1307. `antec pariksha` shows a failing test's output.
 
 23.4 **Diagnostics.** The format is:
 
@@ -2848,7 +2873,7 @@ Severity is error unless the code starts with W. The prose shown is the referenc
 | E0605 | conflict with a mutable loan | |
 | E0606 | owner dropped or moved while borrowed | |
 | E0607 | `&maare` of a non-mutable place | |
-| E0608 | returned reference with no single source | |
+| E0608 | returned reference with no reference parameter to borrow from | |
 | E0609 | use of a maybe-uninitialized value | |
 | E0610 | `&maare` argument needs an explicit borrow | "`&maare x` ani raayi" |
 | E0611 | a closure changing a variable it captured | "closure lopala bayati `x` ni maarchalem" |
@@ -2990,6 +3015,8 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | S017 | 600 nested parentheses | E0216 |
 | S018 | One expression 1,200 operators long | E0216 |
 | S019 | `s.enni(1)`: a method call in the constructor form (D10) | E0204 |
+| S020 | Indexed receivers before a verb: `x ni g[1].cherchu()`, `ps[i].xs`, `grid[0][0]` (D7) | expected stdout |
+| S021 | `@pariksha` on a function with a parameter | E1307 |
 | B001 | `20 tho, 10 ni kalupu()` | `30` |
 | B002 | `3 ni c ga, 1 ni a ga, 2 ni b ga kalupu_moodu()` | a=1, b=2, c=3 |
 | B003 | `1 ni, 3 ni c ga, 2 ni kalupu_moodu()` | a=1, b=2, c=3; source-order effects |
@@ -3056,7 +3083,7 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | O005 | Two `&maare` live at once | E0605 |
 | O006 | Return a reference to a local | E0606 |
 | O007 | Reference stored in a `rakam` field | E0415 |
-| O008 | Two reference parameters, reference returned | E0608 |
+| O008 | A reference returned with no reference parameter | E0608 |
 | O009 | Owned value to a `&maare` formal | E0610 |
 | O010 | `v.enni() ni v.cherchu()` | run-pass (two-phase receiver) |
 | O011 | Shared loan ends at its last use (NLL) | run-pass |
@@ -3085,6 +3112,8 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | O034 | Keeping an iterator over a temporary `padham` past its statement | E0606 |
 | O035 | A list 300 000 links long is dropped | expected stdout |
 | O036 | A recursive list and a tree with a list of children drop in §19.3 order | expected stdout |
+| O037 | A reference returned from either of two reference parameters, and from `naa` with a reference key | expected stdout |
+| O038 | Changing a `&maare` argument while the call's returned reference is alive | E0605 |
 | M001 | Non-exhaustive `sare_thappu` match | E0701 |
 | M002 | Refutable pattern in a binding | E0703 |
 | M003 | Copy binding mode through `&` | run-pass |
@@ -3160,6 +3189,11 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | D014 | `lekkalu.motham` over integers leaving the type | T01 |
 | D015 | `lekkalu.dot` over pieces of different lengths | T05 |
 | D016 | Map keys compare with the key type's own `Polchochu` and hash with its `HashCheyochu`; `@automatic` ones hash by structure | stdout matches |
+| D017 | `kuppa`: smallest first, `pedhadhi_mundhu`, `paina`, `varusa_ga`, empty | stdout matches |
+| D018 | `line`: both ends, indexing from the front, growth keeps order, display | stdout matches |
+| D019 | `sardina_jodi`: insert, replace, remove, `kanisam`, `minchakunda`, smallest and biggest keys, key-order display | stdout matches |
+| D020 | `marpidi` on a place and `varusa.marpidi` | stdout matches |
+| D021 | `varusa.marpidi` past the end | T03 |
 | X001 | Program without `python`/`torch` imports | no CPython or LibTorch linkage |
 | X002 | `modhalu` returns `thappu(e)` | exit 1, stderr `thappu: …` |
 | X003 | `bayata` call outside `naa_risk` | E1001 |
@@ -3520,6 +3554,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r16 | `antec` 0.1.1 | Beginner readiness: `kuppa`, `line` and `sardina_jodi`, written in "Ante" (§21.2); `marpidi` and `varusa.marpidi` (§21.1, §21.2); a callee's receiver may be indexed (D7); a returned reference may come from any reference parameter (§9.3.2c); `antec run` builds natively when it can, and `antec pariksha` takes a name filter and folders (§23.1); a bad `@pariksha` signature is E1307 (§23.3); seed cases S020, S021, D017–D021, O037, O038, and O008 now tests a reference with no source. |
 | r15 | `antec` 0.1.1 | Hardening: deadlock is trap T15 (§20.3, §24.4); a recursive type may derive what its components need (§13.6); seed cases KK017, KK018, G029, O035, O036. |
 | r14 | `antec` 0.1.1 | M12, tasks and sharing: `panchukunna` is implemented; the `task` module's types are listed (§24.2); task closures are written at `pampu` and copy, move or re-borrow their captures (§24.3.3); `Key` and `Virigindhi` stay with their task (§24.3.2); `Moosesaaru{viluva}`; expectations keep what they watch alive (§24.4); noticing cancellation means `aagu` returns `Cancel` (§24.6); `Kaalam.sec` and `samayam.timer` (§21.3); `antec run` builds task programs natively (§22.6); seed cases KK011–KK016. |
 | r13 | `antec` 0.1.1 | M11, the C boundary: `bayata "C"` calls bind unmarked arguments in order, aren't variadic, and `"C"` is the only ABI (§22.1); `jarugu` steps by elements and keeps `maare`, and a module-level `naa_risk:` block holds `CopyKottochu` implementations for types with raw pointers (§22.2); `@C` record fields must be FFI-safe (§22.3); export rules and E1003 (§22.4); `[build] c_sources`, `libs` and `lib_dirs`, and `antec run` builds C-using programs natively (§22.6); seed cases X006–X013. |

@@ -9,11 +9,16 @@ const USAGE: &str = "\
 antec: \"Ante\" compiler (stage 0) 🛠️
 
 usage:
-  antec run [path] [-- args…]     program ni run cheyyi (check chesi, `modhalu()` nunchi start);
-                                  `--` tharvatha unnavi program ki `system.args()` ga vasthayi
+  antec run [path] [--interp] [-- args…]
+                                  program ni run cheyyi (check chesi, `modhalu()` nunchi start);
+                                  clang unte native ga build chesi fast ga run chesthundhi,
+                                  `--interp` ayithe interpreter lo; `--` tharvatha unnavi
+                                  program ki `system.args()` ga vasthayi
   antec build [path] [-o out] [--release]
                                   native executable build cheyyi (LLVM + clang tho);
                                   `--release` optimize chesthundhi (build konchem slow)
+  antec pariksha [path] [peru]    `@pariksha` tests anni run cheyyi (prathi test vere process lo);
+                                  `peru` isthe aa peru unna tests matrame (`antec test` kuda ok)
   antec check [path]              file leka package (ante.toml unna folder) ni check cheyyi;
                                   path lekapothe current folder
   antec fmt [path] [--check]      code ni official style lo format cheyyi (folder ayithe anni
@@ -66,6 +71,7 @@ fn dispatch(args: &[String]) -> ExitCode {
     let mut output = None;
     let mut release = false;
     let mut check_only = false;
+    let mut interp = false;
     let mut words: Vec<&str> = Vec::new();
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -76,6 +82,7 @@ fn dispatch(args: &[String]) -> ExitCode {
             },
             "--release" => release = true,
             "--check" => check_only = true,
+            "--interp" => interp = true,
             "--help" | "-h" | "help" if words.is_empty() => {
                 outln!("{USAGE}");
                 return ExitCode::SUCCESS;
@@ -108,6 +115,9 @@ fn dispatch(args: &[String]) -> ExitCode {
     if check_only && !matches!(words.first(), Some(&"fmt")) {
         return usage_error("`--check` `antec fmt` tho matrame pani chesthundhi");
     }
+    if interp && !matches!(words.first(), Some(&"run")) {
+        return usage_error("`--interp` `antec run` tho matrame pani chesthundhi");
+    }
     if !rest.is_empty() && !matches!(words.first(), Some(&"run")) {
         return usage_error("`--` tharvatha arguments `antec run` ki matrame");
     }
@@ -118,10 +128,14 @@ fn dispatch(args: &[String]) -> ExitCode {
         }
         ["fmt"] => fmt(".", check_only),
         ["fmt", path] => fmt(path, check_only),
+        ["pariksha" | "test"] => pariksha(".", None),
+        ["pariksha" | "test", one] if Path::new(one).exists() => pariksha(one, None),
+        ["pariksha" | "test", filter] => pariksha(".", Some(filter)),
+        ["pariksha" | "test", path, filter] => pariksha(path, Some(filter)),
         ["check"] => check("."),
         ["check", path] => check(path),
-        ["run"] => run(".", rest),
-        ["run", path] => run(path, rest),
+        ["run"] => run(".", rest, interp),
+        ["run", path] => run(path, rest, interp),
         ["emit", "mir"] => emit_mir(".", Action::EmitMir),
         ["emit", "mir", path] => emit_mir(path, Action::EmitMir),
         ["emit", "llvm"] => emit_mir(".", Action::EmitLlvm),
@@ -133,7 +147,7 @@ fn dispatch(args: &[String]) -> ExitCode {
         ["emit", what, ..] => {
             usage_error(&format!("`emit {what}` theliyadhu: tokens, ast, mir, llvm lo okati"))
         }
-        [cmd, ..] if !["check", "run", "build", "emit", "fmt"].contains(cmd) => {
+        [cmd, ..] if !["check", "run", "build", "emit", "fmt", "pariksha", "test"].contains(cmd) => {
             usage_error(&format!("`{cmd}` ane command ledhu"))
         }
         [cmd, ..] => usage_error(&format!("`antec {cmd}` ki arguments ekkuva ayyayi")),
@@ -245,14 +259,15 @@ fn collect_ante_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
     }
 }
 
-fn run(path: &str, args: Vec<String>) -> ExitCode {
-    let checked = match antec::package::process(Path::new(path), Action::Run { stream: true, args }) {
-        Ok(checked) => checked,
-        Err(err) => {
-            eprintln!("error: `{path}` chadavalekapoyanu 😕 ({err})");
-            return ExitCode::from(2);
-        }
-    };
+fn run(path: &str, args: Vec<String>, interp: bool) -> ExitCode {
+    let checked =
+        match antec::package::process(Path::new(path), Action::Run { stream: true, args, native: !interp }) {
+            Ok(checked) => checked,
+            Err(err) => {
+                eprintln!("error: `{path}` chadavalekapoyanu 😕 ({err})");
+                return ExitCode::from(2);
+            }
+        };
     for (file, d) in checked.diagnostics.iter().filter(|(_, d)| d.is_error()) {
         eprint!("{}", d.render(&checked.sources[*file]));
     }
@@ -266,6 +281,80 @@ fn run(path: &str, args: Vec<String>) -> ExitCode {
             ExitCode::from(out.exit_code.clamp(0, 255) as u8)
         }
         None => summary(checked.error_count().max(1)),
+    }
+}
+
+/// `antec pariksha`: runs the `@pariksha` tests (§23.3) and reports each. A
+/// folder that isn't a package has its files tested one by one.
+fn pariksha(path: &str, filter: Option<&str>) -> ExitCode {
+    let root = Path::new(path);
+    let mut files = Vec::new();
+    if root.is_dir() && antec::package::find_package_root(&root.join("x")).is_none() {
+        collect_ante_files(root, &mut files);
+    } else {
+        files.push(root.to_path_buf());
+    }
+    let (mut passed, mut failed, mut broken) = (0, 0, 0);
+    for file in &files {
+        let action = Action::Test { filter: filter.map(str::to_string) };
+        let checked = match antec::package::process(file, action) {
+            Ok(checked) => checked,
+            Err(err) => {
+                eprintln!("error: `{}` chadavalekapoyanu 😕 ({err})", file.display());
+                return ExitCode::from(2);
+            }
+        };
+        for (f, d) in checked.diagnostics.iter().filter(|(_, d)| d.is_error()) {
+            eprint!("{}", d.render(&checked.sources[*f]));
+        }
+        let mut seen = Vec::new();
+        for e in &checked.backend_errors {
+            if !seen.contains(&e) {
+                eprintln!("error: {e}");
+                seen.push(e);
+            }
+        }
+        if checked.error_count() > 0 || !checked.backend_errors.is_empty() {
+            broken += 1;
+            continue;
+        }
+        if checked.tests.is_empty() {
+            continue;
+        }
+        if files.len() > 1 {
+            outln!("📄 {}", file.display());
+        }
+        for t in &checked.tests {
+            if t.passed() {
+                passed += 1;
+                outln!("  ✅ {}", t.name);
+            } else {
+                failed += 1;
+                outln!("  ❌ {}", t.name);
+                for line in t.output.stdout.lines().chain(t.output.stderr.lines()) {
+                    outln!("     │ {line}");
+                }
+            }
+        }
+    }
+    if broken > 0 {
+        eprintln!("\n{broken} file(s) compile avvaledhu, paina errors choodandi 💪");
+        return ExitCode::from(1);
+    }
+    let total = passed + failed;
+    if total == 0 {
+        match filter {
+            Some(f) => outln!("🤷 `{f}` peru unna pariksha lu emi levu"),
+            None => outln!("🤷 pariksha lu emi levu. Function mundhu `@pariksha` raayandi"),
+        }
+        return ExitCode::SUCCESS;
+    }
+    if failed == 0 {
+        outln!("\n🎉 anni pass! ({passed}/{total})");
+        ExitCode::SUCCESS
+    } else {
+        outln!("\n😬 {passed} pass, {failed} fail. Fail ayina vaati output paina undhi");
+        ExitCode::from(1)
     }
 }
 

@@ -236,6 +236,22 @@ mod tests {
         assert_eq!(std_files().len(), SOURCES.len());
     }
 
+    /// The standard library written in "Ante" parses without diagnostics
+    /// (the parser recovers, so a mistake wouldn't stop it) and checks
+    /// without errors.
+    #[test]
+    fn ante_source_is_clean() {
+        let src = crate::source::SourceFile::new(stdlib::ANTE_SOURCE_FILE, stdlib::ANTE_SOURCE);
+        let (_, diags) = crate::parse_source(&src);
+        let shown: Vec<String> = diags.iter().map(|d| d.render(&src)).collect();
+        assert!(shown.is_empty(), "{}", shown.join(""));
+        let formatted = crate::fmt::format_source(&src).ok();
+        assert!(formatted.as_deref() == Some(stdlib::ANTE_SOURCE), "run `antec fmt antec/std/ante`");
+        let lib = crate::source::SourceFile::new("lib.ante", "x() -> khali ante:\n    ()\n");
+        let found = crate::on_big_stack(move || crate::package::check_single(&lib));
+        assert!(found.is_empty(), "{found:?}");
+    }
+
     /// The resolver's name tables and the signature files must agree.
     #[test]
     fn names_have_signatures() {
