@@ -20,7 +20,7 @@ use crate::typeck::{FnId, FnOrigin, Typeck};
 use crate::types::{Con, IntTy, Ty};
 
 pub use value::Value;
-use value::{Addr, Closure, Elem, Root};
+use value::{Addr, Closure, DeepBox, Elem, Root};
 
 /// How a run ended.
 pub struct RunOutput {
@@ -39,9 +39,14 @@ pub enum Halt {
 
 type R<T> = Result<T, Halt>;
 
-/// The deepest call nesting before T08 (stack overflow), for the default
-/// 8 MB `[build] stack`; a bigger stack allows proportionally more.
+/// The deepest call nesting before T08 (stack overflow), for the smallest
+/// (8 MB) `[build] stack`; a bigger stack allows proportionally more.
 const MAX_FRAMES: usize = 20_000;
+
+/// How deeply nested a value may be shown, compared or copied before T08:
+/// those walk it recursively on `antec`'s own stack (a list a hundred
+/// thousand links long). Dropping has no limit.
+pub(super) const MAX_VALUE_DEPTH: usize = 200_000;
 
 /// How `antec run` runs a program.
 #[derive(Clone, Debug, Default)]
@@ -82,6 +87,9 @@ pub struct Machine<'a> {
     /// Write stdout to the real stdout as it fills (for `antec run`).
     pub stream: bool,
     max_frames: usize,
+    /// How deep showing, comparing or copying a value has gone (see
+    /// `MAX_VALUE_DEPTH`).
+    pub(super) value_depth: usize,
     pub args: Vec<String>,
     started: std::time::Instant,
     /// The body of each function, by `FnId` (a call is the hot path).
@@ -205,6 +213,7 @@ impl<'a> Machine<'a> {
             stderr: String::new(),
             stream: false,
             max_frames: MAX_FRAMES,
+            value_depth: 0,
             args: Vec::new(),
             started: std::time::Instant::now(),
             body_of: {
@@ -721,6 +730,18 @@ impl<'a> Machine<'a> {
 
     /// Runs destructors for a value going out of scope (§19.3).
     pub fn drop_value(&mut self, v: Value, ty: &Ty) -> R<()> {
+        // An explicit stack, not recursion, so a list a million links long
+        // doesn't overflow. Everything observable (a `sardhu`) happens
+        // before a value's parts are visited, and parts are pushed so they
+        // pop in the order recursion would visit them.
+        let mut work = vec![(v, ty.clone())];
+        while let Some((v, ty)) = work.pop() {
+            self.drop_one(v, &ty, &mut work)?;
+        }
+        Ok(())
+    }
+
+    fn drop_one(&mut self, v: Value, ty: &Ty, work: &mut Vec<(Value, Ty)>) -> R<()> {
         if matches!(v, Value::Uninit) {
             return Ok(());
         }
@@ -756,16 +777,15 @@ impl<'a> Machine<'a> {
                     None => Vec::new(),
                 };
                 if let Value::Adt(_, fields) = v {
-                    for (f, t) in fields.into_iter().zip(field_tys).rev() {
-                        self.drop_value(f, &t)?;
-                    }
+                    // Last field first.
+                    work.extend(fields.into_iter().zip(field_tys));
                 }
             }
             Ty::App(Con::Undochu | Con::SareThappu, args) => {
                 if let Value::Adt(i, mut fields) = v {
                     let t = if i == 0 { args[0].clone() } else { args.get(1).cloned().unwrap_or(Ty::Unit) };
                     if let Some(f) = fields.pop() {
-                        self.drop_value(f, &t)?;
+                        work.push((f, t));
                     }
                 }
             }
@@ -776,27 +796,26 @@ impl<'a> Machine<'a> {
                     _ => Ty::Error,
                 };
                 match v {
+                    // First element first.
                     Value::Vec(items) | Value::Array(items) => {
-                        for x in items {
-                            self.drop_value(x, &elem)?;
-                        }
+                        work.extend(items.into_iter().rev().map(|x| (x, elem.clone())))
                     }
-                    Value::Box(inner) => self.drop_value(*inner, &elem)?,
+                    Value::Box(inner) => work.push((inner.take(), elem)),
                     _ => {}
                 }
             }
             Ty::Tuple(items) => {
                 if let Value::Tuple(vals) = v {
-                    for (x, t) in vals.into_iter().zip(items.iter()).rev() {
-                        self.drop_value(x, t)?;
-                    }
+                    work.extend(vals.into_iter().zip(items.iter().cloned()));
                 }
             }
             Ty::App(Con::Jodi | Con::GajibijiJodi, args) => {
                 if let Value::Map(m) = v {
-                    for (k, x) in m.into_entries() {
-                        self.drop_value(k, &args[0])?;
-                        self.drop_value(x, &args[1])?;
+                    // Each key, then its value, in order.
+                    let entries: Vec<(Value, Value)> = m.into_entries().into_iter().collect();
+                    for (k, x) in entries.into_iter().rev() {
+                        work.push((x, args[1].clone()));
+                        work.push((k, args[0].clone()));
                     }
                 }
             }
@@ -812,9 +831,7 @@ impl<'a> Machine<'a> {
                         let locals = &self.prog.bodies[c.body as usize].locals;
                         let tys: Vec<Ty> =
                             (1..=c.captures.len()).map(|i| locals[i].ty.subst(&c.tys)).collect();
-                        for (x, t) in c.captures.into_iter().zip(tys).rev() {
-                            self.drop_value(x, &t)?;
-                        }
+                        work.extend(c.captures.into_iter().zip(tys));
                     }
                 }
             }
@@ -883,7 +900,7 @@ impl<'a> Machine<'a> {
                     Agg::Tuple => Value::Tuple(vals),
                     Agg::Array => Value::Array(vals),
                     Agg::Varusa => Value::Vec(vals),
-                    Agg::Pette => Value::Box(Box::new(vals.pop().unwrap_or(Value::Unit))),
+                    Agg::Pette => Value::Box(DeepBox::new(vals.pop().unwrap_or(Value::Unit))),
                     Agg::Adt(_, v) => Value::Adt(*v, vals),
                     Agg::Jodi(map_ty) => {
                         let (kt, vt) = match self.subst(map_ty) {

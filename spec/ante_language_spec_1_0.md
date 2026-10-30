@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r14. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r15. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -724,7 +724,7 @@ The receiver borrow is taken **after** the argument phrases are evaluated, so `v
 
 ### 13.6 `@automatic`
 
-`@automatic Polchochu, XeroxTheeyochu, …` before a `rakam` or `edho_okati` derives the listed traits field by field, in declaration order. Derivable traits: `CopyKottochu`, `XeroxTheeyochu`, `Polchochu`, `VarusaPettochu`, `HashCheyochu` and `Choopinchochu`. The derived `Choopinchochu` prints `Name{f: v, …}` / `Enum.Variant(v, …)`. A component lacking the trait is E0807.
+`@automatic Polchochu, XeroxTheeyochu, …` before a `rakam` or `edho_okati` derives the listed traits field by field, in declaration order. Derivable traits: `CopyKottochu`, `XeroxTheeyochu`, `Polchochu`, `VarusaPettochu`, `HashCheyochu` and `Choopinchochu`. The derived `Choopinchochu` prints `Name{f: v, …}` / `Enum.Variant(v, …)`. A component lacking the trait is E0807. A type that contains itself (through `pette`, `undochu`, `varusa` and so on) may derive a trait that its own components need: while a derive is checked, the type is taken to have it.
 
 ## 14. Patterns and exhaustiveness
 
@@ -927,6 +927,7 @@ For T08 and T09 the position may be left out (`kompa munigindhi! <reason>`) when
 | T12 | a task opening a `Thaalam` it already holds (§24.4) |
 | T13 | a Python exception where no `sare_thappu` can carry it: attributes, indexing, operators, iteration (Annex P.12.3) |
 | T14 | the Python environment couldn't be loaded, or an import failed, at program start (Annex P.18.5) |
+| T15 | every task waits on another with no time limit, so none can go on: a deadlock (§24.4); it ends the whole process, and has no position |
 
 20.4 Output to stdout is buffered and flushed at normal exit, before a trap message, and by `system.flush()`.
 
@@ -1323,6 +1324,8 @@ The function given to `kalisi` returns before its team is waited for, so a task 
 - `task.cancel_ready() -> Edhuruchoopu` (ready when the current task is cancelled).
 
 An expectation keeps what it watches alive, so dropping the channel end or the token first is safe. An empty list is T05.
+
+**Deadlock.** When every task that hasn't finished, the one running `modhalu` included, is waiting with no time limit (opening a lock, sending or receiving on a channel, `aagu`, the end of `kalisi`, `edhi_mundhu` without a timer) and nothing has woken any of them since, none ever can: the process ends with trap **T15**. A task blocked anywhere else, such as reading input or inside C code, isn't waiting in this sense and keeps the process alive.
 
 ### 24.5 Traps in tasks
 
@@ -3080,6 +3083,8 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | O032 | A binding's temporaries end with the statement; `x ante &e` extends `e` | expected stdout |
 | O033 | A loop condition's temporaries are dropped every evaluation, before the body | expected stdout |
 | O034 | Keeping an iterator over a temporary `padham` past its statement | E0606 |
+| O035 | A list 300 000 links long is dropped | expected stdout |
+| O036 | A recursive list and a tree with a list of children drop in §19.3 order | expected stdout |
 | M001 | Non-exhaustive `sare_thappu` match | E0701 |
 | M002 | Refutable pattern in a binding | E0703 |
 | M003 | Copy binding mode through `&` | run-pass |
@@ -3115,6 +3120,7 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | G026 | Calling closures through `&pani` and `&&pani` | expected stdout |
 | G027 | Adapters drop the items they never hand out; `lekapothe` drops its unused default | expected stdout |
 | G028 | A call returning `&padham` passed to a `&T` parameter | expected stdout |
+| G029 | `@automatic` copy, equality and display on a recursive enum | expected stdout |
 | N001 | Undefined name | E0301 |
 | N002 | Name used before its binding | E0306 |
 | N003 | Redefinition in the same scope | E0308 |
@@ -3218,6 +3224,8 @@ Python-level seeds name the packages they need; the suite pins them in its own `
 | KK014 | A task closure borrowing a local of the function that started it | E1302 (services level) |
 | KK015 | A trap three calls deep in a task: every frame's values are dropped, innermost first; a moved value once | stdout matches (services level) |
 | KK016 | A destructor traps while its task unwinds | T05 at the destructor; exit 101 (services level) |
+| KK017 | A task waits on a channel only it could send on | T15; exit 101 (services level) |
+| KK018 | Two tasks each wait for the other to send first | T15; exit 101 (services level) |
 | DT001 | JSON round trip of a record with `undochu`, enum and `jodi` fields | stdout matches (services level) |
 | DT002 | Reading JSON with an unknown key | `thappu`, path `.x` (services level) |
 | DT003 | JSON with a duplicate key, a NaN, deep nesting | three `thappu`s (services level) |
@@ -3512,6 +3520,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r15 | `antec` 0.1.1 | Hardening: deadlock is trap T15 (§20.3, §24.4); a recursive type may derive what its components need (§13.6); seed cases KK017, KK018, G029, O035, O036. |
 | r14 | `antec` 0.1.1 | M12, tasks and sharing: `panchukunna` is implemented; the `task` module's types are listed (§24.2); task closures are written at `pampu` and copy, move or re-borrow their captures (§24.3.3); `Key` and `Virigindhi` stay with their task (§24.3.2); `Moosesaaru{viluva}`; expectations keep what they watch alive (§24.4); noticing cancellation means `aagu` returns `Cancel` (§24.6); `Kaalam.sec` and `samayam.timer` (§21.3); `antec run` builds task programs natively (§22.6); seed cases KK011–KK016. |
 | r13 | `antec` 0.1.1 | M11, the C boundary: `bayata "C"` calls bind unmarked arguments in order, aren't variadic, and `"C"` is the only ABI (§22.1); `jarugu` steps by elements and keeps `maare`, and a module-level `naa_risk:` block holds `CopyKottochu` implementations for types with raw pointers (§22.2); `@C` record fields must be FFI-safe (§22.3); export rules and E1003 (§22.4); `[build] c_sources`, `libs` and `lib_dirs`, and `antec run` builds C-using programs natively (§22.6); seed cases X006–X013. |
 | r12 | `antec` 0.1.1 | M10, the standard library in every backend: `jodi`, `gajibiji_jodi` and `gumpu` find keys with the key type's own `Polchochu` and `HashCheyochu`, `@automatic` ones hashing by structure (§21.2); `file.path_kalupu` joins with `/` on every system (§21.3); `*maare T` → `*T` (§9.4.2f), so `memory.copy` can read what `memory.allocate` gave; seed cases D008–D016. |

@@ -161,7 +161,7 @@ fn check_native(path: &Path, out_dir: &Path) -> (usize, Vec<String>) {
             }
             if let Some(t) = trap.first() {
                 // `T01 @ 7:12` → the right kind of trap, and the message ends
-                // with `(file:7:12)`. T08 and T09 have no position natively.
+                // with `(file:7:12)`. T08 and T09 have no position natively, T15 none at all.
                 let (code, pos) =
                     t.split_once('@').map(|(c, p)| (c.trim(), p.trim())).unwrap_or((t.trim(), ""));
                 let msg = stderr.trim_end();
@@ -172,7 +172,7 @@ fn check_native(path: &Path, out_dir: &Path) -> (usize, Vec<String>) {
                 if got != code {
                     failures.push(format!("{name} ({level}): trap `{msg}` isn't {code}"));
                 }
-                if !matches!(code, "T08" | "T09") && !msg.ends_with(&format!(":{pos})")) {
+                if !matches!(code, "T08" | "T09" | "T15") && !msg.ends_with(&format!(":{pos})")) {
                     failures.push(format!("{name} ({level}): trap message `{msg}` doesn't point at {pos}"));
                 }
             }
@@ -204,6 +204,49 @@ fn native_welcome_program() {
     let out = Command::new(&exe).output().expect("runs");
     let _ = fs::remove_dir_all(&dir);
     assert_eq!(String::from_utf8_lossy(&out.stdout), expected);
+}
+
+/// Shapes that once made clang's optimizer or instruction selector
+/// quadratic build quickly: a very wide tuple (built with one `insertvalue`
+/// per field) and a function with hundreds of owned locals and calls (one
+/// landing pad merging every drop flag).
+#[test]
+fn wide_values_and_many_owned_locals_build_quickly() {
+    if !clang_available() {
+        return;
+    }
+    let wide = format!(
+        "modhalu() -> khali ante:\n    x ante ({})\n    x.0 ni choopinchu()\n",
+        vec!["1"; 3000].join(", ")
+    );
+    let owned = {
+        let mut s = String::new();
+        for i in 0..400 {
+            s.push_str(&format!("rakam R{i} ante:\n    a: ankam\n    b: padham\n    c: varusa[ankam]\n\n"));
+        }
+        s.push_str("modhalu() -> khali ante:\n    maare n ante 0\n");
+        for i in 0..400 {
+            s.push_str(&format!("    r{i} ante R{i}{{a: {i}, b: \"s{i}\", c: [1, 2, {i}]}}\n    n += r{i}.a + r{i}.c.enni()\n"));
+        }
+        s.push_str("    n ni choopinchu()\n");
+        s
+    };
+    let dir = std::env::temp_dir().join(format!("antec-native-wide-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("temp dir");
+    for (name, text, release, want) in [("wide", wide, false, "1\n"), ("owned", owned, true, "81000\n")] {
+        let src = dir.join(format!("{name}.ante"));
+        fs::write(&src, text).expect("write");
+        let exe = dir.join(if cfg!(windows) { format!("{name}.exe") } else { name.to_string() });
+        let start = std::time::Instant::now();
+        let action = Action::Build { output: exe.clone(), release };
+        let checked = antec::on_big_stack(|| antec::package::process(&src, action)).expect("readable");
+        let took = start.elapsed();
+        assert!(checked.built.is_some(), "{name}: build failed: {:?}", checked.backend_errors);
+        assert!(took.as_secs() < 30, "{name}: build took {took:?}");
+        let out = Command::new(&exe).output().expect("runs");
+        assert_eq!(String::from_utf8_lossy(&out.stdout), want, "{name}");
+    }
+    let _ = fs::remove_dir_all(&dir);
 }
 
 /// Files, folders and child programs (§21.3) do the same thing natively as

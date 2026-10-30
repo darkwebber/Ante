@@ -31,6 +31,22 @@ enum Emit {
     Ast,
 }
 
+/// `print!` that doesn't panic when stdout is closed early
+/// (`antec emit llvm | head`); the rest of the output is dropped.
+macro_rules! out {
+    ($($t:tt)*) => {{
+        use std::io::Write as _;
+        let _ = write!(std::io::stdout(), $($t)*);
+    }};
+}
+
+macro_rules! outln {
+    ($($t:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stdout(), $($t)*);
+    }};
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     antec::on_big_stack(move || dispatch(&args))
@@ -61,11 +77,11 @@ fn dispatch(args: &[String]) -> ExitCode {
             "--release" => release = true,
             "--check" => check_only = true,
             "--help" | "-h" | "help" if words.is_empty() => {
-                println!("{USAGE}");
+                outln!("{USAGE}");
                 return ExitCode::SUCCESS;
             }
             "--version" | "-V" if words.is_empty() => {
-                println!(
+                outln!(
                     "antec {} (\"Ante\" edition 1.0, stage 0) — Telugu lo think cheyyi, native speed lo run cheyyi 🚀",
                     env!("CARGO_PKG_VERSION")
                 );
@@ -138,9 +154,9 @@ fn check(path: &str) -> ExitCode {
     let code = summary(checked.error_count());
     if code == ExitCode::SUCCESS {
         match checked.warning_count() {
-            0 => println!("✅ {path}: anthaa ok! Errors emi levu."),
-            1 => println!("\n✅ {path}: errors levu, kaani 1 warning undhi 👀"),
-            n => println!("\n✅ {path}: errors levu, kaani {n} warnings unnayi 👀"),
+            0 => outln!("✅ {path}: anthaa ok! Errors emi levu."),
+            1 => outln!("\n✅ {path}: errors levu, kaani 1 warning undhi 👀"),
+            n => outln!("\n✅ {path}: errors levu, kaani {n} warnings unnayi 👀"),
         }
     }
     code
@@ -175,12 +191,12 @@ fn fmt(path: &str, check_only: bool) -> ExitCode {
             Ok(text) => {
                 changed += 1;
                 if check_only {
-                    println!("✏️  {} format avvaledhu", file.display());
+                    outln!("✏️  {} format avvaledhu", file.display());
                 } else if let Err(err) = std::fs::write(file, text) {
                     eprintln!("error: `{}` raayalekapoyanu ({err})", file.display());
                     failed += 1;
                 } else {
-                    println!("✨ {} format chesam", file.display());
+                    outln!("✨ {} format chesam", file.display());
                 }
             }
             Err(antec::fmt::FmtError::Invalid(diags)) => {
@@ -203,11 +219,11 @@ fn fmt(path: &str, check_only: bool) -> ExitCode {
         return ExitCode::from(1);
     }
     if check_only && changed > 0 {
-        println!("\n{changed} file(s) ki `antec fmt` kavali");
+        outln!("\n{changed} file(s) ki `antec fmt` kavali");
         return ExitCode::from(1);
     }
     if changed == 0 {
-        println!("✅ anni files already neat ga unnayi ({})", files.len());
+        outln!("✅ anni files already neat ga unnayi ({})", files.len());
     }
     ExitCode::SUCCESS
 }
@@ -245,7 +261,7 @@ fn run(path: &str, args: Vec<String>) -> ExitCode {
     }
     match checked.run {
         Some(out) => {
-            print!("{}", out.stdout);
+            out!("{}", out.stdout);
             eprint!("{}", out.stderr);
             ExitCode::from(out.exit_code.clamp(0, 255) as u8)
         }
@@ -285,7 +301,7 @@ fn build(path: &str, out: Option<&str>, release: bool) -> ExitCode {
     }
     match &checked.built {
         Some(p) => {
-            println!("✅ native program ready: {} 🚀", p.display());
+            outln!("✅ native program ready: {} 🚀", p.display());
             ExitCode::SUCCESS
         }
         None => ExitCode::from(1),
@@ -307,7 +323,7 @@ fn emit_mir(path: &str, action: Action) -> ExitCode {
         eprintln!("error: {e}");
     }
     if let Some(mir) = &checked.mir {
-        print!("{mir}");
+        out!("{mir}");
     }
     if !checked.backend_errors.is_empty() {
         return ExitCode::from(1);
@@ -328,13 +344,13 @@ fn emit(path: &str, what: Emit) -> ExitCode {
             let result = antec::lexer::lex(&src);
             for tok in &result.tokens {
                 let (line, col) = src.line_col(tok.span.start);
-                println!("{line}:{col}\t{}", tok.kind);
+                outln!("{line}:{col}\t{}", tok.kind);
             }
             diags = result.diagnostics;
         } else {
             let (module, parse_diags) = antec::parse_source(&src);
             if let Some(module) = &module {
-                print!("{}", antec::pretty::module(module));
+                out!("{}", antec::pretty::module(module));
             }
             diags = parse_diags;
         }

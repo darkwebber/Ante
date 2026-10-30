@@ -229,6 +229,13 @@ impl<'a, 'p> Builder<'a, 'p> {
         let spans = vec![Span::default(); inits.len()];
         self.body.blocks[0].stmts.splice(0..0, inits);
         self.body.blocks[0].spans.splice(0..0, spans);
+        // Every body stays alive until code generation; growth slack adds up.
+        for b in &mut self.body.blocks {
+            b.stmts.shrink_to_fit();
+            b.spans.shrink_to_fit();
+        }
+        self.body.blocks.shrink_to_fit();
+        self.body.locals.shrink_to_fit();
         self.body
     }
 
@@ -893,8 +900,8 @@ impl<'a, 'p> Builder<'a, 'p> {
                     let t = self.temp(ty);
                     let rv = Rvalue::Slice {
                         place: b,
-                        lo,
-                        hi,
+                        lo: Box::new(lo),
+                        hi: Box::new(hi),
                         inclusive: *inclusive,
                         mutable: false,
                         span: e.span,
@@ -1272,8 +1279,8 @@ impl<'a, 'p> Builder<'a, 'p> {
                         let hi = self.scalar_operand(hi);
                         let rv = Rvalue::Slice {
                             place: b,
-                            lo,
-                            hi,
+                            lo: Box::new(lo),
+                            hi: Box::new(hi),
                             inclusive: *inclusive,
                             mutable,
                             span: operand.span,

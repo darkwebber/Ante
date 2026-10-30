@@ -7,7 +7,6 @@
 # expect-stdout: drop varusa lo
 # expect-stdout: drop bayati
 # expect-stdout: task padipoyindhi
-# skip-on: windows
 # level: services
 # A trap unwinds its task: every frame drops what it owns, innermost
 # first and in reverse order, and a value moved away is dropped only once

@@ -1,0 +1,18 @@
+# category: run-pass
+# expect-stdout: Jabitha.Konasaagu(1, undhi(Jabitha.Konasaagu(2, ledhu)))
+# expect-stdout: avunu
+# expect-stdout: kaadhu
+# level: core
+# `@automatic` derives on a type that contains itself: a derive may rely on
+# itself (§13.6).
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+edho_okati Jabitha ante:
+    Konasaagu(ankam, undochu[pette[Jabitha]])
+    Ayipoyindhi
+
+modhalu() -> khali ante:
+    j ante Jabitha.Konasaagu(1, undhi(Jabitha.Konasaagu(2, ledhu) ni pette.kotthadhi()))
+    k ante j.xerox()
+    j ni choopinchu()
+    (j == k) ni choopinchu()
+    (j == Jabitha.Ayipoyindhi) ni choopinchu()

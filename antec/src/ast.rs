@@ -267,13 +267,13 @@ pub struct Arm {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StmtKind {
-    Binding { mutable: bool, target: BindTarget, ty: Option<Type>, value: Expr },
+    Binding { mutable: bool, target: BindTarget, ty: Option<Box<Type>>, value: Expr },
     Assign { place: Expr, value: Expr },
     Compound { place: Expr, op: BinOp, value: Expr },
     Return(Option<Expr>),
     If { branches: Vec<(Expr, Block)>, else_block: Option<Block> },
     While { cond: Expr, body: Block },
-    For { iter: Expr, pattern: Pattern, body: Block },
+    For { iter: Expr, pattern: Box<Pattern>, body: Block },
     Match { scrutinee: Expr, arms: Vec<Arm> },
     Break,
     Continue,

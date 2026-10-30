@@ -48,6 +48,57 @@ pub struct Closure {
     pub tys: Rc<[Ty]>,
 }
 
+/// A `pette`'s contents. A long chain of boxes (a list a million links
+/// long) is freed without recursing once per link.
+#[derive(Clone, Debug)]
+pub struct DeepBox(Box<Value>);
+
+impl DeepBox {
+    pub fn new(v: Value) -> Self {
+        DeepBox(Box::new(v))
+    }
+
+    /// The contents, moved out.
+    pub fn take(mut self) -> Value {
+        std::mem::replace(&mut *self.0, Value::Uninit)
+    }
+}
+
+impl std::ops::Deref for DeepBox {
+    type Target = Value;
+    fn deref(&self) -> &Value {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for DeepBox {
+    fn deref_mut(&mut self) -> &mut Value {
+        &mut self.0
+    }
+}
+
+impl Drop for DeepBox {
+    fn drop(&mut self) {
+        let inner = std::mem::replace(&mut *self.0, Value::Uninit);
+        if !matches!(
+            inner,
+            Value::Box(_) | Value::Tuple(_) | Value::Array(_) | Value::Vec(_) | Value::Adt(..)
+        ) {
+            return;
+        }
+        // Parts are moved onto a list before their holder goes, so each
+        // value is dropped with nothing left inside it.
+        let mut work = vec![inner];
+        while let Some(mut v) = work.pop() {
+            match &mut v {
+                Value::Box(b) => work.push(std::mem::replace(&mut *b.0, Value::Uninit)),
+                Value::Tuple(xs) | Value::Array(xs) | Value::Vec(xs) | Value::Adt(_, xs) => work.append(xs),
+                _ => {}
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Value {
     /// Moved out, or not yet written.
@@ -68,7 +119,7 @@ pub enum Value {
     /// Records (variant 0), enums, `undochu` and `sare_thappu`.
     Adt(u32, Vec<Value>),
     Map(Box<OrdMap>),
-    Box(Box<Value>),
+    Box(DeepBox),
     Ref(Addr),
     /// `&mukka[T]`: a sequence, a start and a length.
     Slice(Addr, usize, usize),
