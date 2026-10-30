@@ -1,0 +1,24 @@
+# category: run-pass
+# expect-stdout: 45
+# expect-stdout: sare(rahasya sandesham)
+# expect-stdout: thappu(decrypt kaaledhu: key thappu, leka data maarindhi)
+# expect-stdout: thappu(decrypt kaaledhu: key thappu, leka data maarindhi)
+# expect-stdout: *** ***
+# expect-stdout: 32
+# level: services
+# AES-256-GCM with a random nonce: a round trip, a wrong key, changed data;
+# secrets show as `***` (§27.4).
+bhadram thechuko
+
+modhalu() -> khali ante:
+    key ante 32 ni bhadram.key_tayaru()
+    msg ante "rahasya sandesham".baitlu_ga()
+    maare c ante &msg ni, &key tho bhadram.encrypt()
+    c.enni() ni choopinchu()
+    (&c ni, &key tho bhadram.decrypt()).kachithanga() |> padham.baitlu_nunchi() |> choopinchu()
+    other ante 32 ni bhadram.key_tayaru()
+    (&c ni, &other tho bhadram.decrypt()) ni choopinchu()
+    c[20] lo (c[20] ^ 1) pettu
+    (&c ni, &key tho bhadram.decrypt()) ni choopinchu()
+    f"{key} {other}" ni choopinchu()
+    key.bayatiki_theesuko().enni() ni choopinchu()

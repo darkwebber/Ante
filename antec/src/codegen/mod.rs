@@ -37,7 +37,8 @@ use crate::typeck::{AdtKind, FnId, Globals, Typeck};
 use crate::types::{Con, Ty};
 
 /// The C runtime, embedded so `antec` is a single binary.
-pub const RUNTIME_C: &str = include_str!("../../runtime/ante_rt.c");
+pub const RUNTIME_C: &str =
+    concat!(include_str!("../../runtime/ante_rt.c"), include_str!("../../runtime/ante_crypto.c"));
 
 /// Something emitted as one LLVM function.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -218,7 +219,11 @@ pub fn reserved_symbol(name: &str) -> bool {
         || RUNTIME_C.contains(&format!(" {name}("))
 }
 
+/// Set to true by `link_native` for release builds (`system._release`).
+pub const RELEASE_FLAG: &str = "@ante_release_build = private constant i1 false";
+
 const DECLS: &str = "\
+@ante_release_build = private constant i1 false
 declare void @ante_start(i32, ptr, ptr, i64) noreturn
 declare void @ante_exit(i32) noreturn
 declare void @ante_vellipo(i32) noreturn
@@ -311,6 +316,8 @@ declare i32 @ante_read_line(ptr)
 declare void @ante_os(ptr)
 declare void @ante_arch(ptr)
 declare i64 @ante_now_ns()
+declare i64 @ante_utc_ns()
+declare void @ante_env_text(ptr)
 declare i1 @ante_char_in(i32, ptr, i64)
 declare i64 @ante_map_find(ptr, i64, ptr, i64, i64, ptr)
 declare i64 @ante_map_add(ptr, i64, i64)
@@ -322,6 +329,18 @@ declare void @ante_mem_release(ptr, i64, i64)
 declare ptr @ante_mem_realloc(ptr, i64, i64, i64)
 declare void @llvm.memmove.p0.p0.i64(ptr, ptr, i64, i1)
 declare i32 @ante_file_read_bytes(ptr, ptr, ptr)
+declare void @ante_bytes_copy(ptr, ptr, i64)
+declare void @ante_zero_buf(ptr)
+declare void @ante_sha256(ptr, i64, ptr)
+declare void @ante_sha512(ptr, i64, ptr)
+declare void @ante_blake3(ptr, i64, ptr)
+declare i32 @ante_random_bytes(i64, ptr)
+declare i32 @ante_ct_eq(ptr, i64, ptr, i64)
+declare void @ante_argon2id(ptr, i64, ptr, i64, ptr, i64, ptr, i64, i64, i64, i64, i64, ptr)
+declare void @ante_aes_gcm_seal_n(ptr, i64, ptr, i64, ptr, i64, ptr, i64, ptr)
+declare i32 @ante_aes_gcm_open_n(ptr, i64, ptr, i64, ptr, i64, ptr, i64, ptr)
+declare void @ante_secure_zero(ptr, i64)
+declare void @ante_str_from_bytes_lossy(ptr, i64, ptr)
 declare i32 @ante_file_write_bytes(ptr, ptr, i64, ptr)
 declare i32 @ante_file_is_folder(ptr)
 declare i32 @ante_file_list(ptr, ptr, ptr)
@@ -453,7 +472,7 @@ impl<'a> Gen<'a> {
     // ── constants ──────────────────────────────────────────────────────────
 
     /// A `%str` constant for literal text.
-    fn str_const(&mut self, text: &str) -> String {
+    pub(super) fn str_const(&mut self, text: &str) -> String {
         let name = match self.strings.get(text) {
             Some(n) => n.clone(),
             None => {

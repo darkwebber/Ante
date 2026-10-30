@@ -6,7 +6,8 @@
 //! small heap for values the runtime creates on its own. A reference is a
 //! slot and a path into the value stored there.
 
-mod native;
+pub mod crypto;
+pub(crate) mod native;
 mod value;
 
 use std::collections::HashMap;

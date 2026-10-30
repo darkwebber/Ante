@@ -1,0 +1,553 @@
+# `json`: JSON text (RFC 8259) to and from the data tree (spec §25.3).
+#
+# Writing escapes `"`, `\`, control characters, U+2028, U+2029, `<`, `>` and
+# `&`, so the text is safe inside HTML. Reading rejects comments, trailing
+# commas, duplicate keys and nesting deeper than 128.
+
+encoding thechuko
+lekkalu thechuko
+
+# ── values of unknown shape ─────────────────────────────────────────────────
+
+# "Value": any JSON document.
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki edho_okati Viluva ante:
+    Null
+    Bool(ato_ito)
+    Ankam(ankam)
+    # An integer outside `ankam`'s range, kept as its digits ("big number").
+    PeddhaAnkam(padham)
+    Amsam(amsam64)
+    Padham(padham)
+    Varusa(varusa[Viluva])
+    Jodi(jodi[padham, Viluva])
+
+Viluva ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        naa batti:
+            Viluva.Null aithe:
+                w.null_raayi()
+            Viluva.Bool(b) aithe:
+                b ni w.bool_raayi()
+            Viluva.Ankam(n) aithe:
+                n ni w.ankam_raayi()
+            Viluva.PeddhaAnkam(digits) aithe:
+                DataChettu.PeddhaAnkam(digits.xerox()) ni w.chettu_raayi()
+            Viluva.Amsam(x) aithe:
+                x ni w.amsam_raayi()
+            Viluva.Padham(s) aithe:
+                s ni w.padham_raayi()
+            Viluva.Varusa(xs) aithe:
+                xs ni w.raayi()
+            Viluva.Jodi(m) aithe:
+                m ni w.raayi()
+
+Viluva ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        kind ante r.chettu().rakam_peru()
+        kind == "varusa" aithe:
+            xs ante r.chadhuvu[varusa[Viluva]]()?
+            sare(Viluva.Varusa(xs)) icchey
+        kind == "jodi" aithe:
+            m ante r.chadhuvu[jodi[padham, Viluva]]()?
+            sare(Viluva.Jodi(m)) icchey
+        r.chettu_theesuko() batti:
+            DataChettu.Bool(b) aithe:
+                sare(Viluva.Bool(b)) icchey
+            DataChettu.Ankam(n) aithe:
+                sare(Viluva.Ankam(n)) icchey
+            DataChettu.Aasajeevi(n) aithe:
+                sare(Viluva.PeddhaAnkam(n.padham_ga())) icchey
+            DataChettu.PeddhaAnkam(digits) aithe:
+                sare(Viluva.PeddhaAnkam(digits)) icchey
+            DataChettu.Amsam(x) aithe:
+                sare(Viluva.Amsam(x)) icchey
+            DataChettu.Padham(s) aithe:
+                sare(Viluva.Padham(s)) icchey
+            DataChettu.Baitlu(b) aithe:
+                sare(Viluva.Padham(&b ni encoding.base64())) icchey
+            _ aithe:
+                sare(Viluva.Null) icchey
+
+# ── writing ─────────────────────────────────────────────────────────────────
+
+# `x` as compact JSON.
+andhariki raayi[T: Raayochu](x: &T ni) -> padham ante:
+    maare out ante Raatha.kotthadhi()
+    t ante x ni DataChettu.raayi()
+    &t ni, &maare out tho, -1 ki chettu_raayi()
+    out.padham_ga() icchey
+
+# `x` as JSON indented by two spaces ("nicely").
+andhariki andanga_raayi[T: Raayochu](x: &T ni) -> padham ante:
+    maare out ante Raatha.kotthadhi()
+    t ante x ni DataChettu.raayi()
+    &t ni, &maare out tho, 0 ki chettu_raayi()
+    out.padham_ga() icchey
+
+# Writes a tree; `lothu` is the indent level, or -1 for compact output.
+chettu_raayi(t: &DataChettu ni, out: &maare Raatha tho, lothu: ankam ki) -> khali ante:
+    t batti:
+        DataChettu.Null aithe:
+            "null" ni out.raayi()
+        DataChettu.Bool(b) aithe:
+            b aithe:
+                "true" ni out.raayi()
+            ledhante:
+                "false" ni out.raayi()
+        DataChettu.Ankam(n) aithe:
+            n ni out.raayi()
+        DataChettu.Aasajeevi(n) aithe:
+            n ni out.raayi()
+        DataChettu.PeddhaAnkam(digits) aithe:
+            digits ni out.raayi()
+        DataChettu.Amsam(x) aithe:
+            # JSON has no NaN or infinity; like JavaScript, they become null.
+            x != x || x == lekkalu.INF || x == -lekkalu.INF aithe:
+                "null" ni out.raayi()
+            ledhante:
+                (x ni amsam_text()) ni out.raayi()
+        DataChettu.Padham(s) aithe:
+            s ni, out tho padham_raayi()
+        DataChettu.Baitlu(b) aithe:
+            (b ni encoding.base64()) ni, out tho padham_raayi()
+        DataChettu.Varusa(xs) aithe:
+            xs.khaaliyaa() aithe:
+                "[]" ni out.raayi()
+                icchey
+            '[' ni out.akshara_raayi()
+            maare first ante avunu
+            xs lo okko x ki:
+                !first aithe:
+                    ',' ni out.akshara_raayi()
+                first lo kaadhu pettu
+                (lothu ni lopaliki()) ni, out tho line_maaru()
+                x ni, out tho, (lothu ni lopaliki()) ki chettu_raayi()
+            lothu ni, out tho line_maaru()
+            ']' ni out.akshara_raayi()
+        DataChettu.Jodi(entries) aithe:
+            entries.khaaliyaa() aithe:
+                "{}" ni out.raayi()
+                icchey
+            '{' ni out.akshara_raayi()
+            maare first ante avunu
+            entries lo okko e ki:
+                !first aithe:
+                    ',' ni out.akshara_raayi()
+                first lo kaadhu pettu
+                (lothu ni lopaliki()) ni, out tho line_maaru()
+                &e.0 ni, out tho padham_raayi()
+                ':' ni out.akshara_raayi()
+                lothu >= 0 aithe:
+                    ' ' ni out.akshara_raayi()
+                &e.1 ni, out tho, (lothu ni lopaliki()) ki chettu_raayi()
+            lothu ni, out tho line_maaru()
+            '}' ni out.akshara_raayi()
+
+# A float the way JavaScript writes it: as `x.padham_ga()` shows it, but
+# with an exponent below 1e-6 and from 1e21 up (`1.5e+300`).
+amsam_text(x: amsam ni) -> padham ante:
+    s ante x.padham_ga()
+    a ante x ni lekkalu.abs()
+    a == 0.0 || a >= 0.000001 && a < 1e21 aithe:
+        s icchey
+    # The decimal digits, and how many came before the point.
+    maare neg ante kaadhu
+    maare digits: baitlu ante []
+    maare point ante -1
+    s.baitlu() lo okko c ki:
+        v ante c ni maarchu[ankam]()
+        v == 45 aithe:
+            neg lo avunu pettu
+        ledhante v == 46 aithe:
+            point lo digits.enni() pettu
+        ledhante:
+            c ni digits.cherchu()
+    point < 0 aithe:
+        point lo digits.enni() pettu
+    maare lead ante 0
+    lead < digits.enni() && (digits[lead] ni maarchu[ankam]()) == 48 unnanthasepu:
+        lead += 1
+    maare end ante digits.enni()
+    end > lead + 1 && (digits[end - 1] ni maarchu[ankam]()) == 48 unnanthasepu:
+        end -= 1
+    e ante point - lead - 1
+    maare out ante ""
+    neg aithe:
+        out += "-"
+    first ante (&digits[lead nunchi lead + 1 lopu] ni padham.baitlu_nunchi()).kachithanga()
+    out += first
+    end > lead + 1 aithe:
+        out += "."
+        rest ante (&digits[lead + 1 nunchi end lopu] ni padham.baitlu_nunchi()).kachithanga()
+        out += rest
+    e >= 0 aithe:
+        out += f"e+{e}"
+    ledhante:
+        out += f"e{e}"
+    out icchey
+
+# The indent level inside a list or map.
+lopaliki(lothu: ankam ni) -> ankam ante:
+    lothu < 0 aithe:
+        -1 icchey
+    (lothu + 1) icchey
+
+# A new line and indent, when writing nicely.
+line_maaru(lothu: ankam ni, out: &maare Raatha tho) -> khali ante:
+    lothu < 0 aithe:
+        icchey
+    '\n' ni out.akshara_raayi()
+    0 nunchi lothu lopu okko _ ki:
+        "  " ni out.raayi()
+
+HEX: padham ante "0123456789abcdef"
+
+# A JSON string literal.
+padham_raayi(s: &padham ni, out: &maare Raatha tho) -> khali ante:
+    '"' ni out.akshara_raayi()
+    s.aksharaalu() lo okko c ki:
+        n ante (c ni maarchu[aasajeevi ankam32]()) ni maarchu[ankam]()
+        n == 34 aithe:
+            "\\\"" ni out.raayi()
+        ledhante n == 92 aithe:
+            "\\\\" ni out.raayi()
+        ledhante n == 10 aithe:
+            "\\n" ni out.raayi()
+        ledhante n == 13 aithe:
+            "\\r" ni out.raayi()
+        ledhante n == 9 aithe:
+            "\\t" ni out.raayi()
+        ledhante n < 32 || n == 60 || n == 62 || n == 38 || n == 8232 || n == 8233 aithe:
+            n ni, out tho u_escape()
+        ledhante:
+            c ni out.akshara_raayi()
+    '"' ni out.akshara_raayi()
+
+# `\uXXXX` for a character below U+10000.
+u_escape(n: ankam ni, out: &maare Raatha tho) -> khali ante:
+    "\\u" ni out.raayi()
+    maare shift ante 12
+    shift >= 0 unnanthasepu:
+        d ante n >> shift & 15
+        (d ni, (d + 1) tho HEX.byte_mukka()).kachithanga() ni out.raayi()
+        shift -= 4
+
+# ── reading ─────────────────────────────────────────────────────────────────
+
+# Reads a `T` from JSON text.
+andhariki chadhuvu[T: Chadhavochu](s: &padham ni) -> sare_thappu[T, ChadhuvuThappu] ante:
+    t ante s ni chettu_chadhuvu()?
+    (t ni DataChettu.chadhuvu[T]()) icchey
+
+# JSON text as a data tree.
+andhariki chettu_chadhuvu(s: &padham ni) -> sare_thappu[DataChettu, ChadhuvuThappu] ante:
+    maare p ante Parser{b: s.baitlu_ga(), i: 0, daari: []}
+    p.space()
+    t ante &maare p ni, 0 tho viluva_chadhuvu()?
+    p.space()
+    p.i < p.b.enni() aithe:
+        thappu(p.text_thappu()) icchey
+    sare(t) icchey
+
+LOTHU_HADDU: ankam ante 128
+
+rakam Parser ante:
+    b: baitlu
+    i: ankam
+    # The keys and indexes to the value being read, for errors.
+    daari: varusa[padham]
+
+Parser panulu ante:
+    # The byte at the cursor, or -1 at the end.
+    choodu(naa: &idhi) -> ankam ante:
+        naa.i >= naa.b.enni() aithe:
+            -1 icchey
+        (naa.b[naa.i] ni maarchu[ankam]()) icchey
+
+    space(naa: &maare idhi) -> khali ante:
+        avunu unnanthasepu:
+            c ante naa.choodu()
+            c == 32 || c == 9 || c == 10 || c == 13 aithe:
+                naa.i += 1
+            ledhante:
+                aapey
+
+    # A syntax error at the cursor: the path is `line:column`.
+    text_thappu(naa: &idhi) -> ChadhuvuThappu ante:
+        maare line ante 1
+        maare col ante 1
+        0 nunchi naa.i lopu okko k ki:
+            k < naa.b.enni() aithe:
+                c ante naa.b[k] ni maarchu[ankam]()
+                c == 10 aithe:
+                    line += 1
+                    col lo 1 pettu
+                ledhante c & 192 != 128 aithe:
+                    col += 1
+        (f"{line}:{col}" ni, ChadhuvuThappuVidham.Text tho ChadhuvuThappu.kotthadhi()) icchey
+
+    # An error about the value being read, at its path.
+    daari_thappu(naa: &idhi, vidham: ChadhuvuThappuVidham ni) -> ChadhuvuThappu ante:
+        maare d ante ""
+        naa.daari lo okko part ki:
+            d lo f"{d}{part}" pettu
+        d.byte_len() == 0 aithe:
+            d lo "." pettu
+        (d ni, vidham tho ChadhuvuThappu.kotthadhi()) icchey
+
+    # Takes `word` (`true`, `false`, `null`) at the cursor.
+    padam(naa: &maare idhi, word: &padham ni) -> ato_ito ante:
+        w ante word.baitlu_ga()
+        naa.i + w.enni() > naa.b.enni() aithe:
+            kaadhu icchey
+        0 nunchi w.enni() lopu okko k ki:
+            naa.b[naa.i + k] != w[k] aithe:
+                kaadhu icchey
+        naa.i += w.enni()
+        avunu icchey
+
+viluva_chadhuvu(
+    p: &maare Parser ni,
+    lothu: ankam tho,
+) -> sare_thappu[DataChettu, ChadhuvuThappu] ante:
+    c ante p.choodu()
+    c == 123 || c == 91 aithe:
+        lothu >= LOTHU_HADDU aithe:
+            e ante p.text_thappu()
+            thappu(ChadhuvuThappu{daari: e.daari, vidham: ChadhuvuThappuVidham.ChaalaLothu}) icchey
+    c == 123 aithe:
+        (p ni, lothu tho jodi_chadhuvu()) icchey
+    c == 91 aithe:
+        (p ni, lothu tho varusa_chadhuvu()) icchey
+    c == 34 aithe:
+        s ante p ni string_chadhuvu()?
+        sare(DataChettu.Padham(s)) icchey
+    c == 45 || c >= 48 && c <= 57 aithe:
+        (p ni number_chadhuvu()) icchey
+    "true" ni p.padam() aithe:
+        sare(DataChettu.Bool(avunu)) icchey
+    "false" ni p.padam() aithe:
+        sare(DataChettu.Bool(kaadhu)) icchey
+    "null" ni p.padam() aithe:
+        sare(DataChettu.Null) icchey
+    thappu(p.text_thappu()) icchey
+
+jodi_chadhuvu(
+    p: &maare Parser ni,
+    lothu: ankam tho,
+) -> sare_thappu[DataChettu, ChadhuvuThappu] ante:
+    p.i += 1
+    maare entries: varusa[jatha[padham, DataChettu]] ante []
+    maare keys: gumpu[padham] ante gumpu.kotthadhi()
+    p.space()
+    p.choodu() == 125 aithe:
+        p.i += 1
+        sare(DataChettu.Jodi(entries)) icchey
+    avunu unnanthasepu:
+        p.space()
+        p.choodu() != 34 aithe:
+            thappu(p.text_thappu()) icchey
+        k ante p ni string_chadhuvu()?
+        !(k.xerox() ni keys.cherchu()) aithe:
+            f".{k}" ni p.daari.cherchu()
+            thappu(ChadhuvuThappuVidham.Duplicate(k) ni p.daari_thappu()) icchey
+        p.space()
+        p.choodu() != 58 aithe:
+            thappu(p.text_thappu()) icchey
+        p.i += 1
+        p.space()
+        f".{k}" ni p.daari.cherchu()
+        v ante p ni, (lothu + 1) tho viluva_chadhuvu()?
+        p.daari.theesey()
+        (k, v) ni entries.cherchu()
+        p.space()
+        c ante p.choodu()
+        c == 44 aithe:
+            p.i += 1
+        ledhante c == 125 aithe:
+            p.i += 1
+            sare(DataChettu.Jodi(entries)) icchey
+        ledhante:
+            thappu(p.text_thappu()) icchey
+    thappu(p.text_thappu()) icchey
+
+varusa_chadhuvu(
+    p: &maare Parser ni,
+    lothu: ankam tho,
+) -> sare_thappu[DataChettu, ChadhuvuThappu] ante:
+    p.i += 1
+    maare xs: varusa[DataChettu] ante []
+    p.space()
+    p.choodu() == 93 aithe:
+        p.i += 1
+        sare(DataChettu.Varusa(xs)) icchey
+    avunu unnanthasepu:
+        p.space()
+        f"[{xs.enni()}]" ni p.daari.cherchu()
+        v ante p ni, (lothu + 1) tho viluva_chadhuvu()?
+        p.daari.theesey()
+        v ni xs.cherchu()
+        p.space()
+        c ante p.choodu()
+        c == 44 aithe:
+            p.i += 1
+        ledhante c == 93 aithe:
+            p.i += 1
+            sare(DataChettu.Varusa(xs)) icchey
+        ledhante:
+            thappu(p.text_thappu()) icchey
+    thappu(p.text_thappu()) icchey
+
+# The value of a hex digit, or -1.
+hex_viluva(c: ankam ni) -> ankam ante:
+    c >= 48 && c <= 57 aithe:
+        (c - 48) icchey
+    c >= 97 && c <= 102 aithe:
+        (c - 87) icchey
+    c >= 65 && c <= 70 aithe:
+        (c - 55) icchey
+    -1 icchey
+
+# Four hex digits after `\u`.
+hex4(p: &maare Parser ni) -> sare_thappu[ankam, ChadhuvuThappu] ante:
+    maare n ante 0
+    0 nunchi 4 lopu okko _ ki:
+        d ante p.choodu() ni hex_viluva()
+        d < 0 aithe:
+            thappu(p.text_thappu()) icchey
+        n lo (n * 16 + d) pettu
+        p.i += 1
+    sare(n) icchey
+
+# Appends the UTF-8 encoding of code point `n`.
+utf8_cherchu(n: ankam ni, out: &maare baitlu tho) -> khali ante:
+    n < 128 aithe:
+        (n ni byte()) ni out.cherchu()
+    ledhante n < 2048 aithe:
+        (192 | n >> 6) ni byte() |> out.cherchu()
+        (128 | n & 63) ni byte() |> out.cherchu()
+    ledhante n < 65536 aithe:
+        (224 | n >> 12) ni byte() |> out.cherchu()
+        (128 | n >> 6 & 63) ni byte() |> out.cherchu()
+        (128 | n & 63) ni byte() |> out.cherchu()
+    ledhante:
+        (240 | n >> 18) ni byte() |> out.cherchu()
+        (128 | n >> 12 & 63) ni byte() |> out.cherchu()
+        (128 | n >> 6 & 63) ni byte() |> out.cherchu()
+        (128 | n & 63) ni byte() |> out.cherchu()
+
+byte(x: ankam ni) -> aasajeevi ankam8 ante:
+    (x ni kolpothu_maarchu[aasajeevi ankam8]()) icchey
+
+string_chadhuvu(p: &maare Parser ni) -> sare_thappu[padham, ChadhuvuThappu] ante:
+    p.i += 1
+    maare out: baitlu ante []
+    avunu unnanthasepu:
+        c ante p.choodu()
+        c < 0 || c < 32 aithe:
+            thappu(p.text_thappu()) icchey
+        c == 34 aithe:
+            p.i += 1
+            aapey
+        c != 92 aithe:
+            p.b[p.i] ni out.cherchu()
+            p.i += 1
+            vadhiley
+        p.i += 1
+        e ante p.choodu()
+        e == 34 || e == 92 || e == 47 aithe:
+            (e ni byte()) ni out.cherchu()
+            p.i += 1
+        ledhante e == 98 aithe:
+            (8 ni byte()) ni out.cherchu()
+            p.i += 1
+        ledhante e == 102 aithe:
+            (12 ni byte()) ni out.cherchu()
+            p.i += 1
+        ledhante e == 110 aithe:
+            (10 ni byte()) ni out.cherchu()
+            p.i += 1
+        ledhante e == 114 aithe:
+            (13 ni byte()) ni out.cherchu()
+            p.i += 1
+        ledhante e == 116 aithe:
+            (9 ni byte()) ni out.cherchu()
+            p.i += 1
+        ledhante e == 117 aithe:
+            p.i += 1
+            maare n ante p ni hex4()?
+            n >= 56320 && n < 57344 aithe:
+                # A low surrogate on its own.
+                p.i -= 6
+                thappu(p.text_thappu()) icchey
+            n >= 55296 && n < 56320 aithe:
+                ("\\u" ni p.padam()) == kaadhu aithe:
+                    thappu(p.text_thappu()) icchey
+                lo_ ante p ni hex4()?
+                lo_ < 56320 || lo_ >= 57344 aithe:
+                    p.i -= 6
+                    thappu(p.text_thappu()) icchey
+                n lo (65536 + (n - 55296 << 10) + (lo_ - 56320)) pettu
+            n ni, &maare out tho utf8_cherchu()
+        ledhante:
+            thappu(p.text_thappu()) icchey
+    sare((&out ni padham.baitlu_nunchi()).kachithanga()) icchey
+
+number_chadhuvu(p: &maare Parser ni) -> sare_thappu[DataChettu, ChadhuvuThappu] ante:
+    start_ ante p.i
+    maare float ante kaadhu
+    p.choodu() == 45 aithe:
+        p.i += 1
+    c ante p.choodu()
+    c == 48 aithe:
+        p.i += 1
+    ledhante c >= 49 && c <= 57 aithe:
+        p ni digits()
+    ledhante:
+        thappu(p.text_thappu()) icchey
+    p.choodu() == 46 aithe:
+        float lo avunu pettu
+        p.i += 1
+        d ante p.choodu()
+        d < 48 || d > 57 aithe:
+            thappu(p.text_thappu()) icchey
+        p ni digits()
+    e ante p.choodu()
+    e == 101 || e == 69 aithe:
+        float lo avunu pettu
+        p.i += 1
+        s ante p.choodu()
+        s == 43 || s == 45 aithe:
+            p.i += 1
+        d ante p.choodu()
+        d < 48 || d > 57 aithe:
+            thappu(p.text_thappu()) icchey
+        p ni digits()
+    text ante (&p.b[start_ nunchi p.i lopu] ni padham.baitlu_nunchi()).kachithanga()
+    float aithe:
+        text.amsam_ga() batti:
+            sare(x) aithe:
+                x == lekkalu.INF || x == -lekkalu.INF aithe:
+                    thappu(ChadhuvuThappuVidham.Number ni p.daari_thappu()) icchey
+                sare(DataChettu.Amsam(x)) icchey
+            thappu(_) aithe:
+                thappu(ChadhuvuThappuVidham.Number ni p.daari_thappu()) icchey
+    text.ankam_ga() batti:
+        sare(n) aithe:
+            sare(DataChettu.Ankam(n)) icchey
+        thappu(_) aithe:
+            ()
+    text.aasajeevi_ga() batti:
+        sare(n) aithe:
+            sare(DataChettu.Aasajeevi(n)) icchey
+        thappu(_) aithe:
+            sare(DataChettu.PeddhaAnkam(text)) icchey
+
+digits(p: &maare Parser ni) -> khali ante:
+    avunu unnanthasepu:
+        c ante p.choodu()
+        c >= 48 && c <= 57 aithe:
+            p.i += 1
+        ledhante:
+            aapey

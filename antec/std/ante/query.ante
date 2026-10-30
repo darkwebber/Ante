@@ -1,0 +1,17 @@
+# `query`: URL query strings (`?q=ante+lang&page=2`), with the same rules as
+# `form` (spec §25.3). A space is written `%20`; `+` reads as a space.
+
+form thechuko
+
+# `x` as a query string, without the leading `?`.
+andhariki raayi[T: Raayochu](x: &T ni) -> padham ante:
+    (x ni, kaadhu tho form.raayi_ila()) icchey
+
+# Reads a `T` from a query string; a leading `?` is skipped.
+andhariki chadhuvu[T: Chadhavochu](s: &padham ni) -> sare_thappu[T, ChadhuvuThappu] ante:
+    maare text ante s.xerox()
+    "?" ni s.tho_modhalaindha() aithe:
+        text lo (1 ni, s.byte_len() tho s.byte_mukka()).kachithanga() pettu
+    t ante &text ni form.chettu_chadhuvu()?
+    maare r ante t ni Chadhivevaadu.text_nunchi()
+    (&maare r ni T.chadhuvu_cheyyi()) icchey

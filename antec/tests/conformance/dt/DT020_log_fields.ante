@@ -1,0 +1,18 @@
+# category: run-pass
+# expect-stdout: log ayyindhi
+# level: services
+# Log fields take a label and any `Raayochu` value; lines go to stderr, so
+# stdout has only the program's own output (§29.1).
+log thechuko
+
+@automatic Raayochu
+rakam User ante:
+    id: ankam
+    peru: padham
+
+modhalu() -> khali ante:
+    u ante User{id: 7, peru: "Sita"}
+    "login fail" ni, u.id user_id ga, u user ga, [1, 2] tries ga log.warn()
+    "kotha connection" ni log.info()
+    "chinna vishayam" ni log.debug()
+    "log ayyindhi" ni choopinchu()

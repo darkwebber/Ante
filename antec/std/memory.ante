@@ -5,3 +5,6 @@ bayata "ante" ante:
     release(p: *maare khali ni, n: aasajeevi ankam tho, a: aasajeevi ankam tho) -> khali
     reallocate(p: *maare khali ni, n: aasajeevi ankam tho, a: aasajeevi ankam tho, m: aasajeevi ankam ki) -> *maare khali
     copy(src: *khali ni, dst: *maare khali ki, n: aasajeevi ankam tho) -> khali
+    # Overwrites the bytes of a scalar, and the heap bytes of a `padham` or
+    # `baitlu`, with zeros that the optimizer can't skip (§27.4).
+    sunna_cheyyi[T](x: &maare T ni) -> khali

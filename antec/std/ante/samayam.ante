@@ -1,0 +1,733 @@
+# `samayam`: wall-clock time, calendars and time zones (spec §26). The
+# monotonic clock and the `Kaalam` constructors are intrinsics, declared in
+# `std/samayam.ante`; everything here is written in "Ante".
+#
+# Time zones come from the operating system's zoneinfo files (TZif, RFC 8536)
+# under `$TZDIR` or `/usr/share/zoneinfo`. Without them (Windows), only UTC
+# and a few fixed-offset zones are known.
+
+samayam thechuko
+file thechuko
+system thechuko
+
+# ── Kaalam ("duration") ─────────────────────────────────────────────────────
+
+samayam.Kaalam ki Kalupochu gunam undhi:
+    kalupu(naa: &idhi, inkokati: &idhi ni) -> idhi ante:
+        ((naa.nanosec_lu() + inkokati.nanosec_lu()) ni samayam.Kaalam.nanosec()) icchey
+
+# A negative result is T01, like any `aasajeevi` number.
+samayam.Kaalam ki Theeseyochu gunam undhi:
+    theesey(naa: &idhi, inkokati: &idhi ni) -> idhi ante:
+        ((naa.nanosec_lu() - inkokati.nanosec_lu()) ni samayam.Kaalam.nanosec()) icchey
+
+samayam.Kaalam ki VarusaPettochu gunam undhi:
+    polchu(naa: &idhi, inkokati: &idhi ni) -> Kramam ante:
+        a ante naa.nanosec_lu()
+        b ante inkokati.nanosec_lu()
+        (&b ni a.polchu()) icchey
+
+# `1.5s`, `250ms`, `3m 20s`.
+samayam.Kaalam ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        (naa.nanosec_lu() ni kaalam_text()) icchey
+
+kaalam_text(ns: ankam ni) -> padham ante:
+    ns < 1000 aithe:
+        f"{ns}ns" icchey
+    ns < 1000000 aithe:
+        ((ns ni, 1000 tho dasamsam()) + "µs") icchey
+    ns < 1000000000 aithe:
+        ((ns ni, 1000000 tho dasamsam()) + "ms") icchey
+    ns < 60000000000 aithe:
+        ((ns ni, 1000000000 tho dasamsam()) + "s") icchey
+    rojulu ante ns / 86400000000000
+    gantalu ante ns / 3600000000000 % 24
+    nimishalu ante ns / 60000000000 % 60
+    migilindhi ante ns % 60000000000
+    maare parts: varusa[padham] ante []
+    rojulu > 0 aithe:
+        f"{rojulu}d" ni parts.cherchu()
+    gantalu > 0 aithe:
+        f"{gantalu}h" ni parts.cherchu()
+    nimishalu > 0 aithe:
+        f"{nimishalu}m" ni parts.cherchu()
+    migilindhi > 0 aithe:
+        secs ante (migilindhi ni, 1000000000 tho dasamsam()) + "s"
+        secs ni parts.cherchu()
+    maare out ante ""
+    parts lo okko p ki:
+        out.byte_len() > 0 aithe:
+            out += " "
+        out += p.xerox()
+    out icchey
+
+# `n / unit` with its decimals, trailing zeros dropped: `1500, 1000` → `1.5`.
+dasamsam(n: ankam ni, unit: ankam tho) -> padham ante:
+    maare s ante f"{n / unit}"
+    maare frac ante n % unit
+    frac == 0 aithe:
+        s icchey
+    maare width ante 0
+    maare u ante unit
+    u > 1 unnanthasepu:
+        width += 1
+        u lo (u / 10) pettu
+    digits ante frac ni, width tho pad()
+    kudhinchina ante &digits ni sunnalu_theesey()
+    s += "."
+    s += kudhinchina
+    s icchey
+
+# `n` with leading zeros, at least `width` digits.
+pad(n: ankam ni, width: ankam tho) -> padham ante:
+    maare s ante f"{n}"
+    s.byte_len() < width unnanthasepu:
+        s lo f"0{s}" pettu
+    s icchey
+
+# Drops trailing zeros: `500` → `5`.
+sunnalu_theesey(s: &padham ni) -> padham ante:
+    b ante s.baitlu_ga()
+    maare end ante b.enni()
+    end > 1 && (b[end - 1] ni maarchu[ankam]()) == 48 unnanthasepu:
+        end -= 1
+    (&b[0 nunchi end lopu] ni padham.baitlu_nunchi()).kachithanga() icchey
+
+# ── errors ──────────────────────────────────────────────────────────────────
+
+@automatic XeroxTheeyochu, Polchochu
+andhariki rakam SamayamThappu ante:
+    andhariki message: padham
+
+SamayamThappu ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        naa.message.xerox() icchey
+
+samayam_thappu(m: padham ni) -> SamayamThappu ante:
+    SamayamThappu{message: m} icchey
+
+# ── calendar arithmetic (proleptic Gregorian) ──────────────────────────────
+
+# Division rounding down, also for negative numbers.
+kinda_bhaagam(a: ankam ni, b: ankam tho) -> ankam ante:
+    q ante a / b
+    a % b != 0 && a < 0 != b < 0 aithe:
+        (q - 1) icchey
+    q icchey
+
+kinda_sesham(a: ankam ni, b: ankam tho) -> ankam ante:
+    (a - (a ni, b tho kinda_bhaagam()) * b) icchey
+
+# Days since 1970-01-01 of a calendar date.
+rojulu_ga(y: ankam ni, m: ankam tho, d: ankam ki) -> ankam ante:
+    maare y ante y
+    m <= 2 aithe:
+        y -= 1
+    era ante y ni, 400 tho kinda_bhaagam()
+    yoe ante y - era * 400
+    maare mp ante m - 3
+    m <= 2 aithe:
+        mp lo (m + 9) pettu
+    doy ante (153 * mp + 2) / 5 + d - 1
+    doe ante yoe * 365 + yoe / 4 - yoe / 100 + doy
+    (era * 146097 + doe - 719468) icchey
+
+# The calendar date of a day number.
+date_ga(rojulu: ankam ni) -> Date ante:
+    z ante rojulu + 719468
+    era ante z ni, 146097 tho kinda_bhaagam()
+    doe ante z - era * 146097
+    yoe ante (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    doy ante doe - (365 * yoe + yoe / 4 - yoe / 100)
+    mp ante (5 * doy + 2) / 153
+    d ante doy - (153 * mp + 2) / 5 + 1
+    maare m ante mp + 3
+    mp >= 10 aithe:
+        m lo (mp - 9) pettu
+    maare y ante yoe + era * 400
+    m <= 2 aithe:
+        y += 1
+    Date{year: y, month: m, day: d} icchey
+
+# 0 for Sunday, 6 for Saturday.
+vaaram(rojulu: ankam ni) -> ankam ante:
+    ((rojulu + 4) ni, 7 tho kinda_sesham()) icchey
+
+leap_aa(y: ankam ni) -> ato_ito ante:
+    (y % 4 == 0 && y % 100 != 0 || y % 400 == 0) icchey
+
+nela_rojulu(y: ankam ni, m: ankam tho) -> ankam ante:
+    m == 2 aithe:
+        y ni leap_aa() aithe:
+            29 icchey
+        28 icchey
+    m == 4 || m == 6 || m == 9 || m == 11 aithe:
+        30 icchey
+    31 icchey
+
+# ── Date and Time ───────────────────────────────────────────────────────────
+
+# A calendar date.
+@automatic XeroxTheeyochu, Polchochu, VarusaPettochu, HashCheyochu, CopyKottochu
+andhariki rakam Date ante:
+    andhariki year: ankam
+    andhariki month: ankam
+    andhariki day: ankam
+
+# A time of day.
+@automatic XeroxTheeyochu, Polchochu, VarusaPettochu, HashCheyochu, CopyKottochu
+andhariki rakam Time ante:
+    andhariki hour: ankam
+    andhariki minute: ankam
+    andhariki sec: ankam
+    andhariki nanosec: ankam
+
+# `2024-03-15`
+Date ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        f"{naa.year ni, 4 tho pad()}-{naa.month ni, 2 tho pad()}-{naa.day ni, 2 tho pad()}" icchey
+
+# `09:30:00`, with decimals when there are nanoseconds: `09:30:00.5`.
+Time ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        maare s ante f"{naa.hour ni, 2 tho pad()}:{naa.minute ni, 2 tho pad()}:{naa.sec ni, 2 tho pad()}"
+        naa.nanosec > 0 aithe:
+            s += "."
+            digits ante naa.nanosec ni, 9 tho pad()
+            s += &digits ni sunnalu_theesey()
+        s icchey
+
+Date panulu ante:
+    # Whether this date is on the calendar (no 31 February).
+    andhariki sariyaa(naa: &idhi) -> ato_ito ante:
+        (naa.month >= 1 && naa.month <= 12 && naa.day >= 1 && naa.day <= (naa.year ni, naa.month tho nela_rojulu())) icchey
+
+    # 0 for Sunday, 6 for Saturday.
+    andhariki vaaram(naa: &idhi) -> ankam ante:
+        (naa.year ni, naa.month tho, naa.day ki rojulu_ga() |> vaaram()) icchey
+
+Time panulu ante:
+    andhariki sariyaa(naa: &idhi) -> ato_ito ante:
+        (naa.hour >= 0 && naa.hour < 24 && naa.minute >= 0 && naa.minute < 60 && naa.sec >= 0 && naa.sec < 60 && naa.nanosec >= 0 && naa.nanosec < 1000000000) icchey
+
+# ── Gadiyaram ("clock reading") ─────────────────────────────────────────────
+
+# An instant in UTC, to the nanosecond.
+@automatic XeroxTheeyochu, Polchochu, VarusaPettochu, HashCheyochu, CopyKottochu
+andhariki rakam Gadiyaram ante:
+    sec_: ankam
+    nano_: ankam
+
+# Now, by the wall clock. It can jump (the clock is set); measure with
+# `samayam.ippudu()`.
+andhariki ippudu_utc() -> Gadiyaram ante:
+    ns ante samayam._utc_nanosec()
+    (ns ni, 0 tho gadiyaram_ns()) icchey
+
+# The instant `sec` seconds plus `ns` nanoseconds after 1970 began.
+gadiyaram_ns(ns: ankam ni, sec: ankam tho) -> Gadiyaram ante:
+    s ante ns ni, 1000000000 tho kinda_bhaagam()
+    Gadiyaram{sec_: sec + s, nano_: ns - s * 1000000000} icchey
+
+Gadiyaram panulu ante:
+    # From seconds since 1970-01-01 UTC.
+    andhariki unix_nunchi(n: ankam ni) -> Gadiyaram ante:
+        Gadiyaram{sec_: n, nano_: 0} icchey
+
+    # Seconds since 1970-01-01 UTC, rounded down.
+    andhariki unix_sec(naa: &idhi) -> ankam ante:
+        naa.sec_ icchey
+
+    # The part of a second, in nanoseconds.
+    andhariki nanosec(naa: &idhi) -> ankam ante:
+        naa.nano_ icchey
+
+    # `k` later ("add").
+    andhariki kalupu(naa: &idhi, k: &samayam.Kaalam ni) -> Gadiyaram ante:
+        ((naa.nano_ + k.nanosec_lu()) ni, naa.sec_ tho gadiyaram_ns()) icchey
+
+    # `k` earlier.
+    andhariki theesey(naa: &idhi, k: &samayam.Kaalam ni) -> Gadiyaram ante:
+        ((naa.nano_ - k.nanosec_lu()) ni, naa.sec_ tho gadiyaram_ns()) icchey
+
+    # How long after `b` this is ("difference"); T01 if `b` is later.
+    andhariki theda(naa: &idhi, b: &Gadiyaram ni) -> samayam.Kaalam ante:
+        ns ante (naa.sec_ - b.sec_) * 1000000000 + naa.nano_ - b.nano_
+        (ns ni samayam.Kaalam.nanosec()) icchey
+
+    # RFC 3339 text, always in UTC: `2024-03-15T09:30:00Z`.
+    andhariki rfc3339(naa: &idhi) -> padham ante:
+        rojulu ante naa.sec_ ni, 86400 tho kinda_bhaagam()
+        rest ante naa.sec_ - rojulu * 86400
+        d ante rojulu ni date_ga()
+        t ante Time{hour: rest / 3600, minute: rest / 60 % 60, sec: rest % 60, nanosec: naa.nano_}
+        f"{d}T{t}Z" icchey
+
+    # Reads RFC 3339 text with any offset: `2024-03-15T15:00:00+05:30`.
+    andhariki rfc3339_chadhuvu(s: &padham ni) -> sare_thappu[Gadiyaram, SamayamThappu] ante:
+        (s ni rfc3339_vippu()) icchey
+
+Gadiyaram ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        naa.rfc3339() icchey
+
+# Written and read as RFC 3339 text.
+Gadiyaram ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        naa.rfc3339() ni w.padham_raayi()
+
+Gadiyaram ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        s ante r.padham_chadhuvu()?
+        &s ni Gadiyaram.rfc3339_chadhuvu() batti:
+            sare(g) aithe:
+                sare(g) icchey
+            thappu(e) aithe:
+                thappu(ChadhuvuThappuVidham.Custom(e.message) ni r.thappu_ga()) icchey
+
+# Digits `a` up to `b` of `t` as a number, or -1.
+ankelu(t: &baitlu ni, a: ankam tho, b: ankam ki) -> ankam ante:
+    b > t.enni() aithe:
+        -1 icchey
+    maare n ante 0
+    a nunchi b lopu okko i ki:
+        c ante t[i] ni maarchu[ankam]()
+        c < 48 || c > 57 aithe:
+            -1 icchey
+        n lo (n * 10 + c - 48) pettu
+    n icchey
+
+# The byte at `i` as a number, or -1 past the end.
+byte_at(t: &baitlu ni, i: ankam tho) -> ankam ante:
+    i >= t.enni() aithe:
+        -1 icchey
+    (t[i] ni maarchu[ankam]()) icchey
+
+rfc3339_vippu(s: &padham ni) -> sare_thappu[Gadiyaram, SamayamThappu] ante:
+    t ante s.baitlu_ga()
+    bad ante f"`{s}` RFC 3339 samayam kaadhu (`2024-03-15T09:30:00Z` laaga raayandi)" ni samayam_thappu()
+    y ante t ni, 0 tho, 4 ki ankelu()
+    mo ante t ni, 5 tho, 7 ki ankelu()
+    d ante t ni, 8 tho, 10 ki ankelu()
+    h ante t ni, 11 tho, 13 ki ankelu()
+    mi ante t ni, 14 tho, 16 ki ankelu()
+    se ante t ni, 17 tho, 19 ki ankelu()
+    sep ante t ni, 10 tho byte_at()
+    ok ante y >= 0 && mo >= 0 && d >= 0 && h >= 0 && mi >= 0 && se >= 0
+    punct ante (t ni, 4 tho byte_at()) == 45 && (t ni, 7 tho byte_at()) == 45 && (t ni, 13 tho byte_at()) == 58 && (t ni, 16 tho byte_at()) == 58
+    !ok || !punct || sep != 84 && sep != 116 && sep != 32 aithe:
+        thappu(bad) icchey
+    date ante Date{year: y, month: mo, day: d}
+    !date.sariyaa() || h > 23 || mi > 59 || se > 59 aithe:
+        thappu(bad) icchey
+    maare i ante 19
+    maare nano ante 0
+    (t ni, i tho byte_at()) == 46 aithe:
+        i += 1
+        maare digits ante 0
+        avunu unnanthasepu:
+            c ante t ni, i tho byte_at()
+            c < 48 || c > 57 aithe:
+                aapey
+            digits < 9 aithe:
+                nano lo (nano * 10 + c - 48) pettu
+            digits += 1
+            i += 1
+        digits == 0 aithe:
+            thappu(bad) icchey
+        maare k ante digits
+        k < 9 unnanthasepu:
+            nano lo (nano * 10) pettu
+            k += 1
+    z ante t ni, i tho byte_at()
+    maare offset ante 0
+    z == 90 || z == 122 aithe:
+        i += 1
+    ledhante z == 43 || z == 45 aithe:
+        oh ante t ni, (i + 1) tho, (i + 3) ki ankelu()
+        om ante t ni, (i + 4) tho, (i + 6) ki ankelu()
+        oh < 0 || om < 0 || (t ni, (i + 3) tho byte_at()) != 58 || oh > 23 || om > 59 aithe:
+            thappu(bad) icchey
+        offset lo ((oh * 60 + om) * 60) pettu
+        z == 45 aithe:
+            offset lo -offset pettu
+        i += 6
+    ledhante:
+        thappu(bad) icchey
+    i != t.enni() aithe:
+        thappu(bad) icchey
+    rojulu ante y ni, mo tho, d ki rojulu_ga()
+    sec ante rojulu * 86400 + h * 3600 + mi * 60 + se - offset
+    sare(Gadiyaram{sec_: sec, nano_: nano}) icchey
+
+# ── time zones ──────────────────────────────────────────────────────────────
+
+# A daylight-saving rule from a zone file's footer (POSIX `TZ`), such as
+# `CET-1CEST,M3.5.0,M10.5.0/3`: month, week (5 is the last), weekday and
+# local time in seconds of each change.
+rakam Niyamam ante:
+    std_off: ankam
+    dst_off: ankam
+    dst: ato_ito
+    start: jatha[ankam, ankam, ankam, ankam]
+    end: jatha[ankam, ankam, ankam, ankam]
+
+# "Zone": the offsets a region's clocks use, and when they change.
+andhariki rakam Zone ante:
+    peru_: padham
+    # UTC instants of changes, and the offset (seconds east of UTC) from each.
+    marpulu: varusa[ankam]
+    offsets: varusa[ankam]
+    modhati: ankam
+    # The rule after the last change, if the file has one.
+    niyamam: undochu[Niyamam]
+
+Zone ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        naa.peru_.xerox() icchey
+
+Zone panulu ante:
+    # The IANA name: `Asia/Kolkata`.
+    andhariki peru(naa: &idhi) -> padham ante:
+        naa.peru_.xerox() icchey
+
+    # The offset east of UTC, in seconds, at instant `g`.
+    andhariki offset(naa: &idhi, g: &Gadiyaram ni) -> ankam ante:
+        (g.sec_ ni naa.offset_at()) icchey
+
+    offset_at(naa: &idhi, t: ankam ni) -> ankam ante:
+        n ante naa.marpulu.enni()
+        n == 0 || t < naa.marpulu[0] aithe:
+            n == 0 aithe:
+                &naa.niyamam batti:
+                    undhi(r) aithe:
+                        (t ni, r tho niyamam_offset()) icchey
+                    ledhu aithe:
+                        ()
+            naa.modhati icchey
+        t >= naa.marpulu[n - 1] aithe:
+            &naa.niyamam batti:
+                undhi(r) aithe:
+                    (t ni, r tho niyamam_offset()) icchey
+                ledhu aithe:
+                    ()
+            naa.offsets[n - 1] icchey
+        # The last change at or before `t`.
+        maare lo_ ante 0
+        maare hi_ ante n - 1
+        lo_ < hi_ unnanthasepu:
+            mid ante (lo_ + hi_ + 1) / 2
+            naa.marpulu[mid] <= t aithe:
+                lo_ lo mid pettu
+            ledhante:
+                hi_ lo (mid - 1) pettu
+        naa.offsets[lo_] icchey
+
+# A fixed-offset zone.
+sthira_zone(peru: &padham ni, off: ankam tho) -> Zone ante:
+    Zone{peru_: peru.xerox(), marpulu: [], offsets: [], modhati: off, niyamam: ledhu} icchey
+
+# Zones known without zoneinfo files.
+bayata_lekunda(peru: &padham ni) -> undochu[Zone] ante:
+    *peru == "UTC" || *peru == "Etc/UTC" || *peru == "GMT" || *peru == "Etc/GMT" || *peru == "Z" aithe:
+        undhi(peru ni, 0 tho sthira_zone()) icchey
+    *peru == "Asia/Kolkata" || *peru == "Asia/Calcutta" aithe:
+        undhi(peru ni, 19800 tho sthira_zone()) icchey
+    ledhu icchey
+
+# Loads a zone by its IANA name: `"Asia/Kolkata" ni samayam.zone()`.
+andhariki zone(peru: &padham ni) -> sare_thappu[Zone, SamayamThappu] ante:
+    *peru == "UTC" || *peru == "Etc/UTC" aithe:
+        sare(peru ni, 0 tho sthira_zone()) icchey
+    # Names are paths under the zoneinfo folder: nothing that climbs out.
+    b ante peru.baitlu_ga()
+    maare ok ante b.enni() > 0 && (b[0] ni maarchu[ankam]()) != 47 && !(".." ni peru.lo_undha())
+    b lo okko c ki:
+        v ante c ni maarchu[ankam]()
+        alnum ante v >= 48 && v <= 57 || v >= 65 && v <= 90 || v >= 97 && v <= 122
+        !alnum && v != 47 && v != 95 && v != 45 && v != 43 aithe:
+            ok lo kaadhu pettu
+    !ok aithe:
+        thappu(f"`{peru}` sariaina zone peru kaadhu" ni samayam_thappu()) icchey
+    tzdir ante "TZDIR" ni system.env()
+    dir ante "/usr/share/zoneinfo" ni tzdir.lekapothe()
+    path ante &dir ni, peru tho file.path_kalupu()
+    &path ni file.baitlu_chadhuvu() batti:
+        sare(data) aithe:
+            (&data ni, peru tho tzif_chadhuvu()) icchey
+        thappu(_) aithe:
+            peru ni bayata_lekunda() batti:
+                undhi(z) aithe:
+                    sare(z) icchey
+                ledhu aithe:
+                    thappu(f"`{peru}` zone dorakaledhu ({dir} lo ledhu)" ni samayam_thappu()) icchey
+
+# A big-endian signed number of `n` bytes at `i`.
+be(b: &baitlu ni, i: ankam tho, n: ankam ki) -> ankam ante:
+    maare v ante 0
+    0 nunchi n lopu okko k ki:
+        v lo (v << 8 | (b[i + k] ni maarchu[ankam]())) pettu
+    n < 8 aithe:
+        top ante 1 << n * 8 - 1
+        v >= top aithe:
+            v lo (v - (top << 1)) pettu
+    v icchey
+
+# Reads a TZif file (RFC 8536), preferring its 64-bit part.
+tzif_chadhuvu(b: &baitlu ni, peru: &padham tho) -> sare_thappu[Zone, SamayamThappu] ante:
+    bad ante f"`{peru}` zone file chadhavalem (TZif kaadhu)" ni samayam_thappu()
+    b.enni() < 44 || (b ni, 0 tho, 4 ki be()) != 1415211366 aithe:
+        thappu(bad) icchey
+    version ante b[4] ni maarchu[ankam]()
+    maare i ante 0
+    maare width ante 4
+    version >= 50 aithe:
+        # Skip the 32-bit part.
+        i lo (b ni, 0 tho tzif_part_size()) pettu
+        width lo 8 pettu
+    i + 44 > b.enni() aithe:
+        thappu(bad) icchey
+    isutcnt ante b ni, (i + 20) tho, 4 ki be()
+    isstdcnt ante b ni, (i + 24) tho, 4 ki be()
+    leapcnt ante b ni, (i + 28) tho, 4 ki be()
+    timecnt ante b ni, (i + 32) tho, 4 ki be()
+    typecnt ante b ni, (i + 36) tho, 4 ki be()
+    charcnt ante b ni, (i + 40) tho, 4 ki be()
+    data ante i + 44
+    types_at ante data + timecnt * width + timecnt
+    end ante types_at + typecnt * 6 + charcnt + leapcnt * (width + 4) + isstdcnt + isutcnt
+    typecnt == 0 || end > b.enni() aithe:
+        thappu(bad) icchey
+    maare offs: varusa[ankam] ante []
+    0 nunchi typecnt lopu okko k ki:
+        (b ni, (types_at + k * 6) tho, 4 ki be()) ni offs.cherchu()
+    maare marpulu: varusa[ankam] ante []
+    maare offsets: varusa[ankam] ante []
+    0 nunchi timecnt lopu okko k ki:
+        (b ni, (data + k * width) tho, width ki be()) ni marpulu.cherchu()
+        idx ante b[data + timecnt * width + k] ni maarchu[ankam]()
+        idx >= typecnt aithe:
+            thappu(bad) icchey
+        offs[idx] ni offsets.cherchu()
+    maare niyamam: undochu[Niyamam] ante ledhu
+    width == 8 && end < b.enni() aithe:
+        # The footer: `\n<TZ string>\n`.
+        maare j ante end + 1
+        maare k ante j
+        k < b.enni() && (b[k] ni maarchu[ankam]()) != 10 unnanthasepu:
+            k += 1
+        &b[j nunchi k lopu] ni padham.baitlu_nunchi() batti:
+            sare(text) aithe:
+                niyamam lo (&text ni posix_tz()) pettu
+            thappu(_) aithe:
+                ()
+    sare(Zone{peru_: peru.xerox(), marpulu: marpulu, offsets: offsets, modhati: offs[0], niyamam: niyamam}) icchey
+
+# The size of a 32-bit TZif part, header included.
+tzif_part_size(b: &baitlu ni, i: ankam tho) -> ankam ante:
+    isutcnt ante b ni, (i + 20) tho, 4 ki be()
+    isstdcnt ante b ni, (i + 24) tho, 4 ki be()
+    leapcnt ante b ni, (i + 28) tho, 4 ki be()
+    timecnt ante b ni, (i + 32) tho, 4 ki be()
+    typecnt ante b ni, (i + 36) tho, 4 ki be()
+    charcnt ante b ni, (i + 40) tho, 4 ki be()
+    (i + 44 + timecnt * 5 + typecnt * 6 + charcnt + leapcnt * 8 + isstdcnt + isutcnt) icchey
+
+# A POSIX `TZ` string reader, over its bytes.
+rakam Tz ante:
+    b: baitlu
+    i: ankam
+
+Tz panulu ante:
+    choodu(naa: &idhi) -> ankam ante:
+        naa.i >= naa.b.enni() aithe:
+            -1 icchey
+        (naa.b[naa.i] ni maarchu[ankam]()) icchey
+
+    # A zone abbreviation: letters, or anything in `<…>`.
+    peru(naa: &maare idhi) -> ato_ito ante:
+        naa.choodu() == 60 aithe:
+            naa.choodu() != 62 && naa.choodu() >= 0 unnanthasepu:
+                naa.i += 1
+            naa.choodu() != 62 aithe:
+                kaadhu icchey
+            naa.i += 1
+            avunu icchey
+        modhalu_ ante naa.i
+        avunu unnanthasepu:
+            c ante naa.choodu()
+            c >= 65 && c <= 90 || c >= 97 && c <= 122 aithe:
+                naa.i += 1
+            ledhante:
+                aapey
+        (naa.i - modhalu_ >= 3) icchey
+
+    # `[+-]hh[:mm[:ss]]` in seconds, or `ledhu`.
+    samayam_(naa: &maare idhi) -> undochu[ankam] ante:
+        maare sign ante 1
+        naa.choodu() == 43 aithe:
+            naa.i += 1
+        ledhante naa.choodu() == 45 aithe:
+            sign lo -1 pettu
+            naa.i += 1
+        maare total ante 0
+        maare scale ante 3600
+        maare parts ante 0
+        avunu unnanthasepu:
+            maare n ante -1
+            avunu unnanthasepu:
+                c ante naa.choodu()
+                c >= 48 && c <= 57 aithe:
+                    n < 0 aithe:
+                        n lo 0 pettu
+                    n lo (n * 10 + c - 48) pettu
+                    naa.i += 1
+                ledhante:
+                    aapey
+            n < 0 aithe:
+                ledhu icchey
+            total += n * scale
+            parts += 1
+            naa.choodu() == 58 && parts < 3 aithe:
+                naa.i += 1
+                scale lo (scale / 60) pettu
+            ledhante:
+                aapey
+        undhi(sign * total) icchey
+
+    # `Mm.w.d[/time]`.
+    marpu(naa: &maare idhi) -> undochu[jatha[ankam, ankam, ankam, ankam]] ante:
+        naa.choodu() != 77 aithe:
+            ledhu icchey
+        naa.i += 1
+        m ante naa.number()
+        naa.choodu() != 46 aithe:
+            ledhu icchey
+        naa.i += 1
+        w ante naa.number()
+        naa.choodu() != 46 aithe:
+            ledhu icchey
+        naa.i += 1
+        d ante naa.number()
+        maare at ante 7200
+        naa.choodu() == 47 aithe:
+            naa.i += 1
+            naa.samayam_() batti:
+                undhi(x) aithe:
+                    at lo x pettu
+                ledhu aithe:
+                    ledhu icchey
+        m < 1 || m > 12 || w < 1 || w > 5 || d < 0 || d > 6 aithe:
+            ledhu icchey
+        undhi((m, w, d, at)) icchey
+
+    number(naa: &maare idhi) -> ankam ante:
+        maare n ante -1
+        avunu unnanthasepu:
+            c ante naa.choodu()
+            c >= 48 && c <= 57 aithe:
+                n < 0 aithe:
+                    n lo 0 pettu
+                n lo (n * 10 + c - 48) pettu
+                naa.i += 1
+            ledhante:
+                aapey
+        n icchey
+
+# The rule in a TZ string; `ledhu` for forms this reader doesn't know.
+posix_tz(text: &padham ni) -> undochu[Niyamam] ante:
+    maare p ante Tz{b: text.baitlu_ga(), i: 0}
+    !p.peru() aithe:
+        ledhu icchey
+    # POSIX offsets count west of UTC.
+    std_west ante p.samayam_()
+    std_west.ledhaa() aithe:
+        ledhu icchey
+    std_off ante -std_west.kachithanga()
+    p.choodu() < 0 aithe:
+        undhi(Niyamam{std_off: std_off, dst_off: std_off, dst: kaadhu, start: (1, 1, 0, 0), end: (1, 1, 0, 0)}) icchey
+    !p.peru() aithe:
+        ledhu icchey
+    maare dst_off ante std_off + 3600
+    c ante p.choodu()
+    c != 44 && c >= 0 aithe:
+        p.samayam_() batti:
+            undhi(x) aithe:
+                dst_off lo -x pettu
+            ledhu aithe:
+                ledhu icchey
+    p.choodu() != 44 aithe:
+        ledhu icchey
+    p.i += 1
+    start ante p.marpu()
+    p.choodu() != 44 aithe:
+        ledhu icchey
+    p.i += 1
+    end ante p.marpu()
+    start.ledhaa() || end.ledhaa() aithe:
+        ledhu icchey
+    undhi(Niyamam{std_off: std_off, dst_off: dst_off, dst: avunu, start: start.kachithanga(), end: end.kachithanga()}) icchey
+
+# The offset a rule gives at UTC instant `t`.
+niyamam_offset(t: ankam ni, r: &Niyamam tho) -> ankam ante:
+    !r.dst aithe:
+        r.std_off icchey
+    y ante ((t + r.std_off) ni, 86400 tho kinda_bhaagam() |> date_ga()).year
+    # The change into daylight saving is in standard time, and back out in
+    # daylight time.
+    s ante (y ni, &r.start tho marpu_samayam()) - r.std_off
+    e ante (y ni, &r.end tho marpu_samayam()) - r.dst_off
+    s < e aithe:
+        t >= s && t < e aithe:
+            r.dst_off icchey
+        r.std_off icchey
+    t >= e && t < s aithe:
+        r.std_off icchey
+    r.dst_off icchey
+
+# Local seconds since 1970 of a rule's change (`Mm.w.d/time`) in year `y`.
+marpu_samayam(y: ankam ni, m: &jatha[ankam, ankam, ankam, ankam] tho) -> ankam ante:
+    (mo, w, d, at) ante *m
+    first ante y ni, mo tho, 1 ki rojulu_ga()
+    wd ante first ni vaaram()
+    maare day ante 1 + (d - wd + 7) % 7 + (w - 1) * 7
+    dim ante y ni, mo tho nela_rojulu()
+    day > dim unnanthasepu:
+        day -= 7
+    ((first + day - 1) * 86400 + at) icchey
+
+# The date and time on the clocks of zone `z` at instant `g` ("here").
+andhariki ikkada(g: &Gadiyaram ni, z: &Zone tho) -> jatha[Date, Time] ante:
+    local ante g.sec_ + (g ni z.offset())
+    rojulu ante local ni, 86400 tho kinda_bhaagam()
+    rest ante local - rojulu * 86400
+    d ante rojulu ni date_ga()
+    (d, Time{hour: rest / 3600, minute: rest / 60 % 60, sec: rest % 60, nanosec: g.nano_}) icchey
+
+# The instant zone `z`'s clocks show date `t` and time `v`. A time the
+# clocks skip is a `thappu`; a time they show twice gives the earlier one.
+andhariki gadiyaram_ga(
+    t: &Date ni,
+    v: &Time tho,
+    z: &Zone tho,
+) -> sare_thappu[Gadiyaram, SamayamThappu] ante:
+    !t.sariyaa() || !v.sariyaa() aithe:
+        thappu(f"`{t} {v}` sariaina tedhi/samayam kaadhu" ni samayam_thappu()) icchey
+    local ante (t.year ni, t.month tho, t.day ki rojulu_ga()) * 86400 + v.hour * 3600 + v.minute * 60 + v.sec
+    maare best: undochu[ankam] ante ledhu
+    [local - 86400, local, local + 86400] lo okko probe ki:
+        o ante probe ni z.offset_at()
+        u ante local - o
+        (u ni z.offset_at()) == o aithe:
+            best batti:
+                undhi(b) aithe:
+                    u < b aithe:
+                        best lo undhi(u) pettu
+                ledhu aithe:
+                    best lo undhi(u) pettu
+    best batti:
+        undhi(u) aithe:
+            sare(Gadiyaram{sec_: u, nano_: v.nanosec}) icchey
+        ledhu aithe:
+            thappu(f"`{t} {v}` {z} lo ledhu (aa roju clocks mundhuku jarigaayi)" ni samayam_thappu()) icchey

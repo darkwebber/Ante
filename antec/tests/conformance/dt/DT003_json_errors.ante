@@ -1,0 +1,18 @@
+# category: run-pass
+# expect-stdout: thappu(.a: `a` key rendu saarlu vachindhi)
+# expect-stdout: thappu(1:5: text sariga ledhu)
+# expect-stdout: thappu(1:129: nesting chaala lothuga undhi (128 daatindhi))
+# level: services
+# JSON that RFC 8259 or "Ante" refuses: a duplicate key, a NaN, nesting deeper
+# than 128 (§25.3). Reading never traps.
+json thechuko
+
+modhalu() -> khali ante:
+    "{\"a\": 1, \"a\": 2}" ni json.chadhuvu[json.Viluva]() |> choopinchu()
+    "[1, NaN]" ni json.chadhuvu[json.Viluva]() |> choopinchu()
+    maare deep ante ""
+    0 nunchi 129 lopu okko _ ki:
+        deep += "["
+    0 nunchi 129 lopu okko _ ki:
+        deep += "]"
+    &deep ni json.chadhuvu[json.Viluva]() |> choopinchu()

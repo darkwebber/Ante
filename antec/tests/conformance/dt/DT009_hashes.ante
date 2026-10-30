@@ -1,0 +1,36 @@
+# category: run-pass
+# expect-stdout: ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+# expect-stdout: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+# expect-stdout: ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f
+# expect-stdout: 6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85
+# expect-stdout: af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262
+# expect-stdout: d00278ae47eb27b34faecf67b4fe263f82d5412916c1ffd97c8cb7fb814b8444
+# expect-stdout: f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8
+# expect-stdout: avunu
+# expect-stdout: kaadhu
+# expect-stdout: kaadhu
+# level: services
+# SHA-256, SHA-512, BLAKE3 and HMAC-SHA256 against published test vectors,
+# and constant-time comparison (§27.2).
+bhadram thechuko
+encoding thechuko
+
+modhalu() -> khali ante:
+    abc ante "abc".baitlu_ga()
+    empty: baitlu ante []
+    &abc ni bhadram.sha256() |> encoding.hex() |> choopinchu()
+    &empty ni bhadram.sha256() |> encoding.hex() |> choopinchu()
+    &abc ni bhadram.sha512() |> encoding.hex() |> choopinchu()
+    &abc ni bhadram.blake3() |> encoding.hex() |> choopinchu()
+    &empty ni bhadram.blake3() |> encoding.hex() |> choopinchu()
+    # The official BLAKE3 vector input: 0, 1, …, 250, 0, … (two chunks).
+    maare long: baitlu ante []
+    0 nunchi 1025 lopu okko i ki:
+        (i % 251) ni kolpothu_maarchu[aasajeevi ankam8]() |> long.cherchu()
+    &long ni bhadram.blake3() |> encoding.hex() |> choopinchu()
+    key ante "key".baitlu_ga()
+    fox ante "The quick brown fox jumps over the lazy dog".baitlu_ga()
+    &fox ni, &key tho bhadram.hmac_sha256() |> encoding.hex() |> choopinchu()
+    (&abc ni, &abc tho bhadram.okkatenaa()) ni choopinchu()
+    (&abc ni, &key tho bhadram.okkatenaa()) ni choopinchu()
+    (&abc ni, &empty tho bhadram.okkatenaa()) ni choopinchu()

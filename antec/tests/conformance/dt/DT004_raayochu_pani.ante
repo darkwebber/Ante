@@ -1,0 +1,11 @@
+# category: compile-fail
+# expect-error: E1303 @ 5:1
+# level: services
+# A `pani` can't be written as data (§25.2.2).
+@automatic Raayochu
+rakam Button ante:
+    label: padham
+    click: pani[(ankam ni) -> ankam]
+
+modhalu() -> khali ante:
+    "x" ni choopinchu()

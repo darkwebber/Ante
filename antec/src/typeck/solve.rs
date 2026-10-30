@@ -261,7 +261,9 @@ impl Solver<'_, '_> {
                 let kramam = self.g.kramam == Some(*d);
                 return Some(match name {
                     "Choopinchochu" | "XeroxTheeyochu" | "Polchochu" => true,
-                    "VarusaPettochu" | "HashCheyochu" | "CopyKottochu" => kramam,
+                    // Others may come from the standard library written in
+                    // "Ante" (`samayam.Kaalam`'s order and arithmetic).
+                    "VarusaPettochu" | "HashCheyochu" | "CopyKottochu" if kramam => true,
                     _ => return None,
                 });
             }

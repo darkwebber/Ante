@@ -9,11 +9,21 @@ rakam Kaalam ante:
 bayata "ante" ante:
     ippudu() -> Kshanam
     timer(d: Kaalam ni) -> task.Edhuruchoopu
+    # Wall-clock time: nanoseconds since 1970-01-01 UTC (§26). The rest of
+    # the module is written in "Ante" (`std/ante/samayam.ante`).
+    _utc_nanosec() -> ankam64
 
 gunam Kshanam_panulu ante:
     gadichindhi(naa: &Kshanam) -> Kaalam
 
+# Negative or too long for `aasajeevi ankam64` nanoseconds is T01.
 gunam Kaalam_panulu ante:
+    nanosec(n: ankam64 ni) -> Kaalam
+    millisec(n: ankam64 ni) -> Kaalam
     sec(n: ankam64 ni) -> Kaalam
-    millisec(naa: &Kaalam) -> ankam64
-    nanosec(naa: &Kaalam) -> ankam64
+    nimishalu(n: ankam64 ni) -> Kaalam
+    gantalu(n: ankam64 ni) -> Kaalam
+    rojulu(n: ankam64 ni) -> Kaalam
+    nanosec_lu(naa: &Kaalam) -> ankam64
+    millisec_lu(naa: &Kaalam) -> ankam64
+    sec_lu(naa: &Kaalam) -> amsam64

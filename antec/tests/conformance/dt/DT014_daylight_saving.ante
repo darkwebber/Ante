@@ -1,0 +1,31 @@
+# category: run-pass
+# skip-on: windows
+# expect-stdout: (2024-03-15, 05:30:00)
+# expect-stdout: (2030-07-04, 08:00:00)
+# expect-stdout: (2030-01-04, 07:00:00)
+# expect-stdout: thappu(`2024-03-10 02:30:00` America/New_York lo ledhu (aa roju clocks mundhuku jarigaayi))
+# expect-stdout: sare(2024-11-03T05:30:00Z)
+# expect-stdout: thappu(`Mars/Olympus` zone dorakaledhu (/usr/share/zoneinfo lo ledhu))
+# expect-stdout: thappu(`../etc/passwd` sariaina zone peru kaadhu)
+# level: services
+# A zone with daylight saving, from the system's zoneinfo files (§26): rules
+# past the last listed change, a skipped local time, a repeated one (the
+# earlier wins), and names that aren't zones.
+samayam thechuko
+
+modhalu() -> khali ante:
+    ny ante ("America/New_York" ni samayam.zone()).kachithanga()
+    a ante ("2024-03-15T09:30:00Z" ni samayam.Gadiyaram.rfc3339_chadhuvu()).kachithanga()
+    (a ni, &ny tho samayam.ikkada()) ni choopinchu()
+    b ante ("2030-07-04T12:00:00Z" ni samayam.Gadiyaram.rfc3339_chadhuvu()).kachithanga()
+    (b ni, &ny tho samayam.ikkada()) ni choopinchu()
+    c ante ("2030-01-04T12:00:00Z" ni samayam.Gadiyaram.rfc3339_chadhuvu()).kachithanga()
+    (c ni, &ny tho samayam.ikkada()) ni choopinchu()
+    gap_d ante samayam.Date{year: 2024, month: 3, day: 10}
+    gap_t ante samayam.Time{hour: 2, minute: 30, sec: 0, nanosec: 0}
+    (&gap_d ni, &gap_t tho, &ny tho samayam.gadiyaram_ga()) ni choopinchu()
+    twice_d ante samayam.Date{year: 2024, month: 11, day: 3}
+    twice_t ante samayam.Time{hour: 1, minute: 30, sec: 0, nanosec: 0}
+    (&twice_d ni, &twice_t tho, &ny tho samayam.gadiyaram_ga()) ni choopinchu()
+    "Mars/Olympus" ni samayam.zone() |> choopinchu()
+    "../etc/passwd" ni samayam.zone() |> choopinchu()

@@ -446,7 +446,10 @@ fn planned_features_are_e1202() {
         antec::check_source(&file).iter().map(|d| d.code).collect()
     };
     assert_eq!(check("modhalu() -> khali ante:\n    x ante 1\n    q ante sql\"{x}\"\n"), ["E1202"]);
-    assert_eq!(check("rakam U ante:\n    @peru \"a\"\n    id: ankam\n"), ["E1202"]);
+    assert_eq!(check("rakam U ante:\n    @daari \"a\"\n    id: ankam\n"), ["E1202"]);
+    // The data tree's field annotations work since M13 (§25.2.3).
+    assert!(check("rakam U ante:\n    @peru \"a\"\n    id: ankam\n").is_empty());
+    assert_eq!(check("rakam U ante:\n    @peru\n    id: ankam\n"), ["E1307"]);
     assert_eq!(check("rakam U ante:\n    @pariksha\n    id: ankam\n"), ["E1307"]);
     assert_eq!(errs("x: edhaina ante 1\n").first().map(|e| &e[..5]), Some("E1202"));
 }

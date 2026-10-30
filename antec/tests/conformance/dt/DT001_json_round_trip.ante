@@ -1,0 +1,34 @@
+# category: run-pass
+# expect-stdout: {"peru":"Sita","paatra":{"rakam":"Member","0":3},"marks":{"telugu":92,"lekkalu":88}}
+# expect-stdout: avunu
+# expect-stdout: {
+# expect-stdout:   "peru": "Ram",
+# expect-stdout:   "email": "ram@example.com",
+# expect-stdout:   "paatra": "Admin",
+# expect-stdout:   "marks": {}
+# expect-stdout: }
+# level: services
+# JSON round trip of a record with `undochu`, enum and `jodi` fields (§25.2, §25.3).
+json thechuko
+
+@automatic Raayochu, Chadhavochu, Polchochu, Choopinchochu
+edho_okati Paatra ante:
+    Admin
+    Member(ankam)
+
+@automatic Raayochu, Chadhavochu, Polchochu, Choopinchochu
+rakam User ante:
+    peru: padham
+    email: undochu[padham]
+    paatra: Paatra
+    marks: jodi[padham, ankam]
+
+modhalu() -> khali ante:
+    marks: jodi[padham, ankam] ante {"telugu": 92, "lekkalu": 88}
+    u ante User{peru: "Sita", email: ledhu, paatra: Paatra.Member(3), marks: marks}
+    s ante &u ni json.raayi()
+    s ni choopinchu()
+    back ante (&s ni json.chadhuvu[User]()).kachithanga()
+    (back == u) ni choopinchu()
+    v ante User{peru: "Ram", email: undhi("ram@example.com"), paatra: Paatra.Admin, marks: jodi.kotthadhi()}
+    &v ni json.andanga_raayi() |> choopinchu()

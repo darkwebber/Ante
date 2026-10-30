@@ -1,0 +1,27 @@
+# category: run-pass
+# expect-stdout: {"n":[1,-2.5,1e+300,18446744073709551615,123456789012345678901234567890],"s":"\u003cb\u003eé😀","ok":true,"none":null}
+# expect-stdout: thappu(.: number pattadhu (range daatindhi, leka NaN/inf))
+# expect-stdout: thappu(.: ankam kavali, amsam vachindhi)
+# expect-stdout: thappu(.: number pattadhu (range daatindhi, leka NaN/inf))
+# expect-stdout: null
+# expect-stdout: 5e-7
+# expect-stdout: thappu(1:8: text sariga ledhu)
+# level: services
+# `json.Viluva` holds documents of unknown shape: big numbers keep their
+# digits, floats print the JavaScript way, and text is escaped for HTML (§25.3).
+json thechuko
+lekkalu thechuko
+
+modhalu() -> khali ante:
+    text ante "{\"n\": [1, -2.5, 1e300, 18446744073709551615, 123456789012345678901234567890], \"s\": \"<b>\\u00e9\\ud83d\\ude00\", \"ok\": true, \"none\": null}"
+    v ante (&text ni json.chadhuvu[json.Viluva]()).kachithanga()
+    &v ni json.raayi() |> choopinchu()
+    big ante "123456789012345678901234567890" ni json.chadhuvu[ankam]()
+    big ni choopinchu()
+    "1.5" ni json.chadhuvu[ankam]() |> choopinchu()
+    "1e999" ni json.chadhuvu[amsam]() |> choopinchu()
+    nan ante lekkalu.NAN
+    &nan ni json.raayi() |> choopinchu()
+    tiny ante 0.0000005
+    &tiny ni json.raayi() |> choopinchu()
+    "\"\\ud800\"" ni json.chadhuvu[padham]() |> choopinchu()

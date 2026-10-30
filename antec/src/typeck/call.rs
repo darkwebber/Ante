@@ -205,7 +205,8 @@ impl BodyCx<'_, '_> {
                     return None;
                 }
                 let head = builtin_head(&first.name);
-                self.assoc(head, &segs[1], type_args)
+                let self_ty = self.named_ty(&first.name, first.span);
+                self.assoc(head, &segs[1], type_args, self_ty)
             }
             None => None,
         }
@@ -257,29 +258,111 @@ impl BodyCx<'_, '_> {
                     self.error("E0401", span, "type ni call cheyyalem. Record kosam `Peru{…}` raayandi");
                     return None;
                 };
-                let head = match g.std_cons.get(&d) {
-                    Some(c) => Head::Con(*c),
-                    None => Head::Con(Con::Adt(d)),
+                let (head, con) = match g.std_cons.get(&d) {
+                    Some(c) => (Head::Con(*c), *c),
+                    None => (Head::Con(Con::Adt(d)), Con::Adt(d)),
                 };
-                self.assoc(Some(head), seg, type_args)
+                let n = match con {
+                    Con::Adt(d) => g.adts.get(&d).map_or(0, |a| a.generics.len()),
+                    Con::Gumpu | Con::Paridhi => 1,
+                    _ => 2,
+                };
+                let args = (0..n).map(|_| self.infer.fresh(VarKind::General)).collect();
+                self.assoc(Some(head), seg, type_args, Some(Ty::App(con, args)))
             }
             _ => None,
         }
     }
 
-    /// `Type.f()`: an associated function.
-    fn assoc(&mut self, head: Option<Head>, seg: &Ident, type_args: &[Ty]) -> Option<Prepared> {
+    /// `Type.f()`: an associated function, the type's own or a trait's.
+    fn assoc(
+        &mut self,
+        head: Option<Head>,
+        seg: &Ident,
+        type_args: &[Ty],
+        self_ty: Option<Ty>,
+    ) -> Option<Prepared> {
         let found = head.and_then(|h| self.g.inherent.get(&h)).and_then(|m| m.get(&seg.name)).copied();
         match found {
             Some(fid) => {
                 self.check_visible(fid, seg.span);
                 self.prepare_fn(fid, None, type_args, seg.span)
             }
+            None if self_ty.is_some() && self.trait_assoc_fn(&seg.name).is_some() => {
+                self.trait_assoc(self_ty.unwrap_or(Ty::Error), seg, type_args)
+            }
             None => {
                 self.error("E0406", seg.span, format!("`{}` ane function ee type lo ledhu", seg.name));
                 None
             }
         }
+    }
+
+    /// The type a single-segment path names in `T.f()`: a generic parameter
+    /// or a built-in type word.
+    fn named_ty(&mut self, name: &str, span: Span) -> Option<Ty> {
+        if let Some(i) = self.generics.iter().rposition(|g| g.name == name) {
+            return Some(Ty::Param(i as u32));
+        }
+        // Type constructors (`varusa`, `pette`) need arguments to be a type.
+        if matches!(builtin_head(name), Some(Head::Con(_))) || name == "jatha" {
+            return None;
+        }
+        let env =
+            super::TyEnv { file: Some(self.file), std_module: self.module, generics: &[], self_ty: None };
+        super::lower::Lower { g: self.g, diags: &mut self.diags }.builtin_type(&env, name, &[], span)
+    }
+
+    /// Whether `t` is the data tree, `DataChettu` (§25.2).
+    fn is_data_tree(&mut self, t: &Ty) -> bool {
+        match self.shallow(t) {
+            Ty::App(Con::Adt(d), _) => self.g.adts.get(&d).is_some_and(|a| {
+                a.name == "DataChettu" && self.g.res.modules[a.module].name.starts_with("<ante>")
+            }),
+            _ => false,
+        }
+    }
+
+    /// A trait's associated function (one without `naa`) with this name.
+    fn trait_assoc_fn(&self, name: &str) -> Option<(usize, FnId)> {
+        let g = self.g;
+        let mut found: Vec<(usize, FnId)> = g
+            .traits
+            .iter()
+            .flat_map(|(&def, tr)| {
+                tr.methods
+                    .iter()
+                    .filter(|(n, f)| n == name && g.fns[*f].receiver.is_none())
+                    .map(move |(_, f)| (def, *f))
+            })
+            .collect();
+        found.sort_unstable();
+        found.first().copied()
+    }
+
+    /// `T.f()` for a trait's associated function, such as `T.kotthadhi()`
+    /// (§25.2.5): `T` must implement the trait.
+    fn trait_assoc(&mut self, self_ty: Ty, seg: &Ident, type_args: &[Ty]) -> Option<Prepared> {
+        let g = self.g;
+        let (def, fid) = self.trait_assoc_fn(&seg.name)?;
+        let sig = &g.fns[fid];
+        let ntrait = g.traits.get(&def).map_or(1, |t| t.generics.len());
+        let mut fresh: Vec<Ty> = sig.generics.iter().map(|_| self.infer.fresh(VarKind::General)).collect();
+        fresh[0] = self_ty.clone();
+        for (slot, t) in fresh[sig.own_generics..].iter_mut().zip(type_args) {
+            *slot = t.clone();
+        }
+        let tr = TraitRef { def, args: fresh[1..ntrait.min(fresh.len())].to_vec() };
+        self.obligations.push((self_ty, tr, seg.span, "E0801"));
+        Some(Prepared {
+            name: sig.name.clone(),
+            formals: sig.params.iter().map(|f| Formal { ty: f.ty.subst(&fresh), ..f.clone() }).collect(),
+            ret: sig.ret.subst(&fresh),
+            pre: None,
+            conv: None,
+            recv: None,
+            target: Target::Trait { fid, tys: fresh },
+        })
     }
 
     fn check_visible(&mut self, fid: FnId, span: Span) {
@@ -899,8 +982,26 @@ impl BodyCx<'_, '_> {
             inj_adj = self.check_arg_ty(inj.ty.clone(), &want, inj.span, inj.place);
         }
         let mut adjs: Vec<Adj> = vec![Adj::default(); entries.len()];
+        let mut trees: Vec<Option<Ty>> = vec![None; entries.len()];
         for (ei, en) in entries.iter().enumerate() {
             let want = target[ei].map(formal_ty);
+            // A labelled value of any `Raayochu` type for a `DataChettu`
+            // collector (log fields, §29.1): borrowed, then written as a tree.
+            let tree = target[ei].filter(|&fi| formals[fi].kind == ParamKind::NamedCollector);
+            if let (Src::Expr(e), Some(w)) = (&en.src, tree.map(formal_ty)) {
+                if self.is_data_tree(&w) {
+                    let fresh = self.infer.fresh(VarKind::General);
+                    let t = self.check_expr(e, None);
+                    adjs[ei] =
+                        self.check_arg_ty(t, &Ty::reference(false, fresh.clone()), e.span, is_place(e));
+                    if let Some(def) = super::items::ante_trait(self.g, "Raayochu") {
+                        let tr = TraitRef { def, args: Vec::new() };
+                        self.obligations.push((fresh.clone(), tr, e.span, "E1303"));
+                    }
+                    trees[ei] = Some(fresh);
+                    continue;
+                }
+            }
             adjs[ei] = match (&en.src, want) {
                 (Src::Expr(e), Some(w)) => {
                     let hint = match self.shallow(&w) {
@@ -936,6 +1037,7 @@ impl BodyCx<'_, '_> {
         let file = self.file;
         let arg_ref = |cx: &mut Self, src: ArgSrc, adj: Adj, fi: usize| ArgRef {
             src,
+            tree: None,
             borrow: adj.borrow,
             iter: if adj.iter {
                 match cx.shallow(&formals[fi].ty) {
@@ -985,7 +1087,9 @@ impl BodyCx<'_, '_> {
                         if target[ei] == Some(fi) {
                             if let Some(label) = en.label {
                                 let src = entry_src(en);
-                                named.push((label.name.clone(), arg_ref(self, src, adjs[ei], fi)));
+                                let mut a = arg_ref(self, src, adjs[ei], fi);
+                                a.tree = trees[ei].clone();
+                                named.push((label.name.clone(), a));
                             }
                         }
                     }

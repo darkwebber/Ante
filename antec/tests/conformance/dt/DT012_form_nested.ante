@@ -1,0 +1,17 @@
+# category: compile-fail
+# expect-error: E1305 @ 17:5
+# level: services
+# `form` takes only flat records: a nested record is E1305 (§25.3).
+form thechuko
+
+@automatic Raayochu
+rakam Address ante:
+    city: padham
+
+@automatic Raayochu
+rakam Person ante:
+    home: Address
+
+modhalu() -> khali ante:
+    p ante Person{home: Address{city: "Vizag"}}
+    &p ni form.raayi() |> choopinchu()

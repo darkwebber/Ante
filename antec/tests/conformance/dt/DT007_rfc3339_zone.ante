@@ -1,0 +1,25 @@
+# category: run-pass
+# expect-stdout: 2024-03-15T09:30:00Z
+# expect-stdout: 2024-03-15T09:30:00.25Z
+# expect-stdout: avunu
+# expect-stdout: 1710495000
+# expect-stdout: (2024-03-15, 15:00:00)
+# expect-stdout: sare(2024-03-15T09:30:00Z)
+# expect-stdout: thappu(`2024-13-01T00:00:00Z` RFC 3339 samayam kaadhu (`2024-03-15T09:30:00Z` laaga raayandi))
+# level: services
+# RFC 3339 text read across an offset and written in UTC; local time in
+# `Asia/Kolkata` (UTC+05:30, no daylight saving) and back (§26).
+samayam thechuko
+
+modhalu() -> khali ante:
+    a ante ("2024-03-15T15:00:00+05:30" ni samayam.Gadiyaram.rfc3339_chadhuvu()).kachithanga()
+    a ni choopinchu()
+    b ante ("2024-03-15T04:30:00.25-05:00" ni samayam.Gadiyaram.rfc3339_chadhuvu()).kachithanga()
+    b ni choopinchu()
+    (a < b) ni choopinchu()
+    a.unix_sec() ni choopinchu()
+    z ante ("Asia/Kolkata" ni samayam.zone()).kachithanga()
+    (date, time) ante a ni, &z tho samayam.ikkada()
+    (date, time) ni choopinchu()
+    (&date ni, &time tho, &z tho samayam.gadiyaram_ga()) ni choopinchu()
+    "2024-13-01T00:00:00Z" ni samayam.Gadiyaram.rfc3339_chadhuvu() |> choopinchu()
