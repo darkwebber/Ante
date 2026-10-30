@@ -1,0 +1,13 @@
+# category: compile-fail
+# expect-error: E0611 @ 12:40
+# level: services
+# A task can't take `&maare x` of its parent's variable (§24.3.3).
+task thechuko
+
+penchu(x: &maare ankam ni) -> khali ante:
+    *x lo (*x + 1) pettu
+
+modhalu() -> khali ante:
+    maare x ante 5
+    ((j: &task.Jattu) => (() => &maare x ni penchu()) ni j.pampu()) ni task.kalisi()
+    x ni choopinchu()

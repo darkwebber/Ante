@@ -131,7 +131,11 @@ fn check_native(path: &Path, out_dir: &Path) -> (usize, Vec<String>) {
                 continue;
             }
             ran += 1;
-            let out = Command::new(&exe).output().expect("runs");
+            // The runtime writes the trap's code here (`CODE line col file`).
+            let report = exe.with_extension("trap");
+            let _ = fs::remove_file(&report);
+            let out = Command::new(&exe).env("ANTE_TRAP_REPORT", &report).output().expect("runs");
+            let reported = fs::read_to_string(&report).ok();
             let stdout = String::from_utf8_lossy(&out.stdout);
             let stderr = String::from_utf8_lossy(&out.stderr);
             let lines: Vec<&str> = stdout.lines().collect();
@@ -158,7 +162,11 @@ fn check_native(path: &Path, out_dir: &Path) -> (usize, Vec<String>) {
                 let (code, pos) =
                     t.split_once('@').map(|(c, p)| (c.trim(), p.trim())).unwrap_or((t.trim(), ""));
                 let msg = stderr.trim_end();
-                if trap_code(msg) != code {
+                let got = reported
+                    .as_deref()
+                    .and_then(|r| r.split_whitespace().next())
+                    .unwrap_or_else(|| trap_code(msg.lines().last().unwrap_or("")));
+                if got != code {
                     failures.push(format!("{name} ({level}): trap `{msg}` isn't {code}"));
                 }
                 if !matches!(code, "T08" | "T09") && !msg.ends_with(&format!(":{pos})")) {

@@ -1,0 +1,17 @@
+# category: compile-fail
+# expect-error: E1302 @ 14:5
+# level: services
+# A task closure capturing a value with a raw pointer inside (§24.3.3).
+task thechuko
+
+rakam Handle ante:
+    p: *maare khali
+
+choodu(h: &Handle ni) -> khali ante:
+    icchey
+
+jattu_pani(h: Handle ni, j: &task.Jattu tho) -> khali ante:
+    (theesuko () => &h ni choodu()) ni j.pampu()
+
+modhalu() -> khali ante:
+    icchey

@@ -190,6 +190,10 @@ gunam amsam32_panulu ante:
     bits(naa: amsam32) -> aasajeevi ankam32
     bits_nunchi(b: aasajeevi ankam32 ni) -> amsam32
 
+gunam panchukunna_panulu ante:
+    kotthadhi[T](x: T ni) -> panchukunna[T]
+    okkatenaa[T](p: &panchukunna[T] ni, q: &panchukunna[T] tho) -> ato_ito
+
 gunam pointer_panulu ante:
     jarugu[T](naa: *T, n: ankam ni) -> *T
 

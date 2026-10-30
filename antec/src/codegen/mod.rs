@@ -25,6 +25,7 @@ mod glue;
 mod map;
 mod native;
 mod peephole;
+mod task;
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Write as _;
@@ -63,6 +64,8 @@ enum Item {
     AdapterDrop(Adapter, Vec<Ty>),
     /// `void drop(ptr env)` for a closure environment with these captures.
     EnvDrop(Vec<Ty>),
+    /// `void run(ptr pani, ptr out)`: a task's body (§24.2).
+    TaskRun(Ty),
 }
 
 /// The lazy iteration adapters with native support.
@@ -116,6 +119,7 @@ pub fn emit_llvm(
     files: &[SourceFile],
     entry: FnId,
     stack: u64,
+    task_stack: u64,
 ) -> Result<Emitted, Vec<String>> {
     let mut gen = Gen {
         prog,
@@ -144,7 +148,7 @@ pub fn emit_llvm(
     while let Some(item) = gen.queue.pop_front() {
         gen.emit_item(&item);
     }
-    gen.emit_main(&main_fn, &tc.globals.fns[entry].ret.clone(), stack);
+    gen.emit_main(&main_fn, &tc.globals.fns[entry].ret.clone(), stack, task_stack);
     ffi::exports(&mut gen);
     while let Some(item) = gen.queue.pop_front() {
         gen.emit_item(&item);
@@ -215,6 +219,45 @@ declare void @ante_str_append(ptr, ptr)
 declare void @free(ptr)
 declare void @ante_pani_inc(ptr)
 declare void @ante_pani_dec(ptr)
+declare ptr @ante_team_new()
+declare void @ante_team_end(ptr)
+declare void @ante_team_cancel(ptr)
+declare ptr @ante_task_spawn(ptr, ptr, ptr, i64, ptr)
+declare i32 @ante_task_wait(ptr, ptr, i64, ptr, ptr, ptr)
+declare void @ante_task_drop(ptr)
+declare void @ante_task_cancel(ptr)
+declare i32 @ante_task_cancelled()
+declare void @ante_task_sleep(i64)
+declare i64 @ante_cpus()
+declare void @ante_set_task_stack(i64)
+declare ptr @ante_lock_new(i64)
+declare void @ante_lock_free(ptr)
+declare i32 @ante_lock_open(ptr, i32, ptr)
+declare void @ante_lock_close(ptr)
+declare void @ante_lock_heal(ptr)
+declare ptr @ante_atomic_new(i64)
+declare void @ante_atomic_free(ptr)
+declare i64 @ante_atomic_load(ptr)
+declare void @ante_atomic_store(ptr, i64)
+declare i64 @ante_atomic_swap(ptr, i64)
+declare i64 @ante_atomic_add(ptr, i64, i32, i32)
+declare i32 @ante_atomic_cas(ptr, i64, i64, ptr)
+declare ptr @ante_chan_new(i64, i64, ptr)
+declare i32 @ante_chan_send(ptr, ptr)
+declare i32 @ante_chan_recv(ptr, ptr, i32)
+declare void @ante_chan_sender_copy(ptr)
+declare void @ante_chan_sender_drop(ptr)
+declare void @ante_chan_receiver_drop(ptr)
+declare ptr @ante_rc_new(i64)
+declare void @ante_rc_inc(ptr)
+declare i32 @ante_rc_dec(ptr)
+declare void @ante_rc_free(ptr)
+declare ptr @ante_expect_chan(ptr)
+declare ptr @ante_expect_timer(i64)
+declare ptr @ante_expect_task(ptr)
+declare ptr @ante_expect_cancel()
+declare void @ante_expect_free(ptr)
+declare i64 @ante_select(ptr, i64, ptr)
 declare void @ante_vec_extend(ptr, ptr, i64, i64)
 declare void @ante_sort(ptr, i64, i64, ptr, ptr)
 declare void @ante_str_concat(ptr, ptr, ptr)
@@ -298,6 +341,7 @@ impl<'a> Gen<'a> {
             Item::Cmp(_) => "cmp".into(),
             Item::Xerox(_) => "xerox".into(),
             Item::Drop(_) => "drop".into(),
+            Item::TaskRun(_) => "taskrun".into(),
             Item::Hash(_) => "hash".into(),
             Item::SortCmp(_) => "sortcmp".into(),
             Item::SortBy(_) => "sortby".into(),
@@ -324,6 +368,7 @@ impl<'a> Gen<'a> {
             Item::Drop(t) => glue::drop_glue(self, &name, t),
             Item::Hash(t) => glue::hash(self, &name, t),
             Item::EnvDrop(caps) => glue::env_drop(self, &name, caps),
+            Item::TaskRun(t) => task::run_fn(self, &name, t),
             Item::SortCmp(t) => glue::sort_cmp(self, &name, t),
             Item::SortBy(t) => glue::sort_by(self, &name, t),
             Item::Next(t) => native::next_fn(self, &name, t),
@@ -336,10 +381,11 @@ impl<'a> Gen<'a> {
 
     /// `main` hands `ante.entry` to the runtime, which runs it on a thread
     /// with the `[build] stack` size and turns overflow into T08.
-    fn emit_main(&mut self, modhalu: &str, ret: &Ty, stack: u64) {
+    fn emit_main(&mut self, modhalu: &str, ret: &Ty, stack: u64, task_stack: u64) {
         let rt = self.ll(ret);
         let mut f = String::new();
         let _ = writeln!(f, "define i32 @main(i32 %argc, ptr %argv) {{");
+        let _ = writeln!(f, "  call void @ante_set_task_stack(i64 {task_stack})");
         let _ = writeln!(f, "  call void @ante_start(i32 %argc, ptr %argv, ptr @ante.entry, i64 {stack})");
         let _ = writeln!(f, "  unreachable\n}}\n");
         let _ = writeln!(f, "define internal void @ante.entry() {{");
@@ -491,7 +537,7 @@ impl<'a> Gen<'a> {
                     "ptr".into()
                 }
             }
-            Ty::App(Con::Pette, _) => "ptr".into(),
+            Ty::App(Con::Pette | Con::Panchukunna, _) => "ptr".into(),
             Ty::App(Con::Varusa, _) => "%vec".into(),
             Ty::App(Con::Mukka, a) => {
                 // Only places have this type; values are behind `&`.
@@ -599,7 +645,7 @@ impl<'a> Gen<'a> {
                     (8, 8)
                 }
             }
-            Ty::App(Con::Pette, _) => (8, 8),
+            Ty::App(Con::Pette | Con::Panchukunna, _) => (8, 8),
             Ty::App(Con::Pravaham, _) => (40, 8),
             Ty::App(Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => (48, 8),
             Ty::App(Con::Paridhi, a) => {

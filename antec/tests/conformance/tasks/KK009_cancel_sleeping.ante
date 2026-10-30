@@ -1,0 +1,24 @@
+# category: run-pass
+# expect-stdout: cancel ayyindhi
+# level: services
+# Cancelling a task in `nidrapo`: it wakes, and `aagu` returns `Cancel` (§24.6).
+task thechuko
+samayam thechuko
+
+nidra() -> ankam ante:
+    60 ni samayam.Kaalam.sec() |> task.nidrapo()
+    7 icchey
+
+jattu_pani(j: &task.Jattu ni) -> khali ante:
+    t ante (() => nidra()) ni j.pampu()
+    t.cancel_cheyyi()
+    t.aagu() batti:
+        sare(x) aithe:
+            x ni choopinchu()
+        thappu(task.TaskThappu.Cancel) aithe:
+            "cancel ayyindhi" ni choopinchu()
+        thappu(_) aithe:
+            "kompa" ni choopinchu()
+
+modhalu() -> khali ante:
+    jattu_pani ni task.kalisi()

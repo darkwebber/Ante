@@ -219,6 +219,37 @@ impl Globals<'_> {
     pub fn std_trait(&self, name: &str) -> Option<DefId> {
         self.std_traits.get(name).copied()
     }
+
+    /// The name of a `task` module type (§24), for the few places that
+    /// treat runtime handles specially.
+    pub fn task_type(&self, d: DefId) -> Option<&str> {
+        let adt = self.adts.get(&d)?;
+        (adt.file.is_none() && self.res.modules[adt.module].name == "task").then_some(adt.name.as_str())
+    }
+
+    /// What `*x` reaches through an owning pointer: `pette[T]`, `panchukunna[T]`
+    /// (never mutable, §24.4) or `task.Key[T]` (always mutable).
+    pub fn smart_deref(&self, ty: &Ty) -> Option<(Ty, Smart)> {
+        match ty {
+            Ty::App(Con::Pette, a) => Some((a[0].clone(), Smart::Owned)),
+            Ty::App(Con::Panchukunna, a) => Some((a[0].clone(), Smart::Shared)),
+            Ty::App(Con::Adt(d), a) if self.task_type(*d) == Some("Key") => {
+                Some((a[0].clone(), Smart::Unique))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// How the value behind an owning pointer may be used (see `smart_deref`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Smart {
+    /// `pette`: as mutable as the place holding it.
+    Owned,
+    /// `panchukunna`: read only.
+    Shared,
+    /// A lock's `Key`: mutable.
+    Unique,
 }
 
 /// Where a type written in source is lowered.

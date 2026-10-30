@@ -1,0 +1,85 @@
+# `task`: spec §24, tasks and sharing. Signatures only; see prelude.ante.
+#
+# Every type here holds a handle into the runtime; what it points at
+# (teams, tasks, locks, atomics, channels) lives on the runtime's side.
+
+rakam Jattu ante:
+    _h: *maare khali
+
+rakam Token[T] ante:
+    _h: *maare khali
+
+rakam TrapVivaram ante:
+    andhariki code: padham
+    andhariki message: padham
+    andhariki ekkada: undochu[padham]
+
+edho_okati TaskThappu ante:
+    Kompa(TrapVivaram)
+    Cancel
+
+rakam Thaalam[T] ante:
+    _h: *maare khali
+
+rakam Key[T] ante:
+    _h: *maare khali
+
+rakam Virigindhi[T] ante:
+    _h: *maare khali
+
+rakam Atomic[T] ante:
+    _h: *maare khali
+
+rakam Pampey[T] ante:
+    _h: *maare khali
+
+rakam Andhuko[T] ante:
+    _h: *maare khali
+
+rakam Moosesaaru[T] ante:
+    andhariki viluva: T
+
+rakam Edhuruchoopu ante:
+    _h: *maare khali
+
+bayata "ante" ante:
+    kalisi[T](f: pani[(&Jattu ni) -> T] ni) -> T
+    nidrapo(d: samayam.Kaalam ni) -> khali
+    cancel_ayyindhaa() -> ato_ito
+    cpu_lu() -> ankam
+    kaluva[T](n: ankam ni) -> jatha[Pampey[T], Andhuko[T]]
+    edhi_mundhu(vetiki: &mukka[Edhuruchoopu] ni) -> ankam
+    cancel_ready() -> Edhuruchoopu
+
+gunam Jattu_panulu ante:
+    pampu[T](naa: &Jattu, f: pani[() -> T] ni) -> Token[T]
+    anni_cancel_cheyyi(naa: &Jattu) -> khali
+
+gunam Token_panulu ante:
+    aagu[T](naa: Token[T]) -> sare_thappu[T, TaskThappu]
+    cancel_cheyyi[T](naa: &Token[T]) -> khali
+    ready[T](naa: &Token[T]) -> Edhuruchoopu
+
+gunam Thaalam_panulu ante:
+    kotthadhi[T](x: T ni) -> Thaalam[T]
+    theruvu[T](naa: &Thaalam[T]) -> Key[T]
+    theruvu_choosi[T](naa: &Thaalam[T]) -> sare_thappu[Key[T], Virigindhi[T]]
+
+gunam Virigindhi_panulu ante:
+    lopala[T](naa: Virigindhi[T]) -> Key[T]
+
+gunam Atomic_panulu ante:
+    kotthadhi[T](x: T ni) -> Atomic[T]
+    chadhuvu[T](naa: &Atomic[T]) -> T
+    raayi[T](naa: &Atomic[T], x: T ni) -> khali
+    kalupu[T](naa: &Atomic[T], n: T ni) -> T
+    marpidi[T](naa: &Atomic[T], x: T ni) -> T
+    ilaa_unte_maarchu[T](naa: &Atomic[T], old: T ni, new: T tho) -> sare_thappu[T, T]
+
+gunam Pampey_panulu ante:
+    pampu[T](naa: &Pampey[T], x: T ni) -> sare_thappu[khali, Moosesaaru[T]]
+
+gunam Andhuko_panulu ante:
+    andhuko[T](naa: &Andhuko[T]) -> undochu[T]
+    ippude_andhuko[T](naa: &Andhuko[T]) -> undochu[T]
+    andhuko_ready[T](naa: &Andhuko[T]) -> Edhuruchoopu

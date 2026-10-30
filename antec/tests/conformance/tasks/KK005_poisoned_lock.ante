@@ -1,0 +1,19 @@
+# category: runtime-trap
+# expect-stdout: task padipoyindhi
+# expect-trap: T11 @ 19:12
+# level: services
+# A task traps while holding the key; opening the lock again is T11 (§24.4).
+task thechuko
+
+virugu(l: &task.Thaalam[ankam] ni) -> khali ante:
+    k ante l.theruvu()
+    "key pattukuni padipoya" ni kompa_munigindhi()
+
+jattu_pani(l: &task.Thaalam[ankam] ni, j: &task.Jattu tho) -> khali ante:
+    t ante (() => l ni virugu()) ni j.pampu()
+    "task padipoyindhi" ni choopinchu()
+
+modhalu() -> khali ante:
+    l ante 1 ni task.Thaalam.kotthadhi()
+    ((j: &task.Jattu) => &l ni, j tho jattu_pani()) ni task.kalisi()
+    k ante l.theruvu()

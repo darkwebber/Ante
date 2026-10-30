@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use super::lower::Lower;
 use super::results::{expr_id, AdtRef, FieldStep, PathRes, Results};
 use super::solve::{self, Solver};
-use super::{AdtKind, FnId, FnOrigin, Generic, Globals, RecvMode, TraitRef, TyEnv};
+use super::{AdtKind, FnId, FnOrigin, Generic, Globals, RecvMode, Smart, TraitRef, TyEnv};
 use crate::ast::*;
 use crate::diag::Diagnostic;
 use crate::resolve::{DefKind, FileId, ModId, Res};
@@ -582,13 +582,23 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                 };
                 for seg in rest {
                     loop {
-                        match self.shallow(&ty) {
+                        let st = self.shallow(&ty);
+                        match st {
                             Ty::Ref(m, inner) => {
                                 ok = m;
                                 ty = *inner;
                             }
-                            Ty::App(Con::Pette, args) => ty = args[0].clone(),
-                            _ => break,
+                            other => match self.g.smart_deref(&other) {
+                                Some((inner, smart)) => {
+                                    match smart {
+                                        Smart::Owned => {}
+                                        Smart::Shared => ok = false,
+                                        Smart::Unique => ok = true,
+                                    }
+                                    ty = inner;
+                                }
+                                None => break,
+                            },
                         }
                     }
                     ty = self.field_quiet(&ty, &seg.name);
@@ -606,13 +616,23 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                 let mut t = bt;
                 let mut through = None;
                 loop {
-                    match self.shallow(&t) {
+                    let st = self.shallow(&t);
+                    match st {
                         Ty::Ref(m, inner) => {
                             through = Some(m);
                             t = *inner;
                         }
-                        Ty::App(Con::Pette, args) => t = args[0].clone(),
-                        _ => break,
+                        other => match self.g.smart_deref(&other) {
+                            Some((inner, smart)) => {
+                                match smart {
+                                    Smart::Owned => {}
+                                    Smart::Shared => through = Some(false),
+                                    Smart::Unique => through = Some(true),
+                                }
+                                t = inner;
+                            }
+                            None => break,
+                        },
                     }
                 }
                 match through {
@@ -627,10 +647,14 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                     .get(&(operand.span.start, operand.span.end))
                     .cloned()
                     .unwrap_or(Ty::Error);
-                match self.shallow(&t) {
+                let st = self.shallow(&t);
+                match st {
                     Ty::Ref(true, _) | Ty::Ptr(true, _) | Ty::Error => Ok(()),
-                    Ty::App(Con::Pette, _) => self.place_mutable(operand),
-                    _ => Err((describe(operand), e.span)),
+                    other => match self.g.smart_deref(&other).map(|(_, s)| s) {
+                        Some(Smart::Owned) => self.place_mutable(operand),
+                        Some(Smart::Unique) => Ok(()),
+                        _ => Err((describe(operand), e.span)),
+                    },
                 }
             }
             _ => Ok(()),
@@ -1094,8 +1118,10 @@ impl<'s, 'g> BodyCx<'s, 'g> {
         loop {
             match t {
                 Ty::Ref(_, inner) => t = self.shallow(&inner),
-                Ty::App(Con::Pette, args) => t = self.shallow(&args[0]),
-                other => return (other, n),
+                other => match self.g.smart_deref(&other) {
+                    Some((inner, _)) => t = self.shallow(&inner),
+                    None => return (other, n),
+                },
             }
             n = n.saturating_add(1);
         }
@@ -1245,9 +1271,12 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             }
             UnOp::Deref => {
                 let t = self.check_expr(operand, None);
-                match self.shallow(&t) {
+                let st = self.shallow(&t);
+                if let Some((inner, _)) = self.g.smart_deref(&st) {
+                    return inner;
+                }
+                match st {
                     Ty::Ref(_, inner) => *inner,
-                    Ty::App(Con::Pette, args) => args[0].clone(),
                     Ty::Ptr(_, inner) => {
                         self.require_unsafe(span, "raw pointer ni `*` tho chadavadam");
                         *inner
@@ -1849,6 +1878,7 @@ pub fn builtin_head(name: &str) -> Option<super::Head> {
         "undochu" => Head::Con(Con::Undochu),
         "sare_thappu" => Head::Con(Con::SareThappu),
         "pette" => Head::Con(Con::Pette),
+        "panchukunna" => Head::Con(Con::Panchukunna),
         "aksharam" => Head::Char,
         "amsam64" | "amsam" => Head::Float(64),
         "amsam32" => Head::Float(32),

@@ -316,6 +316,24 @@ impl BodyCx<'_, '_> {
             let what = format!("`{}` call", sig.name);
             self.require_unsafe(span, &what);
         }
+        // A standard signature naming another standard module's type needs
+        // that module imported too (`samayam.timer` gives a `task` value).
+        if sig.file.is_none()
+            && sig.params.iter().map(|p| &p.ty).chain(std::iter::once(&sig.ret)).any(Ty::has_error)
+        {
+            let other = match sig.name.as_str() {
+                "timer" => "task",
+                _ => "samayam",
+            };
+            self.error(
+                "E0301",
+                span,
+                format!(
+                    "`{}` vaadalante `{other}` module kooda kavali: `{other} thechuko` raayandi",
+                    sig.name
+                ),
+            );
+        }
         for (i, gen) in sig.generics.iter().enumerate() {
             for b in &gen.bounds {
                 let tr = TraitRef { def: b.def, args: b.args.iter().map(|a| a.subst(&fresh)).collect() };
@@ -521,8 +539,10 @@ impl BodyCx<'_, '_> {
             }
             cand = match cand {
                 Ty::Ref(_, inner) => *inner,
-                Ty::App(Con::Pette, args) => args[0].clone(),
-                _ => break,
+                other => match g.smart_deref(&other) {
+                    Some((inner, _)) => inner,
+                    None => break,
+                },
             };
             derefs += 1;
         }

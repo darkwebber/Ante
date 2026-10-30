@@ -1,0 +1,31 @@
+# category: run-pass
+# expect-stdout: 1
+# expect-stdout: 2
+# expect-stdout: 3
+# expect-stdout: 4
+# expect-stdout: 5
+# expect-stdout: motham 15
+# level: services
+# A channel of capacity 0: values arrive in order, and the end shows once
+# the sender is gone (§24.4).
+task thechuko
+
+pampinchu(p: task.Pampey[ankam] ni) -> khali ante:
+    1 nunchi 5 varaku okko i ki:
+        i ni p.pampu()
+
+jattu_pani(j: &task.Jattu ni) -> khali ante:
+    (p, a) ante 0 ni task.kaluva[ankam]()
+    (theesuko () => p.xerox() ni pampinchu()) ni j.pampu()
+    maare motham ante 0
+    avunu unnanthasepu:
+        a.andhuko() batti:
+            undhi(x) aithe:
+                x ni choopinchu()
+                motham lo (motham + x) pettu
+            ledhu aithe:
+                aapey
+    f"motham {motham}" ni choopinchu()
+
+modhalu() -> khali ante:
+    jattu_pani ni task.kalisi()

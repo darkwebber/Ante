@@ -1,0 +1,12 @@
+# category: compile-fail
+# expect-error: E1302 @ 9:5
+# level: services
+# `pampu` takes a closure written right there, so its captures can be checked (§24.3.3).
+task thechuko
+
+jattu_pani(j: &task.Jattu ni) -> khali ante:
+    f ante () => 1
+    f ni j.pampu()
+
+modhalu() -> khali ante:
+    jattu_pani ni task.kalisi()

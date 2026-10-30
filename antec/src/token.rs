@@ -128,7 +128,7 @@ impl Keyword {
     }
 
     /// Words of this edition that `antec` doesn't implement yet (E1202):
-    /// `panchukunna` (§24.4) and `edhaina` (Annex P).
+    /// `edhaina` (Annex P).
     pub fn is_planned(self) -> bool {
         self.planned_milestone().is_some()
     }
@@ -136,7 +136,6 @@ impl Keyword {
     /// The roadmap milestone (spec Appendix E) that implements a planned word.
     pub fn planned_milestone(self) -> Option<&'static str> {
         match self {
-            Keyword::Panchukunna => Some("M12"),
             Keyword::Edhaina => Some("M22"),
             _ => None,
         }

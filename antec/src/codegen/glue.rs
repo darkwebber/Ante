@@ -122,6 +122,9 @@ fn show_call(fx: &mut Fx, ty: &Ty, buf: &str, v: &str) {
 }
 
 fn show_into(fx: &mut Fx, ty: &Ty, buf: &str, v: &str) {
+    if super::task::show(fx, ty, buf, v) {
+        return;
+    }
     match ty {
         Ty::Int(it) => {
             let x = fx.load(&format!("i{}", it.bits), v);
@@ -349,6 +352,12 @@ fn eq_into(fx: &mut Fx, ty: &Ty, a: &str, b: &str, _res: &str, fail: &str) {
         Ty::App(Con::Pette, x) => {
             let pa = fx.load("ptr", a);
             let pb = fx.load("ptr", b);
+            let c = call_eq(fx, &x[0], &pa, &pb);
+            differ(fx, &c);
+        }
+        Ty::App(Con::Panchukunna, x) => {
+            let pa = super::task::inner_ptr(fx, ty, a).map(|p| p.0).unwrap_or_default();
+            let pb = super::task::inner_ptr(fx, ty, b).map(|p| p.0).unwrap_or_default();
             let c = call_eq(fx, &x[0], &pa, &pb);
             differ(fx, &c);
         }
@@ -613,6 +622,9 @@ pub(super) fn call_xerox(fx: &mut Fx, ty: &Ty, v: &str) -> String {
 }
 
 fn xerox_value(fx: &mut Fx, ty: &Ty, v: &str) -> String {
+    if let Some(r) = super::task::xerox(fx, ty, v) {
+        return r;
+    }
     let lt = fx.ll(ty);
     if let Ty::Fn(..) = ty {
         let f = fx.load("%pani", v);
@@ -710,7 +722,11 @@ fn needs_deep(gen: &Gen, ty: &Ty) -> bool {
         match ty {
             Ty::Str
             | Ty::Fn(..)
-            | Ty::App(Con::Varusa | Con::Pette | Con::Jodi | Con::GajibijiJodi | Con::Gumpu, _) => true,
+            | Ty::App(
+                Con::Varusa | Con::Pette | Con::Panchukunna | Con::Jodi | Con::GajibijiJodi | Con::Gumpu,
+                _,
+            ) => true,
+            Ty::App(Con::Adt(d), _) if gen.g.task_type(*d) == Some("Pampey") => true,
             Ty::Tuple(items) => items.iter().any(|t| go(gen, t, depth + 1)),
             Ty::Array(e, _) => go(gen, e, depth + 1),
             Ty::App(Con::Undochu | Con::SareThappu | Con::Adt(_), _) => {
@@ -753,6 +769,9 @@ pub(super) fn call_drop(fx: &mut Fx, ty: &Ty, v: &str) {
 }
 
 fn drop_into(fx: &mut Fx, ty: &Ty, v: &str) {
+    if super::task::drop(fx, ty, v) {
+        return;
+    }
     if let Ty::Fn(..) = ty {
         let f = fx.load("%pani", v);
         let env = fx.r();

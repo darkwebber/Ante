@@ -1,0 +1,14 @@
+# category: run-pass
+# expect-stdout: 10000
+# level: services
+# 10 000 tasks increment one `Atomic` (§24.4).
+task thechuko
+
+pani_pettu(a: &task.Atomic[ankam] ni, j: &task.Jattu tho) -> khali ante:
+    0 nunchi 10000 lopu okko i ki:
+        (() => 1 ni a.kalupu()) ni j.pampu()
+
+modhalu() -> khali ante:
+    a ante 0 ni task.Atomic.kotthadhi()
+    ((j: &task.Jattu) => &a ni, j tho pani_pettu()) ni task.kalisi()
+    a.chadhuvu() ni choopinchu()

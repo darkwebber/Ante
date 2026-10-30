@@ -1,0 +1,16 @@
+# category: run-pass
+# expect-stdout: 2001000
+# level: services
+# Two tasks sum halves of a range (§24.2 example).
+task thechuko
+
+motham_kattu(modhalu_: ankam ni, chivara: ankam tho) -> ankam ante:
+    (modhalu_ nunchi chivara varaku |> 0 ni, ((s, x) => s + x) tho poguchey()) icchey
+
+rendu_bhagalu(j: &task.Jattu ni) -> ankam ante:
+    a ante (() => 1 ni, 1000 tho motham_kattu()) ni j.pampu()
+    b ante (() => 1001 ni, 2000 tho motham_kattu()) ni j.pampu()
+    (a.aagu().kachithanga() + b.aagu().kachithanga()) icchey
+
+modhalu() -> khali ante:
+    rendu_bhagalu ni task.kalisi() |> choopinchu()

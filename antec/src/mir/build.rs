@@ -180,6 +180,8 @@ struct Builder<'a, 'p> {
     defer_flags: Vec<Local>,
     /// The source span statements are emitted for.
     span: Span,
+    /// Closures passed straight to `pampu`, by start offset (§24.3.3).
+    task_closures: HashSet<usize>,
 }
 
 impl<'a, 'p> Builder<'a, 'p> {
@@ -214,6 +216,7 @@ impl<'a, 'p> Builder<'a, 'p> {
             loops: Vec::new(),
             defer_flags: Vec::new(),
             span: Span::default(),
+            task_closures: HashSet::new(),
         }
     }
 
@@ -1404,6 +1407,16 @@ impl<'a, 'p> Builder<'a, 'p> {
         let Some(plan) = tc.results.calls.get(&id) else {
             return self.unsupported("ee call", dest, call.span);
         };
+        if let Target::Fn { fid, .. } = &plan.target {
+            let sig = &self.g.fns[*fid];
+            if sig.name == "pampu" && sig.owner.as_deref() == Some("Jattu") {
+                for ph in phrases {
+                    if let PhraseKind::Value(x) = &ph.kind {
+                        self.mark_task_closure(x);
+                    }
+                }
+            }
+        }
         // Which phrases need a place (borrowed or iterated) rather than a value.
         let mut wants_place: HashSet<ExprId> = HashSet::new();
         let mut note = |a: &ArgRef| {
@@ -1466,8 +1479,7 @@ impl<'a, 'p> Builder<'a, 'p> {
                 p = p.deref();
                 t = match t {
                     Ty::Ref(_, inner) => *inner,
-                    Ty::App(Con::Pette, a) => a[0].clone(),
-                    other => other,
+                    other => self.g.smart_deref(&other).map_or(other, |(inner, _)| inner),
                 };
             }
             let method = match &plan.target {
@@ -1644,6 +1656,26 @@ impl<'a, 'p> Builder<'a, 'p> {
 
     // ── closures (§10.7) ───────────────────────────────────────────────────
 
+    /// A task's code must be written right at `pampu`: a closure literal
+    /// (its captures are checked and copied, §24.3.3) or a function name.
+    fn mark_task_closure(&mut self, x: &Expr) {
+        match &x.kind {
+            ExprKind::Closure { .. } => {
+                self.task_closures.insert(x.span.start);
+            }
+            ExprKind::Path(_)
+                if matches!(self.tc.results.paths.get(&expr_id(self.file, x.span)), Some(PathRes::Fn { .. })) => {}
+            _ => self.prog.errors.push((
+                self.file,
+                crate::diag::Diagnostic::error(
+                    "E1302",
+                    x.span,
+                    "`pampu` ki closure ni akkade raayandi: `(() => …) ni j.pampu()` (leka function peru). Vere chota cheyyi chesina `pani` lo emi capture ayyindho teliyadhu",
+                ),
+            )),
+        }
+    }
+
     fn lower_closure(
         &mut self,
         e: &'a Expr,
@@ -1667,9 +1699,81 @@ impl<'a, 'p> Builder<'a, 'p> {
             };
             caps.push((*u, ty));
         }
+        // A task closure copies what it captures: the function that runs
+        // `pampu` returns before its team waits, so a borrow of its own
+        // locals would dangle (§24.3.3). Owned values move in with `theesuko`.
+        let task = self.task_closures.contains(&e.span.start);
+        let mut by_value = vec![moves; caps.len()];
+        if task {
+            let send = self.g.std_trait("Pampochu");
+            let solver = Solver { g: self.g, generics: &self.generics };
+            for (k, (u, ty)) in caps.iter().enumerate() {
+                let name = match u {
+                    Some(decl) => self.decl_name(*decl),
+                    None => "naa".into(),
+                };
+                let copyable = solver.is_copy(&mut InferTable::default(), ty);
+                // What this closure itself holds by reference lives outside it,
+                // so a task may borrow it again.
+                let outer = match u {
+                    Some(decl) => self.captures.get(decl).is_some_and(|&(_, by_ref)| by_ref),
+                    None => self.naa.is_some_and(|(_, by_ref)| by_ref),
+                };
+                let problem = if contains_ty(
+                    self.g,
+                    ty,
+                    &mut |t| matches!(t, Ty::Ptr(..)),
+                    &mut HashSet::new(),
+                ) {
+                    Some(format!("`{name}` ni vere task ki pampalem: andhulo raw pointer undhi"))
+                } else if send.is_some_and(|s| {
+                    !solver.implements(
+                        &mut InferTable::default(),
+                        ty,
+                        &TraitRef { def: s, args: Vec::new() },
+                        0,
+                    )
+                }) {
+                    Some(format!(
+                        "`{name}` ni vere task ki pampalem: `{}` `Pampochu` kaadhu",
+                        crate::typeck::show_ty(self.g, ty)
+                    ))
+                } else if !moves && !copyable && !outer {
+                    Some(format!(
+                        "`{name}` ee function tho paatu pothundhi, task inka nadusthundochu. `theesuko` closure tho lopaliki move cheyyandi"
+                    ))
+                } else {
+                    None
+                };
+                if let Some(msg) = problem {
+                    self.prog.errors.push((self.file, crate::diag::Diagnostic::error("E1302", e.span, msg)));
+                }
+                by_value[k] = moves || copyable || !outer;
+            }
+            if send.is_some_and(|s| {
+                !solver.implements(
+                    &mut InferTable::default(),
+                    &ret,
+                    &TraitRef { def: s, args: Vec::new() },
+                    0,
+                )
+            }) {
+                self.prog.errors.push((
+                    self.file,
+                    crate::diag::Diagnostic::error(
+                        "E1302",
+                        e.span,
+                        format!(
+                            "task result `{}` ni vere task ki pampalem (`Pampochu` kaadhu)",
+                            crate::typeck::show_ty(self.g, &ret)
+                        ),
+                    ),
+                ));
+            }
+        }
         // Copies of a closure share its captures, and any copy may go to
         // another task, so a capture must be safe to share (§10.7.2).
-        for (u, ty) in &caps {
+        for (u, ty) in caps.iter().filter(|_| !task) {
             let bad = if contains_ty(self.g, ty, &mut |t| matches!(t, Ty::Ptr(..)), &mut HashSet::new()) {
                 Some("raw pointer")
             } else if moves
@@ -1697,6 +1801,8 @@ impl<'a, 'p> Builder<'a, 'p> {
                 ));
             }
         }
+        let cap_names: Vec<Option<String>> =
+            caps.iter().map(|(u, _)| u.map(|decl| self.decl_name(decl))).collect();
         let name = format!("{}::pani", self.body.name);
         let generics = self.generics.clone();
         let file = self.file;
@@ -1704,10 +1810,10 @@ impl<'a, 'p> Builder<'a, 'p> {
             let mut b = Builder::new(self.tc, self.cache.clone(), &mut *self.prog, file, generics, name);
             b.body.kind = BodyKind::Closure { captures: caps.len() as u32 };
             b.new_local(ret, None);
-            for (u, ty) in &caps {
-                let by_ref = !moves;
+            for (k, (u, ty)) in caps.iter().enumerate() {
+                let by_ref = !by_value[k];
                 let lt = if by_ref { Ty::reference(false, ty.clone()) } else { ty.clone() };
-                let l = b.new_local(lt, None);
+                let l = b.new_local(lt, cap_names[k].clone());
                 match u {
                     Some(decl) => {
                         b.captures.insert(*decl, (l, by_ref));
@@ -1762,14 +1868,23 @@ impl<'a, 'p> Builder<'a, 'p> {
             (self.prog.bodies.len() - 1) as BodyId
         };
         let mut ops = Vec::new();
-        for (u, ty) in caps {
+        for (k, (u, ty)) in caps.into_iter().enumerate() {
             let p = match u {
                 Some(decl) => self.var_place(decl),
                 None => self.naa_place(),
             };
-            ops.push(if moves { self.by_type(p, &ty) } else { self.ref_to(p, &ty, false) });
+            ops.push(if by_value[k] { self.by_type(p, &ty) } else { self.ref_to(p, &ty, false) });
         }
         self.assign(dest, Rvalue::Aggregate(Agg::Closure(id), ops));
+    }
+
+    /// The source name of a local or captured variable.
+    fn decl_name(&self, decl: usize) -> String {
+        self.vars
+            .get(&decl)
+            .or_else(|| self.captures.get(&decl).map(|(l, _)| l))
+            .and_then(|&l| self.body.locals[l as usize].name.clone())
+            .unwrap_or_else(|| "capture".into())
     }
 
     fn capture_ty(&self, decl: usize) -> Ty {
@@ -1887,6 +2002,10 @@ fn contains_ty(g: &Globals, ty: &Ty, pred: &mut dyn FnMut(&Ty) -> bool, seen: &m
     match ty {
         Ty::Ref(_, t) | Ty::Ptr(_, t) | Ty::Array(t, _) => contains_ty(g, t, pred, seen),
         Ty::Tuple(items) => items.iter().any(|t| contains_ty(g, t, pred, seen)),
+        // A runtime handle's own pointer is the runtime's business (§24); only its type arguments count.
+        Ty::App(Con::Adt(d), args) if g.task_type(*d).is_some() => {
+            args.iter().any(|t| contains_ty(g, t, pred, seen))
+        }
         Ty::App(Con::Adt(d), args) => {
             seen.insert(*d)
                 && crate::typeck::solve::adt_field_types(g, *d, args)
@@ -1985,6 +2104,12 @@ pub fn needs_drop(
     }
     let v = match ty {
         Ty::Param(_) => true,
+        // Runtime handles (§24) release what they point at.
+        Ty::App(Con::Adt(d), _)
+            if g.task_type(*d).is_some_and(|n| !matches!(n, "TrapVivaram" | "TaskThappu" | "Moosesaaru")) =>
+        {
+            true
+        }
         Ty::App(Con::Adt(d), args) => {
             if !visiting.insert(*d) {
                 return false;
@@ -2003,9 +2128,16 @@ pub fn needs_drop(
         }
         Ty::Str | Ty::Fn(..) => true,
         // An iterator may own adapter state, a `pani` or the rest of a sequence.
-        Ty::App(Con::Varusa | Con::Pette | Con::Jodi | Con::GajibijiJodi | Con::Gumpu | Con::Pravaham, _) => {
-            true
-        }
+        Ty::App(
+            Con::Varusa
+            | Con::Pette
+            | Con::Panchukunna
+            | Con::Jodi
+            | Con::GajibijiJodi
+            | Con::Gumpu
+            | Con::Pravaham,
+            _,
+        ) => true,
         Ty::App(_, args) | Ty::Tuple(args) => {
             args.iter().any(|a| needs_drop(g, generics, cache, a, visiting))
         }

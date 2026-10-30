@@ -86,6 +86,14 @@ impl Lower<'_, '_> {
                 Some((d, _)) if self.is_open_module(d) => return Ty::Error,
                 _ => None,
             },
+            // A standard file may name another standard module's type, as
+            // `samayam.Kaalam`; it exists when the program imports that module.
+            None if path.segments.len() == 2 => self
+                .g
+                .res
+                .module_by_name
+                .get(&path.segments[0].name)
+                .and_then(|&m| self.g.res.modules[m].types.get(&path.segments[1].name).copied()),
             None => self.std_type_def(env.std_module, name),
         };
         let Some(def) = def else {
@@ -143,7 +151,10 @@ impl Lower<'_, '_> {
             return Ty::Error;
         }
         if let (Some(file), Ty::App(con, args)) = (env.file, &ty) {
-            if matches!(con, Con::Varusa | Con::Jodi | Con::GajibijiJodi | Con::Gumpu | Con::Pette) {
+            if matches!(
+                con,
+                Con::Varusa | Con::Jodi | Con::GajibijiJodi | Con::Gumpu | Con::Pette | Con::Panchukunna
+            ) {
                 for a in args {
                     self.check_stored(file, a, span);
                 }
@@ -188,6 +199,7 @@ impl Lower<'_, '_> {
             "undochu" => Some(self.arity(env, Ty::App(Con::Undochu, args.to_vec()), 1, name, span)),
             "sare_thappu" => Some(self.arity(env, Ty::App(Con::SareThappu, args.to_vec()), 2, name, span)),
             "pette" => Some(self.arity(env, Ty::App(Con::Pette, args.to_vec()), 1, name, span)),
+            "panchukunna" => Some(self.arity(env, Ty::App(Con::Panchukunna, args.to_vec()), 1, name, span)),
             _ => None,
         }
     }

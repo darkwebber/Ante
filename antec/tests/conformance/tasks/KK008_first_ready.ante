@@ -1,0 +1,23 @@
+# category: run-pass
+# expect-stdout: 1
+# expect-stdout: 0
+# level: services
+# `edhi_mundhu` with a timer and an empty channel: the timer wins; with a
+# value waiting, the channel wins (§24.4).
+task thechuko
+samayam thechuko
+
+jattu_pani(j: &task.Jattu ni) -> khali ante:
+    (p, a) ante 1 ni task.kaluva[ankam]()
+    d ante 1 ni samayam.Kaalam.sec()
+    vetiki ante [a.andhuko_ready(), (d ni samayam.timer())]
+    i ante &vetiki[0 nunchi 2 lopu] ni task.edhi_mundhu()
+    i ni choopinchu()
+    5 ni p.pampu()
+    d2 ante 60 ni samayam.Kaalam.sec()
+    vetiki2 ante [a.andhuko_ready(), (d2 ni samayam.timer())]
+    i2 ante &vetiki2[0 nunchi 2 lopu] ni task.edhi_mundhu()
+    i2 ni choopinchu()
+
+modhalu() -> khali ante:
+    jattu_pani ni task.kalisi()

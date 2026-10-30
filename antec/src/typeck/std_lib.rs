@@ -16,6 +16,7 @@ pub const SOURCES: &[(&str, &str)] = &[
     ("system", include_str!("../../std/system.ante")),
     ("samayam", include_str!("../../std/samayam.ante")),
     ("memory", include_str!("../../std/memory.ante")),
+    ("task", include_str!("../../std/task.ante")),
 ];
 
 pub struct StdFile {
@@ -54,6 +55,7 @@ fn block_head(c: &Collector, module: ModId, name: &str) -> Option<Head> {
         "undochu" => Head::Con(Con::Undochu),
         "sare_thappu" => Head::Con(Con::SareThappu),
         "pette" => Head::Con(Con::Pette),
+        "panchukunna" => Head::Con(Con::Panchukunna),
         "aksharam" => Head::Char,
         "ankamlu" => Head::Int,
         "amsam64" => Head::Float(64),
@@ -80,16 +82,18 @@ impl Collector<'_> {
             let module = if file.module == "prelude" { 0 } else { self.res().module_by_name[file.module] };
             self.load_std_items(module, &file.ast);
         }
-        // The marker trait.
-        if let Some(&def) = self.globals.std_traits.get("CopyKottochu") {
-            self.globals.traits.entry(def).or_insert(super::Trait {
-                name: "CopyKottochu".into(),
-                generics: vec![Generic { name: "idhi".into(), bounds: Vec::new(), is_const: false }],
-                methods: Vec::new(),
-                defaults: Default::default(),
-                module: 0,
-                file: None,
-            });
+        // The marker traits (§13.5, §24.3).
+        for marker in ["CopyKottochu", "Pampochu", "Panchukovochu"] {
+            if let Some(&def) = self.globals.std_traits.get(marker) {
+                self.globals.traits.entry(def).or_insert(super::Trait {
+                    name: marker.into(),
+                    generics: vec![Generic { name: "idhi".into(), bounds: Vec::new(), is_const: false }],
+                    methods: Vec::new(),
+                    defaults: Default::default(),
+                    module: 0,
+                    file: None,
+                });
+            }
         }
     }
 
@@ -101,7 +105,13 @@ impl Collector<'_> {
                 _ => continue,
             };
             let Some(def) = self.std_type_def(module, name) else { continue };
-            let env = TyEnv { file: None, std_module: module, generics: &[], self_ty: None };
+            let params = match &item.kind {
+                ItemKind::Record(r) => r.generics.clone(),
+                ItemKind::Enum(e) => e.generics.clone(),
+                _ => Vec::new(),
+            };
+            let generics = self.lower_generics(None, module, &[], &params, None);
+            let env = TyEnv { file: None, std_module: module, generics: &generics, self_ty: None };
             let kind = match (kind, &item.kind) {
                 (Some(r), _) => AdtKind::Record(
                     r.fields
@@ -129,7 +139,7 @@ impl Collector<'_> {
                 Adt {
                     name: name.clone(),
                     module,
-                    generics: Vec::new(),
+                    generics,
                     kind,
                     derives: Vec::new(),
                     c_layout: false,
@@ -234,7 +244,7 @@ mod tests {
             assert!(prelude.contains(&name.to_string()), "prelude `{name}` has no signature");
         }
         for name in stdlib::PRELUDE_TRAITS {
-            let marker = *name == "CopyKottochu";
+            let marker = matches!(*name, "CopyKottochu" | "Pampochu" | "Panchukovochu");
             assert!(marker || prelude.contains(&name.to_string()), "trait `{name}` has no declaration");
         }
         for m in stdlib::STD_MODULES.iter().filter(|m| !m.open) {

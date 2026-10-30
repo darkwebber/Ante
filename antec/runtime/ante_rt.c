@@ -10,6 +10,7 @@
 
 #include <errno.h>
 #include <math.h>
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -45,6 +46,47 @@ static int ante_argc;
 static char **ante_argv;
 static ante_str out_buf;
 
+/* ── portable locks (tasks share stdout and the runtime's task state) ── */
+
+#ifdef _WIN32
+typedef SRWLOCK amtx;
+typedef CONDITION_VARIABLE acnd;
+#define AMTX_INIT SRWLOCK_INIT
+#define ACND_INIT CONDITION_VARIABLE_INIT
+static void m_lock(amtx *m) { AcquireSRWLockExclusive(m); }
+static void m_unlock(amtx *m) { ReleaseSRWLockExclusive(m); }
+static void c_wait(acnd *c, amtx *m) { SleepConditionVariableSRW(c, m, INFINITE, 0); }
+static void c_wait_ms(acnd *c, amtx *m, int64_t ms) {
+    SleepConditionVariableSRW(c, m, ms < 0 ? 0 : (ms > 0x7ffffff0 ? 0x7ffffff0 : (DWORD)ms), 0);
+}
+static void c_wake_all(acnd *c) { WakeAllConditionVariable(c); }
+static void c_wake_one(acnd *c) { WakeConditionVariable(c); }
+#else
+typedef pthread_mutex_t amtx;
+typedef pthread_cond_t acnd;
+#define AMTX_INIT PTHREAD_MUTEX_INITIALIZER
+#define ACND_INIT PTHREAD_COND_INITIALIZER
+static void m_lock(amtx *m) { pthread_mutex_lock(m); }
+static void m_unlock(amtx *m) { pthread_mutex_unlock(m); }
+static void c_wait(acnd *c, amtx *m) { pthread_cond_wait(c, m); }
+static void c_wait_ms(acnd *c, amtx *m, int64_t ms) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    if (ms < 0) ms = 0;
+    ts.tv_sec += (time_t)(ms / 1000);
+    ts.tv_nsec += (long)(ms % 1000) * 1000000L;
+    if (ts.tv_nsec >= 1000000000L) {
+        ts.tv_sec += 1;
+        ts.tv_nsec -= 1000000000L;
+    }
+    pthread_cond_timedwait(c, m, &ts);
+}
+static void c_wake_all(acnd *c) { pthread_cond_broadcast(c); }
+static void c_wake_one(acnd *c) { pthread_cond_signal(c); }
+#endif
+
+static amtx out_lock = AMTX_INIT;
+
 #if defined(__GNUC__) || defined(__clang__)
 #define NORETURN __attribute__((noreturn))
 #else
@@ -53,12 +95,18 @@ static ante_str out_buf;
 
 /* ── output ───────────────────────────────────────────────────────────── */
 
-void ante_flush(void) {
+static void flush_locked(void) {
     if (out_buf.len > 0) {
         fwrite(out_buf.ptr, 1, (size_t)out_buf.len, stdout);
         out_buf.len = 0;
     }
     fflush(stdout);
+}
+
+void ante_flush(void) {
+    m_lock(&out_lock);
+    flush_locked();
+    m_unlock(&out_lock);
 }
 
 /* Ends the process at once: a trap or `system.vellipo` (§20.3). Live values
@@ -72,7 +120,7 @@ static NORETURN void end_now(int32_t code) {
 
 /* T09 (§20.3). The runtime doesn't know the source position here. */
 static NORETURN void out_of_memory(void) {
-    ante_flush();
+    flush_locked(); /* never wait for a lock here: the holder may be us */
     fputs("kompa munigindhi! memory ayipoyindhi\n", stderr);
     end_now(101);
 }
@@ -119,15 +167,17 @@ static void push_c(ante_str *b, const char *s) { ante_buf_push(b, (const uint8_t
 
 /* Writes text to stdout (fd 1, buffered) or stderr (fd 2). */
 void ante_write(int32_t fd, const ante_str *s, int32_t newline) {
+    m_lock(&out_lock);
     if (fd == 2) {
-        ante_flush();
+        flush_locked();
         fwrite(s->ptr, 1, (size_t)s->len, stderr);
         if (newline) fputc('\n', stderr);
-        return;
+    } else {
+        ante_buf_push(&out_buf, s->ptr, s->len);
+        if (newline) ante_buf_push(&out_buf, (const uint8_t *)"\n", 1);
+        if (out_buf.len > (1 << 16)) flush_locked();
     }
-    ante_buf_push(&out_buf, s->ptr, s->len);
-    if (newline) ante_buf_push(&out_buf, (const uint8_t *)"\n", 1);
-    if (out_buf.len > (1 << 16)) ante_flush();
+    m_unlock(&out_lock);
 }
 
 void ante_init(int32_t argc, char **argv) {
@@ -256,19 +306,755 @@ typedef struct {
     int32_t col;
 } ante_loc;
 
-static NORETURN void trap_text(const char *msg, const ante_loc *loc) {
-    ante_flush();
-    fprintf(stderr, "kompa munigindhi! %s (%.*s:%d:%d)\n", msg, (int)loc->file_len, (const char *)loc->file,
-            loc->line, loc->col);
+/* ── tasks (§24) ──────────────────────────────────────────────────────── */
+
+/* Tasks run on a pool of OS threads. A worker runs one task at a time, to
+   completion, on its own stack. When a task waits (a channel, a lock, a
+   token, `nidrapo`), its worker counts as blocked; if work is queued and
+   nobody is free to take it, another worker starts. So waiting never
+   stalls the rest of the program, and the number of threads stays near
+   the number of CPUs plus the number of waiting tasks.
+
+   All task state (teams, tokens, locks, channels) is guarded by one lock,
+   `tk`, with one condition variable that every waiter re-checks. That is
+   simple and can't lose a wakeup; values themselves never touch the lock. */
+
+struct ante_team;
+struct lock_block;
+
+typedef void (*ante_run_fn)(void *pani, void *out);
+typedef void (*ante_drop_fn)(void *value);
+
+typedef struct ante_task {
+    int64_t id;
+    int64_t refs; /* the team's list, the token, the queue/worker */
+    struct ante_team *team;
+    ante_run_fn run;
+    uint8_t pani[16]; /* the closure: { code, environment } */
+    void *result;
+    ante_drop_fn drop_result;
+    int32_t state; /* 0 queued, 1 running, 2 finished, 3 trapped, 4 cancelled */
+    int32_t cancel, saw_cancel, detached, collected;
+    char code[8];
+    char *msg, *where;
+    jmp_buf jb;
+    struct ante_task *next_queued, *next_in_team;
+    struct lock_block **held;
+    int32_t nheld, capheld;
+    struct ante_team *teams; /* teams this task opened, innermost first */
+} ante_task;
+
+typedef struct ante_team {
+    int64_t active;
+    ante_task *tasks;
+    struct ante_team *outer;
+} ante_team;
+
+static amtx tk = AMTX_INIT;
+static acnd tk_changed = ACND_INIT;
+static acnd tk_work = ACND_INIT;
+static ante_task *queue_head, *queue_tail;
+static int64_t workers_idle, workers_running, next_task_id = 2;
+static int64_t task_stack = 1 << 20;
+static ante_task main_task = {.id = 1};
+#if defined(_MSC_VER) && !defined(__clang__)
+static __declspec(thread) ante_task *cur;
+#else
+static _Thread_local ante_task *cur;
+#endif
+
+static ante_task *current(void) { return cur ? cur : &main_task; }
+
+int64_t ante_cpus(void) {
+#ifdef _WIN32
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    return si.dwNumberOfProcessors > 0 ? (int64_t)si.dwNumberOfProcessors : 1;
+#else
+    long n = sysconf(_SC_NPROCESSORS_ONLN);
+    return n > 0 ? (int64_t)n : 1;
+#endif
+}
+
+static void *tk_alloc(size_t n) {
+    void *p = calloc(1, n ? n : 1);
+    if (!p) out_of_memory();
+    return p;
+}
+
+static void run_task(ante_task *t);
+
+#ifdef _WIN32
+static DWORD WINAPI worker_main(LPVOID arg)
+#else
+static void *worker_main(void *arg)
+#endif
+{
+    (void)arg;
+    m_lock(&tk);
+    for (;;) {
+        while (!queue_head) {
+            workers_idle++;
+            c_wait(&tk_work, &tk);
+            workers_idle--;
+        }
+        ante_task *t = queue_head;
+        queue_head = t->next_queued;
+        if (!queue_head) queue_tail = NULL;
+        workers_running++;
+        m_unlock(&tk);
+        run_task(t);
+        m_lock(&tk);
+        workers_running--;
+    }
+#ifdef _WIN32
+    return 0;
+#else
+    return NULL;
+#endif
+}
+
+/* Called with `tk` held. */
+static void start_worker(void) {
+#ifdef _WIN32
+    HANDLE h = CreateThread(NULL, (SIZE_T)task_stack, worker_main, NULL, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+    if (!h) out_of_memory();
+    CloseHandle(h);
+#else
+    pthread_attr_t attr;
+    pthread_t th;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, (size_t)task_stack);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (pthread_create(&th, &attr, worker_main, NULL) != 0) out_of_memory();
+    pthread_attr_destroy(&attr);
+#endif
+}
+
+/* Hands queued work to a worker, starting one if every worker is busy and
+   fewer than one per CPU are running. Called with `tk` held. */
+static void dispatch(void) {
+    if (!queue_head) return;
+    if (workers_idle > 0)
+        c_wake_one(&tk_work);
+    else if (workers_running < ante_cpus())
+        start_worker();
+}
+
+/* Waits on `tk_changed` (with `tk` held) for at most `ms` (-1: no limit).
+   While the task waits, its worker doesn't count as running. */
+static void tk_wait(int64_t ms) {
+    int worker = cur != NULL;
+    if (worker) {
+        workers_running--;
+        dispatch();
+    }
+    if (ms < 0)
+        c_wait(&tk_changed, &tk);
+    else
+        c_wait_ms(&tk_changed, &tk, ms);
+    if (worker) workers_running++;
+}
+
+static void task_unref(ante_task *t) { /* `tk` held */
+    if (--t->refs == 0) {
+        free(t->result);
+        free(t->msg);
+        free(t->where);
+        free(t->held);
+        free(t);
+    }
+}
+
+/* `ante.toml`'s `[build] task_stack`, set before any task starts. */
+void ante_set_task_stack(int64_t bytes) {
+    if (bytes >= (256 << 10)) task_stack = bytes;
+}
+
+/* `task.kalisi`: a team for the current task. */
+void *ante_team_new(void) {
+    ante_team *team = (ante_team *)tk_alloc(sizeof *team);
+    m_lock(&tk);
+    ante_task *me = current();
+    team->outer = me->teams;
+    me->teams = team;
+    m_unlock(&tk);
+    return team;
+}
+
+/* The end of a `kalisi`: waits for every task of the team, then lets go of it. */
+void ante_team_end(void *h) {
+    ante_team *team = (ante_team *)h;
+    m_lock(&tk);
+    while (team->active > 0) tk_wait(-1);
+    ante_task *me = current();
+    if (me->teams == team) me->teams = team->outer;
+    ante_task *t = team->tasks;
+    while (t) {
+        ante_task *next = t->next_in_team;
+        t->team = NULL;
+        task_unref(t);
+        t = next;
+    }
+    m_unlock(&tk);
+    free(team);
+}
+
+/* `f ni j.pampu()`: queues a task. `pani` is the closure, moved in. */
+void *ante_task_spawn(void *h, ante_run_fn run, const void *pani, int64_t result_size, ante_drop_fn drop_result) {
+    ante_team *team = (ante_team *)h;
+    ante_task *t = (ante_task *)tk_alloc(sizeof *t);
+    t->result = tk_alloc((size_t)result_size);
+    t->run = run;
+    memcpy(t->pani, pani, sizeof t->pani);
+    t->drop_result = drop_result;
+    t->refs = 3;
+    m_lock(&tk);
+    t->id = next_task_id++;
+    t->team = team;
+    t->next_in_team = team->tasks;
+    team->tasks = t;
+    team->active++;
+    if (queue_tail)
+        queue_tail->next_queued = t;
+    else
+        queue_head = t;
+    queue_tail = t;
+    dispatch();
+    m_unlock(&tk);
+    return t;
+}
+
+void ante_pani_dec(void *env);
+
+static void finish_task(ante_task *t, int32_t state) {
+    ante_pani_dec(*(void **)(t->pani + 8)); /* the closure's environment */
+    m_lock(&tk);
+    int produced = state == 2;
+    /* A task that noticed it was cancelled has no value to give (§24.6). */
+    if (produced && t->saw_cancel) state = 4;
+    t->state = state;
+    /* A value nobody will collect is dropped now, outside the lock, since
+       a destructor may use tasks itself. */
+    int drop = produced && (state == 4 || t->detached) && !t->collected;
+    if (drop) t->collected = 1;
+    m_unlock(&tk);
+    if (drop && t->drop_result) t->drop_result(t->result);
+    m_lock(&tk);
+    if (t->team) t->team->active--;
+    c_wake_all(&tk_changed);
+    task_unref(t);
+    m_unlock(&tk);
+}
+
+static void run_task(ante_task *t) {
+    cur = t;
+    m_lock(&tk);
+    int start = !t->cancel;
+    t->state = start ? 1 : 4;
+    m_unlock(&tk);
+    if (!start) {
+        finish_task(t, 4);
+    } else if (setjmp(t->jb) == 0) {
+        t->run(t->pani, t->result);
+        finish_task(t, 2);
+    } else {
+        finish_task(t, 3);
+    }
+    cur = NULL;
+}
+
+/* `r.aagu()`: 0 with the value moved to `out`; 1 trapped, with the
+   details; 2 cancelled. Consumes the token. */
+int32_t ante_task_wait(void *h, void *out, int64_t size, ante_str *code, ante_str *msg, ante_str *where) {
+    ante_task *t = (ante_task *)h;
+    m_lock(&tk);
+    while (t->state < 2) tk_wait(-1);
+    int32_t r = t->state == 2 ? 0 : t->state == 3 ? 1 : 2;
+    if (r == 0) {
+        memcpy(out, t->result, (size_t)size);
+        t->collected = 1;
+    } else if (r == 1) {
+        size_t n = strlen(t->code), m = t->msg ? strlen(t->msg) : 0, w = t->where ? strlen(t->where) : 0;
+        code->ptr = (uint8_t *)tk_alloc(n);
+        memcpy(code->ptr, t->code, n);
+        code->len = code->cap = (int64_t)n;
+        msg->ptr = (uint8_t *)tk_alloc(m);
+        if (m) memcpy(msg->ptr, t->msg, m);
+        msg->len = msg->cap = (int64_t)m;
+        where->ptr = (uint8_t *)tk_alloc(w);
+        if (w) memcpy(where->ptr, t->where, w);
+        where->len = where->cap = (int64_t)w;
+    }
+    task_unref(t);
+    m_unlock(&tk);
+    return r;
+}
+
+/* Dropping a token without `aagu`: the value, if any, is dropped. */
+void ante_task_drop(void *h) {
+    ante_task *t = (ante_task *)h;
+    m_lock(&tk);
+    t->detached = 1;
+    int drop = t->state == 2 && !t->collected;
+    if (drop) t->collected = 1;
+    m_unlock(&tk);
+    if (drop && t->drop_result) t->drop_result(t->result);
+    m_lock(&tk);
+    task_unref(t);
+    m_unlock(&tk);
+}
+
+void ante_task_cancel(void *h) {
+    m_lock(&tk);
+    ((ante_task *)h)->cancel = 1;
+    c_wake_all(&tk_changed);
+    m_unlock(&tk);
+}
+
+void ante_team_cancel(void *h) {
+    m_lock(&tk);
+    for (ante_task *t = ((ante_team *)h)->tasks; t; t = t->next_in_team)
+        if (t->state < 2) t->cancel = 1;
+    c_wake_all(&tk_changed);
+    m_unlock(&tk);
+}
+
+/* With `tk` held: has the current task been cancelled? Noticing it at a
+   cancellation point means the task gives no value (§24.6). */
+static int cancelled_now(void) {
+    ante_task *me = current();
+    if (me->cancel) me->saw_cancel = 1;
+    return me->cancel;
+}
+
+int32_t ante_task_cancelled(void) {
+    m_lock(&tk);
+    int32_t r = current()->cancel;
+    m_unlock(&tk);
+    return r;
+}
+
+static int64_t now_ms(void) {
+#ifdef _WIN32
+    return (int64_t)GetTickCount64();
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+#endif
+}
+
+/* `task.nidrapo`: sleeps, waking early if the task is cancelled. */
+void ante_task_sleep(int64_t nanos) {
+    int64_t until = now_ms() + (nanos + 999999) / 1000000;
+    m_lock(&tk);
+    for (;;) {
+        if (cancelled_now()) break;
+        int64_t left = until - now_ms();
+        if (left <= 0) break;
+        tk_wait(left);
+    }
+    m_unlock(&tk);
+}
+
+/* ── `Thaalam` (§24.4) ── */
+
+/* A lock block: who holds the key, whether it's poisoned, then the value. */
+typedef struct lock_block {
+    int64_t holder;
+    int32_t poisoned;
+    int32_t pad;
+} lock_block;
+
+void *ante_lock_new(int64_t size) { return tk_alloc(sizeof(lock_block) + (size_t)size); }
+
+void ante_lock_free(void *h) { free(h); }
+
+static NORETURN void trap_at(const char *code, const char *msg, const ante_loc *loc);
+
+/* `l.theruvu()` (`check` 0) or `l.theruvu_choosi()` (`check` 1, which
+   returns 1 for a poisoned lock instead of trapping T11). */
+int32_t ante_lock_open(void *h, int32_t check, const ante_loc *loc) {
+    lock_block *b = (lock_block *)h;
+    m_lock(&tk);
+    ante_task *me = current();
+    if (b->holder == me->id) {
+        m_unlock(&tk);
+        trap_at("T12", "ee Thaalam key already nee daggare undhi (rendosaari theruvu)", loc);
+    }
+    while (b->holder != 0) tk_wait(-1);
+    if (b->poisoned && !check) {
+        m_unlock(&tk);
+        trap_at("T11", "Thaalam virigipoyindhi: daanni pattukunna task kompa munigindhi", loc);
+    }
+    b->holder = me->id;
+    if (me->nheld == me->capheld) {
+        int32_t cap = me->capheld ? me->capheld * 2 : 4;
+        lock_block **p = (lock_block **)realloc(me->held, (size_t)cap * sizeof *p);
+        if (!p) {
+            m_unlock(&tk);
+            out_of_memory();
+        }
+        me->held = p;
+        me->capheld = cap;
+    }
+    me->held[me->nheld++] = b;
+    int32_t poisoned = b->poisoned;
+    m_unlock(&tk);
+    return poisoned;
+}
+
+/* Dropping a `Key`. */
+void ante_lock_close(void *h) {
+    lock_block *b = (lock_block *)h;
+    m_lock(&tk);
+    ante_task *me = current();
+    for (int32_t i = me->nheld - 1; i >= 0; i--) {
+        if (me->held[i] == b) {
+            me->held[i] = me->held[--me->nheld];
+            break;
+        }
+    }
+    b->holder = 0;
+    c_wake_all(&tk_changed);
+    m_unlock(&tk);
+}
+
+/* `Virigindhi.lopala()`: the value is the programmer's again. */
+void ante_lock_heal(void *h) {
+    m_lock(&tk);
+    ((lock_block *)h)->poisoned = 0;
+    m_unlock(&tk);
+}
+
+/* ── `Atomic` (§24.4): every value is kept widened to 64 bits ── */
+
+void *ante_atomic_new(int64_t v) {
+    int64_t *p = (int64_t *)tk_alloc(sizeof *p);
+    __atomic_store_n(p, v, __ATOMIC_SEQ_CST);
+    return p;
+}
+
+void ante_atomic_free(void *h) { free(h); }
+
+int64_t ante_atomic_load(void *h) { return __atomic_load_n((int64_t *)h, __ATOMIC_SEQ_CST); }
+
+void ante_atomic_store(void *h, int64_t v) { __atomic_store_n((int64_t *)h, v, __ATOMIC_SEQ_CST); }
+
+int64_t ante_atomic_swap(void *h, int64_t v) { return __atomic_exchange_n((int64_t *)h, v, __ATOMIC_SEQ_CST); }
+
+/* Wraps `v` to an integer of `bits` bits, sign- or zero-extended back to 64. */
+static int64_t wrap_bits(uint64_t v, int32_t bits, int32_t is_signed) {
+    if (bits >= 64) return (int64_t)v;
+    uint64_t mask = ((uint64_t)1 << bits) - 1;
+    v &= mask;
+    if (is_signed && (v >> (bits - 1)) & 1) v |= ~mask;
+    return (int64_t)v;
+}
+
+/* `n ni a.kalupu()`: adds, wrapping around at the type's width; returns the old value. */
+int64_t ante_atomic_add(void *h, int64_t n, int32_t bits, int32_t is_signed) {
+    int64_t *p = (int64_t *)h;
+    int64_t old = __atomic_load_n(p, __ATOMIC_SEQ_CST);
+    for (;;) {
+        int64_t next = wrap_bits((uint64_t)old + (uint64_t)n, bits, is_signed);
+        if (__atomic_compare_exchange_n(p, &old, next, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return old;
+    }
+}
+
+/* Compare-and-swap: 1 if it was `old` (now `new`); else 0, with the actual value in `*seen`. */
+int32_t ante_atomic_cas(void *h, int64_t old, int64_t next, int64_t *seen) {
+    int64_t expect = old;
+    if (__atomic_compare_exchange_n((int64_t *)h, &expect, next, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return 1;
+    *seen = expect;
+    return 0;
+}
+
+/* ── `Kaluva` (§24.4) ── */
+
+typedef struct {
+    int64_t cap; /* as asked; 0 is a rendezvous */
+    int64_t size;
+    uint8_t *buf;
+    int64_t slots, head, count;
+    int64_t senders;
+    int32_t receiver;
+    int64_t refs;
+    int64_t sent, taken;
+    ante_drop_fn drop;
+} chan;
+
+void *ante_chan_new(int64_t cap, int64_t size, ante_drop_fn drop) {
+    chan *c = (chan *)tk_alloc(sizeof *c);
+    c->cap = cap;
+    c->size = size;
+    c->slots = cap > 0 ? cap : 1;
+    c->buf = (uint8_t *)tk_alloc((size_t)size_mul(c->slots, size > 0 ? size : 1));
+    c->senders = 1;
+    c->receiver = 1;
+    c->refs = 2;
+    c->drop = drop;
+    return c;
+}
+
+/* With `tk` held: one less handle; the last one drops what's left. */
+static void chan_unref(chan *c) {
+    if (--c->refs > 0) return;
+    m_unlock(&tk);
+    if (c->drop)
+        for (int64_t i = 0; i < c->count; i++) c->drop(c->buf + ((c->head + i) % c->slots) * c->size);
+    free(c->buf);
+    free(c);
+    m_lock(&tk);
+}
+
+/* `x ni p.pampu()`: 0 sent; 1 every receiver is gone or the task was
+   cancelled, and `x` stays with the caller. */
+int32_t ante_chan_send(void *h, const void *v) {
+    chan *c = (chan *)h;
+    m_lock(&tk);
+    for (;;) {
+        if (cancelled_now() || !c->receiver) {
+            m_unlock(&tk);
+            return 1;
+        }
+        if (c->count < c->slots) break;
+        tk_wait(-1);
+    }
+    memcpy(c->buf + ((c->head + c->count) % c->slots) * c->size, v, (size_t)c->size);
+    c->count++;
+    int64_t mine = ++c->sent;
+    c_wake_all(&tk_changed);
+    /* A rendezvous ends when the value is taken. */
+    while (c->cap == 0 && c->taken < mine && c->receiver && !cancelled_now()) tk_wait(-1);
+    m_unlock(&tk);
+    return 0;
+}
+
+/* `a.andhuko()` (`wait` 1) or `a.ippude_andhuko()` (`wait` 0): 1 with a value in `out`. */
+int32_t ante_chan_recv(void *h, void *out, int32_t wait) {
+    chan *c = (chan *)h;
+    m_lock(&tk);
+    while (c->count == 0) {
+        if (!wait || c->senders == 0 || cancelled_now()) {
+            m_unlock(&tk);
+            return 0;
+        }
+        tk_wait(-1);
+    }
+    memcpy(out, c->buf + c->head * c->size, (size_t)c->size);
+    c->head = (c->head + 1) % c->slots;
+    c->count--;
+    c->taken++;
+    c_wake_all(&tk_changed);
+    m_unlock(&tk);
+    return 1;
+}
+
+void ante_chan_sender_copy(void *h) {
+    m_lock(&tk);
+    ((chan *)h)->senders++;
+    ((chan *)h)->refs++;
+    m_unlock(&tk);
+}
+
+void ante_chan_sender_drop(void *h) {
+    chan *c = (chan *)h;
+    m_lock(&tk);
+    c->senders--;
+    c_wake_all(&tk_changed);
+    chan_unref(c);
+    m_unlock(&tk);
+}
+
+void ante_chan_receiver_drop(void *h) {
+    chan *c = (chan *)h;
+    m_lock(&tk);
+    c->receiver = 0;
+    c_wake_all(&tk_changed);
+    chan_unref(c);
+    m_unlock(&tk);
+}
+
+/* ── `edhi_mundhu` (§24.4): whichever is ready first ── */
+
+/* An expectation keeps what it watches alive: it counts as a handle of the
+   channel or the task, so dropping those first can't leave it dangling. */
+typedef struct {
+    int32_t kind; /* 1 a channel's value or end, 2 a timer, 3 a task's end, 4 cancellation */
+    void *p;
+    int64_t until;
+} expect;
+
+void *ante_expect_chan(void *h) {
+    expect *e = (expect *)tk_alloc(sizeof *e);
+    e->kind = 1;
+    e->p = h;
+    m_lock(&tk);
+    ((chan *)h)->refs++;
+    m_unlock(&tk);
+    return e;
+}
+
+void *ante_expect_timer(int64_t nanos) {
+    expect *e = (expect *)tk_alloc(sizeof *e);
+    e->kind = 2;
+    e->until = now_ms() + (nanos + 999999) / 1000000;
+    return e;
+}
+
+void *ante_expect_task(void *h) {
+    expect *e = (expect *)tk_alloc(sizeof *e);
+    e->kind = 3;
+    e->p = h;
+    m_lock(&tk);
+    ((ante_task *)h)->refs++;
+    m_unlock(&tk);
+    return e;
+}
+
+void *ante_expect_cancel(void) {
+    expect *e = (expect *)tk_alloc(sizeof *e);
+    e->kind = 4;
+    return e;
+}
+
+void ante_expect_free(void *h) {
+    expect *e = (expect *)h;
+    m_lock(&tk);
+    if (e->kind == 1) chan_unref((chan *)e->p);
+    if (e->kind == 3) task_unref((ante_task *)e->p);
+    m_unlock(&tk);
+    free(e);
+}
+
+/* `vetiki ni task.edhi_mundhu()`: the lowest index that's ready. Only a
+   `cancel_ready` expectation makes this a cancellation point. */
+int64_t ante_select(void *const *es, int64_t n, const ante_loc *loc) {
+    if (n <= 0) trap_at("T05", "`edhi_mundhu` ki okka Edhuruchoopu kuda ivvaledhu", loc);
+    m_lock(&tk);
+    for (;;) {
+        int64_t wait = -1;
+        for (int64_t i = 0; i < n; i++) {
+            expect *e = (expect *)es[i];
+            int ready = 0;
+            if (e->kind == 1) {
+                chan *c = (chan *)e->p;
+                ready = c->count > 0 || c->senders == 0;
+            } else if (e->kind == 2) {
+                int64_t left = e->until - now_ms();
+                ready = left <= 0;
+                if (!ready && (wait < 0 || left < wait)) wait = left;
+            } else if (e->kind == 3) {
+                ready = ((ante_task *)e->p)->state >= 2;
+            } else {
+                ready = cancelled_now();
+            }
+            if (ready) {
+                m_unlock(&tk);
+                return i;
+            }
+        }
+        tk_wait(wait);
+    }
+}
+
+/* ── `panchukunna` (§24.4): a count, then the value at offset 16 ── */
+
+void *ante_rc_new(int64_t size) {
+    int64_t *p = (int64_t *)tk_alloc(16 + (size_t)size);
+    __atomic_store_n(p, 1, __ATOMIC_RELAXED);
+    return p;
+}
+
+void ante_rc_inc(void *h) { __atomic_fetch_add((int64_t *)h, 1, __ATOMIC_RELAXED); }
+
+/* 1 when this was the last handle: the caller drops the value and frees it. */
+int32_t ante_rc_dec(void *h) { return __atomic_fetch_sub((int64_t *)h, 1, __ATOMIC_ACQ_REL) == 1; }
+
+void ante_rc_free(void *h) { free(h); }
+
+/* ── a trap in a task (§24.5) ── */
+
+/* Ends only the current task: its locks are poisoned, teams it opened are
+   waited for (structured concurrency holds even here), and its token gets
+   the details. Values the task held aren't dropped yet; their memory is
+   lost (an `antec` 0.x limitation). */
+static NORETURN void task_trapped(const char *code, const char *msg, const char *where) {
+    ante_task *t = cur;
+    snprintf(t->code, sizeof t->code, "%s", code);
+    t->msg = (char *)malloc(strlen(msg) + 1);
+    if (t->msg) strcpy(t->msg, msg);
+    if (where) {
+        t->where = (char *)malloc(strlen(where) + 1);
+        if (t->where) strcpy(t->where, where);
+    }
+    m_lock(&tk);
+    for (int32_t i = 0; i < t->nheld; i++) {
+        t->held[i]->poisoned = 1;
+        t->held[i]->holder = 0;
+    }
+    t->nheld = 0;
+    c_wake_all(&tk_changed);
+    while (t->teams) {
+        ante_team *team = t->teams;
+        m_unlock(&tk);
+        ante_team_end(team);
+        m_lock(&tk);
+    }
+    m_unlock(&tk);
+    longjmp(t->jb, 1);
+}
+
+
+/* `antec run` asks for the trap's code and position in a file, when it
+   runs a program natively on the interpreter's behalf (§22.6). */
+static void report_trap(const char *code, const ante_loc *loc) {
+    const char *path = getenv("ANTE_TRAP_REPORT");
+    if (!path || !*path) return;
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    if (loc)
+        fprintf(f, "%s %d %d %.*s\n", code, loc->line, loc->col, (int)loc->file_len, (const char *)loc->file);
+    else
+        fprintf(f, "%s 0 0\n", code);
+    fclose(f);
+}
+
+/* Every trap ends here. In a task other than the first, it ends only that
+   task (§24.5); otherwise the whole program (§20.3). */
+static NORETURN void trap_at(const char *code, const char *msg, const ante_loc *loc) {
+    char where[600] = "";
+    if (loc) snprintf(where, sizeof where, "%.*s:%d:%d", (int)loc->file_len, (const char *)loc->file, loc->line, loc->col);
+    m_lock(&out_lock);
+    flush_locked();
+    if (loc)
+        fprintf(stderr, "kompa munigindhi! %s (%s)\n", msg, where);
+    else
+        fprintf(stderr, "kompa munigindhi! %s\n", msg);
+    fflush(stderr);
+    m_unlock(&out_lock);
+    if (cur) task_trapped(code, msg, loc ? where : NULL);
+    report_trap(code, loc);
     end_now(101);
 }
+
 
 NORETURN void ante_trap(const ante_str *msg, const ante_loc *loc) {
     char text[1024];
     int n = msg->len < 1000 ? (int)msg->len : 1000;
     memcpy(text, msg->ptr, (size_t)n);
     text[n] = 0;
-    trap_text(text, loc);
+    /* The generated code's messages say which trap they are. */
+    const char *code = "T05";
+    if (strncmp(text, "nijame()", 8) == 0)
+        code = "T07";
+    else if (strstr(text, "kachithanga()"))
+        code = "T06";
+    else if (strstr(text, "pattadhu"))
+        code = "T01";
+    trap_at(code, text, loc);
 }
 
 NORETURN void ante_trap_overflow(const char *ty, const char *op, int64_t a, int64_t b, int32_t unary,
@@ -281,34 +1067,34 @@ NORETURN void ante_trap_overflow(const char *ty, const char *op, int64_t a, int6
                  (unsigned long long)b);
     else
         snprintf(text, sizeof text, "`%s` lo %lld %s %lld pattadhu", ty, (long long)a, op, (long long)b);
-    trap_text(text, loc);
+    trap_at("T01", text, loc);
 }
 
 NORETURN void ante_trap_index(int64_t i, int64_t len, const ante_loc *loc) {
     char text[128];
     snprintf(text, sizeof text, "index %lld bayatiki vellindhi (length %lld)", (long long)i, (long long)len);
-    trap_text(text, loc);
+    trap_at("T03", text, loc);
 }
 
 NORETURN void ante_trap_slice(int64_t lo, int64_t hi, int64_t len, const ante_loc *loc) {
     char text[128];
     snprintf(text, sizeof text, "mukka haddulu tappu: %lld nunchi %lld (length %lld)", (long long)lo, (long long)hi,
              (long long)len);
-    trap_text(text, loc);
+    trap_at("T10", text, loc);
 }
 
 NORETURN void ante_trap_shift(int64_t count, int32_t bits, const ante_loc *loc) {
     char text[128];
     snprintf(text, sizeof text, "shift count %lld tappu (0..%d undali)", (long long)count, bits);
-    trap_text(text, loc);
+    trap_at("T04", text, loc);
 }
 
 NORETURN void ante_trap_code(int32_t code, const ante_loc *loc) {
     switch (code) {
-    case 2: trap_text("sunna (0) tho bhaagham cheyyalem", loc);
-    case 6: trap_text("`ledhu` meeda kachithanga() pilicharu", loc);
-    case 7: trap_text("nijame() fail ayyindhi", loc);
-    default: trap_text("antec bug: unreachable code ki vacchindhi", loc);
+    case 2: trap_at("T02", "sunna (0) tho bhaagham cheyyalem", loc);
+    case 6: trap_at("T06", "`ledhu` meeda kachithanga() pilicharu", loc);
+    case 7: trap_at("T07", "nijame() fail ayyindhi", loc);
+    default: trap_at("T00", "antec bug: unreachable code ki vacchindhi", loc);
     }
 }
 
