@@ -17,8 +17,9 @@
 | M11 C FFI (§22) | ✅ done |
 | M12 Tasks and sharing (§24) | ✅ done |
 | Beginner pass: `kuppa`/`line`/`sardina_jodi`, `antec pariksha`, native `run`, [`learn/`](../learn) | ✅ done |
+| M13 Data and security: `baitlu`, `encoding`, `Raayochu`/`Chadhavochu`, `json`/`form`/`query`, `samayam` zones, `bhadram`, `Rahasyam`, `random`, `log`, `config` (§25–27, §29.1–29.2) | ✅ done |
 | Language server `antec lsp` ([docs/TOOLING.md](../docs/TOOLING.md#language-server-antec-lsp)) | ✅ done |
-| M13–M24 | inka start avvaledhu (spec Appendix E) |
+| M14–M24 | inka start avvaledhu (spec Appendix E) |
 
 ## Build and test
 
@@ -130,11 +131,15 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 | `src/codegen/glue.rs` | Prathi type ki display, `==`, order, `xerox`, drop functions |
 | `src/codegen/peephole.rs` | Chinna clean-up: okka block lo store tharvatha load ni forward chesthundhi, evaru chadavani stack slots theesesthundhi (IR chinnaga, clang fast ga) |
 | `runtime/ante_rt.c` | Chinna C runtime: program start (`modhalu` thread, T08 guard), output, traps, text, sort, files, time |
+| `runtime/ante_crypto.c` | `bhadram` primitives native ga: SHA-256/512, BLAKE3, BLAKE2b + Argon2id, AES-256-GCM, constant-time compare, OS random. `ante_rt.c` tho kalipi compile avthundhi |
+| `src/interp/crypto.rs` | Ade primitives interpreter kosam, published test vectors tho tests |
+| `src/derive.rs` | `@automatic Raayochu, Chadhavochu, Kotthadhi`: implementation ni "Ante" source ga raasi file chivarlo kaluputhundhi; errors annotation ki chupisthundhi |
+| `std/ante/*.ante` | Standard library "Ante" lone: `prelude.ante` (prathi program), `data.ante` (data tree, `Rahasyam`; vaati words program lo unte), `encoding`, `json`, `form`, `query`, `samayam`, `bhadram`, `random`, `log`, `config` (import chesthe matrame compile avthayi) |
 | `tests/native.rs` | Prathi run-pass/runtime-trap test ni native ga `-O0` lo, `--release` lo build chesi output, exit code, trap code, position compare chesthundhi |
 | `tests/fmt.rs` | `antec fmt` golden tests; repo lo prathi valid program fixed point ki format avvali |
 | `tests/fuzz.rs` | Mutation fuzzing (deterministic): e input ichhina checker, formatter panic avvakoodadhu; lothaina nesting ki E0216 |
 | `tests/cli.rs` | CLI: `--help`, unknown commands, `run -- args`, `-o` source ni overwrite cheyyakoodadhu, `[build]` settings, `fmt --check` |
-| `std/*.ante` | Standard library signatures, "Ante" lone raasinavi (prelude, `lekkalu`, `file`, `system`, `samayam`, `memory`) |
+| `std/*.ante` | Standard library signatures, "Ante" lone raasinavi (prelude, `lekkalu`, `file`, `system`, `samayam`, `memory`, `task`, `bhadram`) |
 | `src/lint.rs` | Warnings (W0001 unused binding, W0002 unnecessary `maare`, W0003 unreachable code, W0005 unused import); errors lenappudu matrame |
 | `src/package.rs` | `ante.toml` + `src/` packages, module discovery, entry point (`modhalu`) check |
 | `src/main.rs` | `antec` CLI |
@@ -214,6 +219,12 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 | Standard library in "Ante" | `kuppa`, `line`, `sardina_jodi` [`std/ante/prelude.ante`](std/ante/prelude.ante) lo "Ante" lone raasinavi; prathi program tho kalisi compile avthayi. Vaati lopala trap ayithe position `<ante>/prelude.ante` ani chupisthundhi |
 | `antec run` backend | `$ANTE_CC` (leka `clang`) unte native, lekapothe interpreter. Output, traps rendu lo okate (T08/T09 position tappa, paina choodandi) |
 | `antec pariksha` | Prathi test ki vere native program (leka interpreter run), CPU cores anni vaadi okesaari |
+| Standard modules in "Ante" (M13) | `json`, `form`, `query`, `encoding`, `samayam` (zones, calendar), `bhadram` (crypto paina layer), `random`, `log`, `config` anni [`std/ante/`](std/ante) lo "Ante" lone. Program aa module ni `thechuko` chesthe (leka vere std module chesthe) matrame compile avthundhi. Data tree (`DataChettu`, `Raayochu`, `Rahasyam`, …) prelude lo oka part: program text lo aa words unte matrame compile avthundhi. Vaati lopala trap ayithe position `<ante>/<module>.ante` ani chupisthundhi |
+| Time zone database (§26) | Operating system dhi: `$TZDIR` leka `/usr/share/zoneinfo` lo TZif files (RFC 8536), 64-bit part, chivari change tharvatha footer lo POSIX `TZ` rule (`Mm.w.d` rules matrame; vere rules unte chivari offset). Version OS dhi. Files lekapothe (Windows): `UTC`, `Etc/UTC`, `GMT`, `Etc/GMT`, `Z`, inka `Asia/Kolkata`/`Asia/Calcutta` (+05:30) matrame |
+| Crypto (§27) | Algorithms spec lo fixed; implementation `src/interp/crypto.rs` + `runtime/ante_crypto.c`, test vectors tho (FIPS 180-4, BLAKE3 official vectors, RFC 7693, RFC 9106, GCM spec). AES S-box tables vaadakunda compute chesthundhi (constant time, kaani slow: data chinnaga unnappudu ok). Random: interpreter `/dev/urandom` / `BCryptGenRandom`; native `arc4random_buf` (macOS, BSD), `/dev/urandom` (Linux), `rand_s` (Windows) |
+| `Rahasyam` zeroing | Drop appudu scalars bytes, `padham`/`baitlu` heap bytes (capacity motham) zero avthayi, optimizer theeseyani volatile writes tho. Vere `T` lo parts normal ga drop avthayi |
+| `log` format | Release (`antec build --release`): okko line oka JSON object. Lekapothe (`antec run`, debug build, interpreter): `<rfc3339> <level> <message> key=<json>`, `NO_COLOR` lekapothe ANSI colours |
+| `config` `.env` | Debug lo working folder lo `.env`; environment lo already unna variable gelusthundhi. Release lo `.env` chadhavadhu |
 
 ## Telisina quirks (break cheyyalani try chesi kanukunnavi)
 

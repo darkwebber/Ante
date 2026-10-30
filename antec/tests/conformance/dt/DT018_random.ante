@@ -1,0 +1,37 @@
+# category: run-pass
+# expect-stdout: 2915081201720324186
+# expect-stdout: 13533757442135995717
+# expect-stdout: 13172715927431628928
+# expect-stdout: avunu
+# expect-stdout: avunu
+# expect-stdout: [1, 2, 3, 4, 5, 6]
+# expect-stdout: avunu
+# expect-stdout: 36
+# expect-stdout: 4
+# level: services
+# `random` is PCG-64: the same seed always gives the same numbers. `bhadram`
+# gives secure randomness and UUIDs (§27.1).
+random thechuko
+bhadram thechuko
+
+modhalu() -> khali ante:
+    maare g ante 42 ni random.Generator.kotthadhi()
+    0 nunchi 3 lopu okko _ ki:
+        g.bits() ni choopinchu()
+    maare in_range ante avunu
+    0 nunchi 1000 lopu okko _ ki:
+        n ante -3 ni, 4 tho g.number()
+        in_range lo (in_range && n >= -3 && n < 4) pettu
+    in_range ni choopinchu()
+    x ante g.decimal()
+    (x >= 0.0 && x < 1.0) ni choopinchu()
+    maare xs ante [6, 2, 5, 1, 4, 3]
+    &maare xs ni g.kalapu()
+    xs.sort_cheyyi()
+    xs ni choopinchu()
+    r ante 10 ni, 20 tho bhadram.random_ankam()
+    (r >= 10 && r < 20) ni choopinchu()
+    u ante bhadram.uuid_v7()
+    u.byte_len() ni choopinchu()
+    v4 ante bhadram.uuid_v4()
+    (14 ni, 15 tho v4.byte_mukka()).kachithanga() |> choopinchu()

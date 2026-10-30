@@ -4,6 +4,7 @@
 
 pub mod ast;
 pub mod codegen;
+pub mod derive;
 pub mod diag;
 pub mod fmt;
 pub mod interp;

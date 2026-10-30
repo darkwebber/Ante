@@ -313,7 +313,7 @@ impl<W: Write> Server<W> {
             .sources
             .iter()
             .map(|s| {
-                if s.name == crate::stdlib::ANTE_SOURCE_FILE {
+                if crate::stdlib::is_ante_source_file(&s.name) {
                     None
                 } else if package {
                     Some(key.join(&s.name))
@@ -351,6 +351,13 @@ impl<W: Write> Server<W> {
         }
         for uri in old_published {
             self.publish(&uri, Vec::new());
+        }
+        if let Some(ix) = &mut index {
+            for (file, path) in paths.iter().enumerate() {
+                if let Some(text) = path.as_deref().and_then(|p| read(p).ok()) {
+                    ix.trim_to(file, &String::from_utf8_lossy(&text));
+                }
+            }
         }
         // A check that couldn't parse keeps the last index, for completion.
         let (index, paths) = match index {

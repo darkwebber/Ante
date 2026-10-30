@@ -109,6 +109,11 @@ impl Machine<'_> {
         Addr { root: super::value::Root::Heap(usize::MAX), path: Vec::new() }
     }
 
+    /// A `&mukka[aasajeevi ankam8]` argument's bytes.
+    fn bytes_arg(&self, v: &Value) -> Vec<u8> {
+        self.seq(v).iter().map(|x| x.int() as u8).collect()
+    }
+
     /// The elements of a sequence argument (owned, referenced or sliced).
     fn seq(&self, v: &Value) -> Vec<Value> {
         match v {
@@ -1209,6 +1214,9 @@ impl Machine<'_> {
                 self.convert(name, &ty(1), &ty(0), arg!(0), span)
             }
             "prelude.size_of" | "prelude.align_of" => Ok(Value::Int(size_of(&ty(0)))),
+            "prelude.rakam_peru" => {
+                Ok(Value::Str(Rc::from(crate::typeck::items::show(&self.tc.globals, &ty(0)))))
+            }
             "prelude.marpidi" => {
                 let new = take!(1);
                 Ok(self.with_target_mut(&arg!(0), |v| std::mem::replace(v, new)))
@@ -1325,6 +1333,14 @@ impl Machine<'_> {
                     Ok(s) => Value::ok(Value::Str(Rc::from(s))),
                     Err(e) => Value::err(thappu_record(format!("UTF-8 kaadhu: {e}"))),
                 })
+            }
+            "padham.baitlu_ga" => {
+                let s = self.arg_str(&arg!(0));
+                Ok(Value::Vec(s.bytes().map(|b| Value::Int(i128::from(b))).collect()))
+            }
+            "padham.baitlu_nunchi_lossy" => {
+                let bytes: Vec<u8> = self.seq(&arg!(0)).iter().map(|v| v.int() as u8).collect();
+                Ok(Value::Str(Rc::from(String::from_utf8_lossy(&bytes).as_ref())))
             }
             "padham.byte_mukka" => {
                 let s = self.arg_str(&arg!(0));
@@ -1743,8 +1759,77 @@ impl Machine<'_> {
                     Err(e) => Value::err(thappu_record(io_text(&e))),
                 })
             }
+            // The interpreter is never a release build.
+            "system._release" => Ok(bool_v(false)),
+            "system._env_text" => {
+                let mut vars: Vec<String> = std::env::vars_os()
+                    .map(|(k, v)| format!("{}={}", k.to_string_lossy(), v.to_string_lossy()))
+                    .collect();
+                vars.sort();
+                Ok(Value::Str(Rc::from(vars.join("\0"))))
+            }
             "system.os" => Ok(Value::Str(Rc::from(std::env::consts::OS))),
             "system.arch" => Ok(Value::Str(Rc::from(std::env::consts::ARCH))),
+
+            // ── bhadram (§27) ──
+            "bhadram.sha256" | "bhadram.sha512" | "bhadram.blake3" => {
+                let b = self.bytes_arg(&arg!(0));
+                let h = match name {
+                    "bhadram.sha256" => super::crypto::sha256(&b),
+                    "bhadram.sha512" => super::crypto::sha512(&b),
+                    _ => super::crypto::blake3(&b),
+                };
+                Ok(bytes_value(&h))
+            }
+            "bhadram.random_baitlu" => match super::crypto::random_bytes(arg!(0).int().max(0) as usize) {
+                Ok(b) => Ok(bytes_value(&b)),
+                Err(e) => Err(self.trap("T05", format!("system random baitlu ivvaledhu: {e}"), span)),
+            },
+            "bhadram.okkatenaa" => {
+                let (a, b) = (self.bytes_arg(&arg!(0)), self.bytes_arg(&arg!(1)));
+                Ok(bool_v(super::crypto::ct_eq(&a, &b)))
+            }
+            "bhadram._argon2id" => {
+                let parts: Vec<Vec<u8>> = (0..4).map(|i| self.bytes_arg(&arg!(i))).collect();
+                let n: Vec<i128> = (4..8).map(|i| arg!(i).int()).collect();
+                let ok = n[2] >= 1
+                    && n[1] >= 1
+                    && n[0] >= 8 * n[2]
+                    && n[3] >= 4
+                    && n.iter().all(|x| *x <= u32::MAX as i128);
+                if !ok {
+                    return Ok(bytes_value(&[]));
+                }
+                let tag = super::crypto::argon2id(
+                    &parts[0],
+                    &parts[1],
+                    &parts[2],
+                    &parts[3],
+                    n[0] as u32,
+                    n[1] as u32,
+                    n[2] as u32,
+                    n[3] as u32,
+                );
+                Ok(bytes_value(&tag))
+            }
+            "bhadram._aes_gcm_seal" | "bhadram._aes_gcm_open" => {
+                let p: Vec<Vec<u8>> = (0..4).map(|i| self.bytes_arg(&arg!(i))).collect();
+                let ok = p[0].len() == 32 && p[1].len() == 12;
+                if name == "bhadram._aes_gcm_seal" {
+                    let c = if ok {
+                        super::crypto::aes256gcm_seal(&p[0], &p[1], &p[2], &p[3])
+                    } else {
+                        Vec::new()
+                    };
+                    return Ok(bytes_value(&c));
+                }
+                let opened =
+                    if ok { super::crypto::aes256gcm_open(&p[0], &p[1], &p[2], &p[3]) } else { None };
+                Ok(match opened {
+                    Some(b) => Value::some(bytes_value(&b)),
+                    None => Value::none(),
+                })
+            }
 
             // ── samayam ──
             "samayam.ippudu" => {
@@ -1758,19 +1843,44 @@ impl Machine<'_> {
                 let now = self.started.elapsed().as_nanos() as i128;
                 Ok(Value::Adt(0, vec![Value::Int(now - then)]))
             }
-            "Kaalam.sec" => {
+            "samayam._utc_nanosec" => {
+                let now = std::time::SystemTime::now();
+                let ns = match now.duration_since(std::time::UNIX_EPOCH) {
+                    Ok(d) => d.as_nanos() as i128,
+                    Err(e) => -(e.duration().as_nanos() as i128),
+                };
+                Ok(Value::Int(ns))
+            }
+            "Kaalam.nanosec" | "Kaalam.millisec" | "Kaalam.sec" | "Kaalam.nimishalu" | "Kaalam.gantalu"
+            | "Kaalam.rojulu" => {
                 let n = arg!(0).int();
-                match n.checked_mul(1_000_000_000).filter(|ns| (0..=u64::MAX as i128).contains(ns)) {
+                let unit = kaalam_unit(&name["Kaalam.".len()..]);
+                match n.checked_mul(unit).filter(|ns| (0..=u64::MAX as i128).contains(ns)) {
                     Some(ns) => Ok(Value::Adt(0, vec![Value::Int(ns)])),
-                    None => Err(self.trap("T01", format!("`Kaalam` lo {n} sec pattadhu"), span)),
+                    None => Err(self.trap("T01", format!("`Kaalam` lo {n} {} pattadhu", &name[7..]), span)),
                 }
             }
-            "Kaalam.millisec" | "Kaalam.nanosec" => {
+            "Kaalam.millisec_lu" | "Kaalam.nanosec_lu" | "Kaalam.sec_lu" => {
                 let ns = match self.target(&arg!(0)) {
                     Value::Adt(_, fs) => fs.first().map_or(0, Value::int),
                     _ => 0,
                 };
-                Ok(Value::Int(if name == "Kaalam.millisec" { ns / 1_000_000 } else { ns }))
+                Ok(match name {
+                    "Kaalam.millisec_lu" => Value::Int(ns / 1_000_000),
+                    "Kaalam.nanosec_lu" => Value::Int(ns),
+                    _ => Value::F64(ns as f64 / 1e9),
+                })
+            }
+            // Zeroing is unobservable here; the value is replaced by zeros of
+            // the same shape all the same.
+            "memory.sunna_cheyyi" => {
+                self.with_target_mut(&arg!(0), |v| match v {
+                    Value::Str(s) => *v = Value::Str(Rc::from("\0".repeat(s.len()))),
+                    Value::Vec(xs) => xs.iter_mut().for_each(|x| *x = Value::Int(0)),
+                    Value::Int(_) => *v = Value::Int(0),
+                    _ => {}
+                });
+                Ok(Value::Unit)
             }
             n if n.starts_with("memory.") => {
                 Err(self.trap("T05", "`memory` functions interpreter lo levu (M11)", span))
@@ -2016,6 +2126,23 @@ fn file_result(r: std::io::Result<Value>) -> Value {
 
 /// Like `file_result`, for opening `path` as a file. Windows refuses to open a
 /// folder with "access denied" where POSIX says "is a directory"; both read as
+/// A `baitlu` value.
+fn bytes_value(b: &[u8]) -> Value {
+    Value::Vec(b.iter().map(|x| Value::Int(i128::from(*x))).collect())
+}
+
+/// Nanoseconds in one unit of a `Kaalam` constructor (§26).
+pub fn kaalam_unit(name: &str) -> i128 {
+    match name {
+        "nanosec" => 1,
+        "millisec" => 1_000_000,
+        "sec" => 1_000_000_000,
+        "nimishalu" => 60_000_000_000,
+        "gantalu" => 3_600_000_000_000,
+        _ => 86_400_000_000_000,
+    }
+}
+
 /// the folder error, the same as `open_error` in `ante_rt.c`.
 fn open_result(path: &str, r: std::io::Result<Value>) -> Value {
     match r {

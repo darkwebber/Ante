@@ -628,6 +628,7 @@ Method receivers (§13.4) and operator operands (§10.5) are also borrowed autom
 
 - `migathavi xs: T role` must be the last fixed formal. Inside the callee `xs : &mukka[T]`. Zero elements are allowed.
 - `migatha_perlu kw: jodi[padham, V]` receives labelled phrases with unknown labels, each with an unmarked role. There is at most one of each collector per function.
+- When `V` is the data tree `DataChettu` (§25.2), each labelled operand may have any `Raayochu` type: it is borrowed and written into the tree (`DataChettu.raayi`), so `log` fields can mix types (§29.1). An operand that isn't `Raayochu` is E1303.
 
 ### 11.5 Evaluation order
 
@@ -725,7 +726,7 @@ The receiver borrow is taken **after** the argument phrases are evaluated, so `v
 
 ### 13.6 `@automatic`
 
-`@automatic Polchochu, XeroxTheeyochu, …` before a `rakam` or `edho_okati` derives the listed traits field by field, in declaration order. Derivable traits: `CopyKottochu`, `XeroxTheeyochu`, `Polchochu`, `VarusaPettochu`, `HashCheyochu` and `Choopinchochu`. The derived `Choopinchochu` prints `Name{f: v, …}` / `Enum.Variant(v, …)`. A component lacking the trait is E0807. A type that contains itself (through `pette`, `undochu`, `varusa` and so on) may derive a trait that its own components need: while a derive is checked, the type is taken to have it.
+`@automatic Polchochu, XeroxTheeyochu, …` before a `rakam` or `edho_okati` derives the listed traits field by field, in declaration order. Derivable traits: `CopyKottochu`, `XeroxTheeyochu`, `Polchochu`, `VarusaPettochu`, `HashCheyochu` and `Choopinchochu`. The derived `Choopinchochu` prints `Name{f: v, …}` / `Enum.Variant(v, …)`. A component lacking the trait is E0807. `Raayochu`, `Chadhavochu` and `Kotthadhi` (§25.2) are derivable too: since those traits are written in "Ante", their implementations are written as "Ante" source after the file's own text, following §25.2.2–§25.2.3; a component that can't be written or read is E1303, a default that's missing is E1304, and `Kotthadhi` derives only for records (E0807 on an enum). A type that contains itself (through `pette`, `undochu`, `varusa` and so on) may derive a trait that its own components need: while a derive is checked, the type is taken to have it.
 
 ## 14. Patterns and exhaustiveness
 
@@ -955,6 +956,8 @@ Signatures are normative; the descriptions are summaries. Functions marked †in
 | `kompa_munigindhi(message: padham ni = "") -> raadhu` | trap T05 ("the house has sunk") |
 | `marpidi[T](ekkada: &maare T, kotthadhi: T ni) -> T` | puts `kotthadhi` in the place and gives back what was there ("exchange"). Usage: `paatha ante &maare x, kotha ni marpidi()` |
 | `maarchu[T]`, `kudhirithe_maarchu[T]`, `kolpothu_maarchu[T]` | †intrinsic; §18.4 |
+| `rakam_peru[T]() -> padham` | †intrinsic: the type as it is written, `varusa[ankam64]` ("type name") |
+| `kotthadhi_ivvu[T: Kotthadhi]() -> T` | `T.kotthadhi()` for any type, also one a path can't name (`varusa[padham]`) (§25.2.5) |
 
 ### 21.2 Built-in type methods
 
@@ -970,6 +973,7 @@ Signatures are normative; the descriptions are summaries. Functions marked †in
 - `amsam_ga() -> sare_thappu[amsam, ParseThappu]`, which must round correctly (exact IEEE nearest)
 - `baitlu() -> &mukka[aasajeevi ankam8]`
 - `padham.baitlu_nunchi(b: &mukka[aasajeevi ankam8] ni) -> sare_thappu[padham, Utf8Thappu]`
+- `baitlu_ga() -> baitlu` and `padham.baitlu_nunchi_lossy()` (§25.1)
 - `a ni, b tho s.byte_mukka() -> sare_thappu[padham, Utf8Thappu]`: copies bytes `a` up to (not including) `b`; `thappu` if a bound isn't on a character boundary
 - `xerox()`, `+`, `==`, `<`
 
@@ -1051,7 +1055,7 @@ The next three are written in "Ante" itself and compiled with every program (§2
 | `file` | `p ni file.chadhuvu() -> sare_thappu[padham, FileThappu]` ("read"); `p ki, text ni file.raayi() -> sare_thappu[khali, FileThappu]` ("write"); `p ni file.baitlu_chadhuvu()`, `p ki, b ni file.baitlu_raayi()`; `p ni file.undhaa() -> ato_ito`; `p ni file.folderaa() -> ato_ito`; `p ni file.list_cheyyi() -> sare_thappu[varusa[padham], FileThappu]` (sorted names); `p ni file.folder_cheyyi()` (create, including parents); `p ni file.theesey()` (delete a file); `a ni, b tho file.path_kalupu() -> padham` (joins with `/` on every system; `b` alone when it starts with `/`); `p ni file.path_peru()`, `p ni file.path_folder()`, `p ni file.path_extension() -> undochu[padham]` |
 | `system` | `system.args() -> varusa[padham]`; `k ni system.env() -> undochu[padham]`; `system.line_chadhuvu() -> undochu[padham]` (stdin); `system.flush()`; `n ni system.vellipo() -> raadhu` (exit); `prog ni, args tho system.nadupu() -> sare_thappu[Phalitham, SystemThappu]` ("run": waits for the program, where `Phalitham{status: ankam32, stdout: padham, stderr: padham}`); `system.os() -> padham`, `system.arch() -> padham` |
 | `memory` | †intrinsic, **`naa_risk` only**: `n ni, a tho memory.allocate() -> *maare khali`, `p ni, n tho, a tho memory.release()`, `p ni, n tho, a tho, m ki memory.reallocate()`, `src ni, dst ki, n tho memory.copy()`. Used to write runtime and collection code in "Ante" itself |
-| `samayam` (time) | `samayam.ippudu() -> Kshanam` (monotonic "now"); `k.gadichindhi() -> Kaalam` ("elapsed"); `Kaalam.millisec()`, `.nanosec()`; `n ni Kaalam.sec() -> Kaalam` (whole seconds; negative or too large is T01); `d ni samayam.timer() -> task.Edhuruchoopu` (§24.4) |
+| `samayam` (time) | `samayam.ippudu() -> Kshanam` (monotonic "now"); `k.gadichindhi() -> Kaalam` ("elapsed"); `k.millisec_lu()`, `k.nanosec_lu()`; `n ni Kaalam.sec() -> Kaalam` (whole seconds; negative or too large is T01) and the other constructors of §26; `d ni samayam.timer() -> task.Edhuruchoopu` (§24.4) |
 
 `FileThappu` and `ParseThappu` are enums that implement `Choopinchochu`. Every standard library record and enum implements `Choopinchochu`, `XeroxTheeyochu` and `Polchochu`; `Kramam` also implements `VarusaPettochu`, `HashCheyochu` and `CopyKottochu`.
 
@@ -1386,6 +1390,8 @@ On `wasm32` client targets (Annex W) the `task` module is not available (E1401).
 
 Module `encoding`: `b ni encoding.base64() -> padham` and `s ni encoding.base64_chadhuvu() -> sare_thappu[baitlu, EncodingThappu]` (RFC 4648 standard alphabet with padding); `base64url` / `base64url_chadhuvu` (URL-safe alphabet, no padding); `hex` / `hex_chadhuvu` (lowercase out, either case in); `s ni encoding.url_escape()` and `url_unescape` (RFC 3986 percent-encoding of everything but unreserved characters).
 
+25.1.1 Reading is strict: standard base64 needs its padding, and leftover bits must be zero (RFC 4648 §3.5); `url_unescape` fails on a `%` without two hex digits or on a result that isn't UTF-8. `EncodingThappu` is a record with an `andhariki message: padham`, shown as the message.
+
 ### 25.2 Writing and reading values: `Raayochu` and `Chadhavochu`
 
 25.2.1 Two standard traits describe how a value is converted to and from a **data tree**, independent of any one format:
@@ -1393,6 +1399,13 @@ Module `encoding`: `b ni encoding.base64() -> padham` and `s ni encoding.base64_
 - **`Chadhavochu`** ("can be read") — `chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu]`, called as `r ni T.chadhuvu_cheyyi()`.
 
 Both are normally obtained with `@automatic Raayochu, Chadhavochu`. Implementing them by hand is allowed. Formats (§25.3) implement `Raasevaadu` ("writer") and `Chadhivevaadu` ("reader").
+
+25.2.1a Since there are no trait objects (Appendix F), `Raasevaadu` and `Chadhivevaadu` are concrete prelude types that build and hold a `DataChettu` ("data tree"), the enum `Null`, `Bool(ato_ito)`, `Ankam(ankam)`, `Aasajeevi(aasajeevi ankam)` (an unsigned value above `ankam`'s range), `PeddhaAnkam(padham)` (an integer beyond 64 bits, kept as its decimal digits), `Amsam(amsam)`, `Padham(padham)`, `Baitlu(baitlu)`, `Varusa(varusa[DataChettu])` and `Jodi(varusa[jatha[padham, DataChettu]])` (keys in order). A format converts between text and the tree. `x ni DataChettu.raayi()` writes a value as a tree and `t ni DataChettu.chadhuvu[T]()` reads one.
+- `Raasevaadu`: `null_raayi`, `b ni w.bool_raayi()`, `ankam_raayi`, `aasajeevi_raayi`, `amsam_raayi`, `padham_raayi`, `baitlu_raayi`, `chettu_raayi` (a whole tree); `varusa_modhalu`/`varusa_mugimpu` and `jodi_modhalu`/`k ni w.key()`/`jodi_mugimpu` open and close lists and maps like brackets; `x ni w.raayi()` for any `Raayochu`, and `k ni, x tho w.field()` for one entry. Writing a map value without a key traps T05.
+- `Chadhivevaadu`: `bool_chadhuvu`, `ankam_chadhuvu`, `aasajeevi_chadhuvu`, `amsam_chadhuvu`, `padham_chadhuvu`, `baitlu_chadhuvu`, `null_aa`, `varusa_chadhuvu` (a reader per element), `jodi_chadhuvu` (a `JodiChadhuvu`), `variant_chadhuvu` (an enum's variant name and fields), `r.chadhuvu[T]()`, `daari()`, `chettu()`, `chettu_theesuko()`, and `vidham ni r.thappu_ga()` / `kavali ni r.type_thappu()` to make errors at its path. `JodiChadhuvu` reads entries by key: `k ni m.field()`, `m.unte()` (missing or null is `ledhu`), `m.lekapothe()` (missing is the default), `m.key_theesuko()`, `m.anni()`, and `vadhileyochu ni m.mugimpu()` reports the first key nobody read.
+- A value read from text-only formats (`form`, `query`, `config`) is in **text mode**: text is also read as the number or truth value it spells (`true`/`on`/`1`, `false`/`off`/`0`), and a single value is read as a list of one.
+
+25.2.1b A trait's associated function (one without `naa`) may be called on any type the path names, a type parameter included: `T.kotthadhi()`, `r ni T.chadhuvu_cheyyi()`. `T` must implement the trait (E0801).
 
 25.2.2 **The data tree.** Every value maps to one of: null, boolean, integer (any value of a 64-bit signed or unsigned type), float (64-bit; NaN and infinities are rejected when written, `ChadhuvuThappu.Number`), text, bytes, list, map (text keys, ordered), and these mappings are normative:
 
@@ -1414,7 +1427,9 @@ Both are normally obtained with `@automatic Raayochu, Chadhavochu`. Implementing
 | `khali` | null |
 | `panchukunna[T]`, `pette[T]` | the value of `T` |
 
-Pointers, references (when reading), `pani`, `Token`, locks, channels and `Rahasyam` (§27.4) implement neither trait (E1303 at the `@automatic`).
+Pointers, references (when reading), `pani`, `Token`, locks, channels and `Rahasyam` (§27.4) implement neither trait (E1303 at the `@automatic`), except that `Rahasyam[T]` implements `Chadhavochu` when `T` does, so configuration and login forms can read secrets (§29.2); it is never written.
+
+25.2.2a Settled while implementing M13: `jodi[K, V]` and `gajibiji_jodi[K, V]` are maps exactly when `K` is `padham` (an empty one too); `gajibiji_jodi` is written sorted by the keys' text; `mukka[T]` is written but not read; tuples have the traits up to six elements; `aksharam` reads only a one-character text; a field of type `undochu[T]` reads `null` as `ledhu`. `[T; N]` arrays and `sardina_jodi` don't implement the traits yet in `antec` 0.1.x (E1303).
 
 25.2.3 **Attributes on fields and variants.** The grammar allows annotations before a record field and an enum variant (§5.1 as amended by this part: `field ::= annotation* 'andhariki'? NAME ':' type NEWLINE`, and likewise for `variant`). Recognized:
 - `@peru "name"`: the key used in the data tree ("name");
@@ -1423,9 +1438,9 @@ Pointers, references (when reading), `pani`, `Token`, locks, channels and `Rahas
 
 Reading a record **rejects unknown keys** (`ChadhuvuThappu.Theliyani(key)`, "unknown") unless the record carries `@theliyanivi_vadhiley` ("leave unknown ones"). Rejecting by default stops mass-assignment mistakes (Annex W.14).
 
-25.2.4 **Errors** carry a path to the bad value: `ChadhuvuThappu{daari: padham, vidham: ChadhuvuThappuVidham}` where `daari` looks like `.users[3].email` and `vidham` ("kind") is one of `Missing(key)`, `Theliyani(key)`, `TypeMismatch(kavali, vachindhi)` (two `padham` values: the type "wanted" and what "came"), `Number`, `Text`, `Custom(padham)`. Reading never traps.
+25.2.4 **Errors** carry a path to the bad value: `ChadhuvuThappu{daari: padham, vidham: ChadhuvuThappuVidham}` where `daari` looks like `.users[3].email` and `vidham` ("kind") is one of `Missing(key)`, `Theliyani(key)`, `TypeMismatch(kavali, vachindhi)` (two `padham` values: the type "wanted" and what "came"), `Number`, `Text`, `Duplicate(key)`, `ChaalaLothu` ("too deep"), `Custom(padham)`. Reading never traps. The whole value's path is `.`; a key adds `.key` and an element `[i]`. `Text` is input that isn't valid in the format; its `daari` is then the `line:column` of the problem, and so is `ChaalaLothu`'s. A `ChadhuvuThappu` shows as `daari: message`. A record's missing keys are reported before its unknown ones.
 
-25.2.5 **`Kotthadhi`** ("a new one", the default value): a standard trait with `kotthadhi() -> idhi`, called as `T.kotthadhi()`, implemented by numbers (0), `ato_ito` (`kaadhu`), `padham` (`""`), collections (empty), `undochu` (`ledhu`), tuples of `Kotthadhi` types, and derivable with `@automatic Kotthadhi` for records whose fields all implement it.
+25.2.5 **`Kotthadhi`** ("a new one", the default value): a standard trait with `kotthadhi() -> idhi`, called as `T.kotthadhi()`, implemented by numbers (0), `ato_ito` (`kaadhu`), `padham` (`""`), collections (empty), `undochu` (`ledhu`), tuples of `Kotthadhi` types, and derivable with `@automatic Kotthadhi` for records whose fields all implement it. `kotthadhi_ivvu[T]()` (§21.1) gives the default of a type a path can't name.
 
 ### 25.3 Formats
 
@@ -1437,12 +1452,14 @@ Reading a record **rejects unknown keys** (`ChadhuvuThappu.Theliyani(key)`, "unk
 
 JSON follows RFC 8259: UTF-8, no comments, no trailing commas, duplicate keys rejected (`ChadhuvuThappu.Duplicate`), nesting deeper than 128 rejected, integers that don't fit the target type rejected, numbers with a fraction or exponent read only into floats. Output escapes `"`, `\`, control characters, U+2028, U+2029, `<`, `>` and `&` (so JSON is safe to embed in HTML).
 
+25.3.1 Settled while implementing M13: JSON has no NaN or infinity, so `json.raayi` writes them as `null`, like JavaScript, and reading a number that overflows a float is `Number`. Floats are written as `padham_ga` shows them, except below 10⁻⁶ and from 10²¹ up, which use an exponent (`1.5e-7`, `1e+300`). Integers beyond 64 bits are read as `DataChettu.PeddhaAnkam` with their digits, so `json.Viluva` keeps them exactly. A lone UTF-16 surrogate in a `\u` escape is `Text`. `json.chettu_chadhuvu` reads text into a `DataChettu`. `form` writes a space as `+` and `query` as `%20`; both read `+` as a space; `form.chadhuvu` and `query.chadhuvu` read in text mode (§25.2.1a), and `query.chadhuvu` skips a leading `?`. A `Rahasyam[padham]` field (a password) counts as flat; E1305 is reported where a `form`/`query` function is called with its type known.
+
 ## 26. Time
 
 Module `samayam` (§21.3) gains wall-clock time and calendars.
-- `Kaalam` ("duration"): `n ni Kaalam.nanosec()`, `millisec`, `sec`, `nimishalu` (minutes), `gantalu` (hours), `rojulu` (days, exactly 86 400 s); `+`, `-`, comparison; `k.sec_lu() -> amsam64`; display as `1.5s`, `250ms`, `3m 20s`.
-- `Gadiyaram` ("clock reading"): an instant in UTC with nanosecond precision, from `samayam.ippudu_utc()`. `g + Kaalam`, `a - b -> Kaalam`, comparison, `g.unix_sec() -> ankam`, `n ni Gadiyaram.unix_nunchi()`. `g.rfc3339() -> padham` (always UTC, `Z`), `s ni Gadiyaram.rfc3339_chadhuvu() -> sare_thappu[Gadiyaram, SamayamThappu]` (any offset). Implements `Raayochu`/`Chadhavochu` as RFC 3339 text.
-- `Date` ("date") and `Time` ("time of day"), and `Zone` ("zone"): `peru ni samayam.zone() -> sare_thappu[Zone, SamayamThappu]` with an IANA name (`"Asia/Kolkata"`); the time zone database is bundled with the toolchain (its version is implementation-defined). `g ni, z tho samayam.ikkada() -> jatha[Date, Time]` ("here"); `t ni, v tho, z tho samayam.gadiyaram_ga() -> sare_thappu[Gadiyaram, SamayamThappu]` fails for local times that don't exist and picks the earlier one for times that occur twice.
+- `Kaalam` ("duration"): `n ni Kaalam.nanosec()`, `millisec`, `sec`, `nimishalu` (minutes), `gantalu` (hours), `rojulu` (days, exactly 86 400 s); `+`, `-`, comparison; `k.sec_lu() -> amsam64`, `k.millisec_lu()`, `k.nanosec_lu() -> ankam64`; display as `1.5s`, `250ms`, `3m 20s`. (r17: the getters were `millisec()`/`nanosec()`, names the constructors now use. A negative result of `-` is T01. Display: below 1 µs `ns`, then `µs`, `ms` and `s` with decimals, and from a minute up the non-zero units of `d`, `h`, `m` and `s`, as `1d 2h`.)
+- `Gadiyaram` ("clock reading"): an instant in UTC with nanosecond precision, from `samayam.ippudu_utc()`. `g + Kaalam`, `a - b -> Kaalam`, comparison, `g.unix_sec() -> ankam`, `n ni Gadiyaram.unix_nunchi()`. `g.rfc3339() -> padham` (always UTC, `Z`), `s ni Gadiyaram.rfc3339_chadhuvu() -> sare_thappu[Gadiyaram, SamayamThappu]` (any offset). Implements `Raayochu`/`Chadhavochu` as RFC 3339 text. (r17: the operator traits take two values of one type, so `g + k` is written `k ni g.kalupu()`, `g - k` is `k ni g.theesey()`, and `a - b` is `b ni a.theda() -> Kaalam` ("difference", T01 if `b` is later). `g.nanosec()` is the part of a second. RFC 3339 output has decimals only when the nanoseconds aren't zero, without trailing zeros; input accepts `T`, `t` or a space, `Z`, `z` or `±hh:mm`, and no leap second. `SamayamThappu` is a record with a `message`.)
+- `Date` ("date") and `Time` ("time of day"), and `Zone` ("zone"): `peru ni samayam.zone() -> sare_thappu[Zone, SamayamThappu]` with an IANA name (`"Asia/Kolkata"`); the time zone database is bundled with the toolchain (its version is implementation-defined). `g ni, z tho samayam.ikkada() -> jatha[Date, Time]` ("here"); `t ni, v tho, z tho samayam.gadiyaram_ga() -> sare_thappu[Gadiyaram, SamayamThappu]` fails for local times that don't exist and picks the earlier one for times that occur twice. (r17: `Date{year, month, day}` and `Time{hour, minute, sec, nanosec}` are records with public fields, shown as `2024-03-15` and `09:30:00`; `d.sariyaa()` checks a date is on the calendar and `d.vaaram()` gives the weekday, 0 for Sunday. `z.peru()` and `g ni z.offset()` (seconds east of UTC). The database may be the operating system's instead of a bundled one, as long as the implementation documents where it comes from and what it does without one; a zone name may contain only letters, digits, `/`, `_`, `-` and `+`, and never `..` or a leading `/`.)
 - `samayam.ippudu()` (monotonic, §21.3) is the only clock that never goes backwards; use it for measuring.
 
 ## 27. Randomness and cryptography
@@ -1454,7 +1471,7 @@ Module `bhadram` ("protection"). Every function is constant-time where the algor
 - `n ni bhadram.random_baitlu() -> baitlu`: `n` bytes from the operating system's cryptographically secure generator.
 - `a ni, b tho bhadram.random_ankam() -> ankam`: uniform in `a nunchi b lopu` without modulo bias (T05 if `a >= b`).
 - `bhadram.uuid_v4() -> padham`, `bhadram.uuid_v7() -> padham` (RFC 9562; v7 is time-ordered).
-- Module `random` provides a fast, seedable, **non-cryptographic** generator (`seed ni random.Generator.kotthadhi()`; `g.ankam(lo, hi)`, `g.amsam()`, `xs ni g.kalapu()`, "shuffle") with a documented algorithm (PCG-64), for simulations and games. It never seeds itself from the system.
+- Module `random` provides a fast, seedable, **non-cryptographic** generator (`seed ni random.Generator.kotthadhi()`; `g.ankam(lo, hi)`, `g.amsam()`, `xs ni g.kalapu()`, "shuffle") with a documented algorithm (PCG-64), for simulations and games. It never seeds itself from the system. (r17: `ankam` and `amsam` are type keywords and can't name methods, so they are `a ni, b tho g.number()` (uniform in `a nunchi b lopu`, T05 if `a >= b`) and `g.decimal()` (in `0.0` up to `1.0`, from 53 bits); `g.bits()` gives the raw 64 bits. The algorithm is PCG-64 XSL RR 128/64 with multiplier `0x2360ed051fc65da44385df649fccf645` and increment `0x5851f42d4c957f2d14057b7ef767814f`, seeded by a step, adding the seed, and a step.)
 
 ### 27.2 Hashing and authentication
 
@@ -1467,10 +1484,11 @@ Module `bhadram` ("protection"). Every function is constant-time where the algor
 - `p ni bhadram.password_hash() -> padham`: Argon2id with memory 19 456 KiB, 2 iterations and parallelism 1 (the OWASP minimum), a 16-byte random salt, in PHC string format (`$argon2id$v=19$m=19456,t=2,p=1$…`). The parameters may only grow in later revisions.
 - `p ni, h tho bhadram.password_check() -> sare_thappu[PasswordPhalitham, BhadramThappu]` with `PasswordPhalitham` = `Sare`, `SareKaaniMalliHashCheyyi` ("correct, but rehash": the stored hash uses weaker parameters) or `Thappu`. Comparison is constant-time.
 - `p` has type `&Rahasyam[padham]` in both functions (§27.4).
+- (r17) The stored hash needs a rehash when its memory is below 19 456 KiB, it has fewer than 2 passes, or its tag is shorter than 32 bytes. A hash that isn't a well-formed `argon2id` PHC string, or whose settings are out of range, is a `thappu(BhadramThappu)`; `BhadramThappu` is a record with a `message`.
 
 ### 27.4 Secrets and encryption
 
-- **`Rahasyam[T]`** ("secret") wraps a value that must not leak. Its `Choopinchochu` writes `***`. It implements neither `Raayochu` nor `XeroxTheeyochu` (copy explicitly with `r.bayatiki_theesuko().xerox()`), so it can't end up in a log line, a JSON response or page state by accident. `x ni Rahasyam.kotthadhi()`; `r.bayatiki_theesuko() -> &T` ("take it out") is the one way to reach the value. Its memory is overwritten with zeros when it is dropped.
+- **`Rahasyam[T]`** ("secret") wraps a value that must not leak. Its `Choopinchochu` writes `***`. It implements neither `Raayochu` nor `XeroxTheeyochu` (copy explicitly with `r.bayatiki_theesuko().xerox()`), so it can't end up in a log line, a JSON response or page state by accident. (r17: it implements `Chadhavochu` when `T` does, §25.2.2, and not `Polchochu`, so secrets are compared only with `bhadram.okkatenaa`. "Overwritten with zeros" covers the bytes of a scalar and the heap bytes of a `padham` or `baitlu`.) `x ni Rahasyam.kotthadhi()`; `r.bayatiki_theesuko() -> &T` ("take it out") is the one way to reach the value. Its memory is overwritten with zeros when it is dropped.
 - `data ni, key tho bhadram.encrypt() -> baitlu` and `bhadram.decrypt() -> sare_thappu[baitlu, BhadramThappu]`: AES-256-GCM with a random 12-byte nonce prepended, key `&Rahasyam[baitlu]` of exactly 32 bytes (T05 otherwise).
 - `n ni bhadram.key_tayaru() -> Rahasyam[baitlu]`: "make a key" of `n` random bytes.
 
@@ -1538,10 +1556,11 @@ Handlers compose as ordinary functions. `http.Router` matches method and path pa
 - Output goes to stderr: one JSON object per line (`{"samayam": "<rfc3339>", "level": "warn", "message": "…", "fields": {…}}`) in release builds, and a coloured human format in debug builds. `ANTE_LOG=debug|info|warn|error` sets the minimum level (default `info`).
 - Inside an HTTP handler every line also carries `request_id`.
 - `Rahasyam` values can't be logged (they aren't `Raayochu`).
+- (r17) The fields' collector is `migatha_perlu fields: jodi[padham, DataChettu]`, which accepts any `Raayochu` values (§11.4). A debug line reads `<rfc3339> <level> <message> key=<json> …`, coloured unless `NO_COLOR` is set; an unknown `ANTE_LOG` value means `info`. "Release build" means `antec build --release`; `antec run` and the interpreter write debug lines.
 
 ### 29.2 Configuration (`config` module)
 
-- `config.chadhuvu[T]() -> sare_thappu[T, ChadhuvuThappu]` reads a `Chadhavochu` record from environment variables: field `database_url` reads `DATABASE_URL`; nested records use `__` (`SMTP__HOST`); `undochu` fields are optional; `Rahasyam[padham]` fields read secrets. In debug builds, a `.env` file in the package folder is read first; release builds never read `.env`.
+- `config.chadhuvu[T]() -> sare_thappu[T, ChadhuvuThappu]` reads a `Chadhavochu` record from environment variables: field `database_url` reads `DATABASE_URL`; nested records use `__` (`SMTP__HOST`); `undochu` fields are optional; `Rahasyam[padham]` fields read secrets. In debug builds, a `.env` file in the package folder is read first; release builds never read `.env`. (r17: names are matched case-insensitively by lowercasing the variables, so a `@peru` key must be lowercase; the `.env` file is the one in the working folder, where `antec run` is started; a variable already in the environment wins over `.env`; values are read in text mode (§25.2.1a); variables the record doesn't name are ignored.)
 - A program should read its configuration once at startup and fail fast: `modhalu` returning `thappu(e)` prints the error path (§20.2).
 
 ### 29.3 SQL (`sql` module)
@@ -2778,6 +2797,13 @@ All keywords and standard-library names in this spec follow A.2. The locked word
 | `Thaalam` / `theruvu` | lock / open | mutex / lock() |
 | `bhadram` | "stay safe" | cryptography module |
 | `Rahasyam` | secret | secret value |
+| `baitlu` | bytes | `varusa[aasajeevi ankam8]` |
+| `Raayochu` / `Chadhavochu` | can be written / can be read | serialize / deserialize |
+| `DataChettu` / `Raasevaadu` / `Chadhivevaadu` | data tree / the one who writes / the one who reads | data model / serializer / deserializer |
+| `Kotthadhi` / `kotthadhi_ivvu` | a new one / give a new one | `Default` / `T::default()` |
+| `daari` / `vidham` | path / kind | error path / error kind |
+| `Gadiyaram` / `ikkada` / `theda` | clock / here / difference | instant / local time / `a - b` |
+| `kalapu` | mix | shuffle |
 | `Raaka` | arrival ("mee raaka") | how a page was reached |
 | `Aagna` / `Vinu` | (your royal) command / listen | page command / subscription |
 | `maarpu` / `roopam` | change / look | page update / view |
@@ -3268,6 +3294,19 @@ Python-level seeds name the packages they need; the suite pins them in its own `
 | DT005 | `Rahasyam` in a logged field | E1303 / type error (services level) |
 | DT006 | Argon2id hash, then check right and wrong passwords | `Sare`, `Thappu` (services level) |
 | DT007 | RFC 3339 parse and print across an offset; `Asia/Kolkata` local time | stdout matches (services level) |
+| DT008 | `encoding`: base64, base64url, hex and URL escapes both ways, their errors, and `baitlu_nunchi_lossy` | stdout matches (services level) |
+| DT009 | SHA-256, SHA-512, BLAKE3 and HMAC-SHA256 test vectors; `okkatenaa` | stdout matches (services level) |
+| DT010 | AES-256-GCM round trip, a wrong key and changed data; keys show as `***` | stdout matches (services level) |
+| DT011 | `form` and `query` both ways: repeated keys, text read as numbers and truth values, a secret field | stdout matches (services level) |
+| DT012 | A nested record given to `form.raayi` | E1305 (services level) |
+| DT013 | `Kaalam` constructors, arithmetic, order and display; moving a `Gadiyaram` and `theda` | stdout matches (services level) |
+| DT014 | `America/New_York`: rules past the last change, a skipped and a repeated local time, bad zone names | stdout matches (services level; needs the system's zoneinfo) |
+| DT015 | `json.Viluva`: big numbers, float formatting, HTML-safe escapes, numbers that don't fit, NaN, a lone surrogate | stdout matches (services level) |
+| DT016 | `@peru`, `@dhaachu`, `@lekapothe_kotthadhi`, a renamed variant, an unknown variant, a derived default | stdout matches (services level) |
+| DT017 | `@lekapothe_kotthadhi` on a type without `Kotthadhi` | E1304 (services level) |
+| DT018 | `random` with a seed gives fixed numbers; ranges, shuffle, `random_ankam`, UUIDs | stdout matches (services level) |
+| DT019 | `config` with optional and missing variables | stdout matches (services level) |
+| DT020 | Log fields of several `Raayochu` types; stdout unaffected | stdout matches (services level) |
 | NW001 | HTTP server and client in one program: GET, POST JSON, 404 | stdout matches (services level) |
 | NW002 | Body over the limit | 413 without calling the handler (services level) |
 | NW003 | Handler trap | 500, server keeps serving (services level) |
@@ -3556,6 +3595,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 | Revision | Release | Change |
 |---|---|---|
 | r18 | `antec` 0.1.1 | `antec lsp`, a language server for editors (§23.1). |
+| r17 | `antec` 0.1.1 | M13, data and security, settled while implementing it: `Raasevaadu`/`Chadhivevaadu` are concrete types over `DataChettu`, the data tree, which keeps integers beyond 64 bits as digits; text mode for text-only formats; paths, `Duplicate`, `ChaalaLothu` and `line:column` positions in `ChadhuvuThappu` (§25.2); `T.f()` for a trait's associated functions, also on type parameters (§25.2.1b); `Raayochu`/`Chadhavochu`/`Kotthadhi` derived as written "Ante" source (§13.6); `Rahasyam` is `Chadhavochu` (§25.2.2, §27.4); JSON writes NaN as `null` and floats JavaScript's way (§25.3.1); `form`/`query` spaces (§25.3.1); `Kaalam` getters are `millisec_lu`/`nanosec_lu`, `g + k` is `k ni g.kalupu()` and `a - b` is `b ni a.theda()`, `Date`/`Time` fields, the zone database may be the system's (§26); `random`'s `number`/`decimal` and its PCG-64 constants (§27.1); password rehash rules (§27.3); a `migatha_perlu` collector of `DataChettu` takes any `Raayochu` values (§11.4, §29.1); `config` names, `.env` and precedence (§29.2); `rakam_peru`, `kotthadhi_ivvu`, `baitlu_ga`, `baitlu_nunchi_lossy` (§21); seed cases DT008–DT020. |
 | r16 | `antec` 0.1.1 | Beginner readiness: `kuppa`, `line` and `sardina_jodi`, written in "Ante" (§21.2); `marpidi` and `varusa.marpidi` (§21.1, §21.2); a callee's receiver may be indexed (D7); a returned reference may come from any reference parameter (§9.3.2c); `antec run` builds natively when it can, and `antec pariksha` takes a name filter and folders (§23.1); a bad `@pariksha` signature is E1307 (§23.3); seed cases S020, S021, D017–D021, O037, O038, and O008 now tests a reference with no source. |
 | r15 | `antec` 0.1.1 | Hardening: deadlock is trap T15 (§20.3, §24.4); a recursive type may derive what its components need (§13.6); seed cases KK017, KK018, G029, O035, O036. |
 | r14 | `antec` 0.1.1 | M12, tasks and sharing: `panchukunna` is implemented; the `task` module's types are listed (§24.2); task closures are written at `pampu` and copy, move or re-borrow their captures (§24.3.3); `Key` and `Virigindhi` stay with their task (§24.3.2); `Moosesaaru{viluva}`; expectations keep what they watch alive (§24.4); noticing cancellation means `aagu` returns `Cancel` (§24.6); `Kaalam.sec` and `samayam.timer` (§21.3); `antec run` builds task programs natively (§22.6); seed cases KK011–KK016. |

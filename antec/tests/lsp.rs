@@ -432,6 +432,46 @@ fn a_package_across_files() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// `@automatic` adds implementations after the file and `json` brings in
+/// standard files written in "Ante"; the editor sees neither.
+#[test]
+fn automatic_and_std_files_stay_out_of_sight() {
+    let dir = scratch("automatic");
+    let path = dir.join("user.ante");
+    let text = "\
+json thechuko
+
+@automatic Raayochu, Chadhavochu
+rakam User ante:
+    peru: padham
+
+modhalu() -> khali ante:
+    u ante User{peru: \"Sita\"}
+    s ante &u ni json.raayi()
+    s ni choopinchu()
+";
+    fs::write(&path, text).unwrap();
+    let mut lsp = Lsp::start();
+    let uri = lsp.open(&path, text);
+    let diags = lsp.diagnostics(&uri);
+    assert!(diags.is_empty(), "{diags:?}");
+
+    let h = lsp.at("textDocument/hover", &uri, pos(text, "s ni", 0, 0), vec![]);
+    assert!(hover_text(&h).contains("padham"), "{h}");
+    let r = lsp.at(
+        "textDocument/references",
+        &uri,
+        pos(text, "User", 0, 0),
+        vec![("context", obj([("includeDeclaration", true.into())]))],
+    );
+    let lines = text.lines().count();
+    let found = r.get("result").arr();
+    assert_eq!(found.len(), 2, "{r}");
+    assert!(found.iter().all(|l| range_start(l).0 < lines), "{r}");
+    lsp.finish();
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn broken_input_never_crashes_it() {
     let dir = scratch("broken");

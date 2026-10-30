@@ -1,0 +1,75 @@
+# Data.01 · JSON: data ni text ga, text ni data ga 📦
+#
+# Web APIs, config files, mobile apps: andaru JSON lo maatladathaaru. Mana
+# `rakam` ni JSON ga raayadam (serialize), JSON ni malli `rakam` ga
+# chadavadam (deserialize) roju vaade pani.
+#
+# "Ante" lo prathi field ki code raayanakkarledhu. `@automatic Raayochu,
+# Chadhavochu` pedithe compiler ye aa code raasesthundhi:
+# - `x ni json.raayi()` compact text isthundhi, `json.andanga_raayi()`
+#   andanga (indent tho);
+# - `s ni json.chadhuvu[User]()` `sare(user)` leka `thappu(e)` isthundhi.
+#   Chadavadam eppudu crash avvadhu: thappu ekkado `e.daari` cheptundhi
+#   (`.address.pincode` laaga).
+#
+# Record lo leni key vasthe adhi kuda thappe (`Theliyani`): "admin": true
+# laanti extra keys ni evaru dongathanam ga pampinchalekunda. Avasaram
+# ayithe `@theliyanivi_vadhiley` pettandi.
+#
+# Run:   antec run learn/data/01_json.ante
+# Test:  antec pariksha learn/data/01_json.ante
+
+json thechuko
+
+@automatic Raayochu, Chadhavochu, Polchochu, Choopinchochu
+rakam Address ante:
+    city: padham
+    pincode: ankam
+
+@automatic Raayochu, Chadhavochu, Polchochu, Choopinchochu
+rakam User ante:
+    peru: padham
+    # `undochu` field: `ledhu` ayithe JSON lo aa key ae raadhu.
+    email: undochu[padham]
+    address: Address
+    tags: varusa[padham]
+
+sita() -> User ante:
+    a ante Address{city: "Vizag", pincode: 530001}
+    User{peru: "Sita", email: ledhu, address: a, tags: ["student", "coder"]} icchey
+
+modhalu() -> khali ante:
+    u ante sita()
+    &u ni json.andanga_raayi() |> choopinchu()
+    text ante "{\"peru\": \"Ram\", \"address\": {\"city\": \"Hyd\", \"pincode\": \"500001\"}, \"tags\": []}"
+    &text ni json.chadhuvu[User]() batti:
+        sare(r) aithe:
+            r ni choopinchu()
+        thappu(e) aithe:
+            f"Chadavalekapoyam: {e}" ni choopinchu()
+
+@pariksha
+round_trip() -> khali ante:
+    u ante sita()
+    s ante &u ni json.raayi()
+    (s == "{\"peru\":\"Sita\",\"address\":{\"city\":\"Vizag\",\"pincode\":530001},\"tags\":[\"student\",\"coder\"]}") nijame()
+    ((&s ni json.chadhuvu[User]()) == sare(u)) nijame()
+
+@pariksha
+thappu_daari() -> khali ante:
+    # pincode text ga vachindhi: thappu `.address.pincode` daggara.
+    text ante "{\"peru\": \"Ram\", \"address\": {\"city\": \"Hyd\", \"pincode\": \"500001\"}, \"tags\": []}"
+    &text ni json.chadhuvu[User]() batti:
+        sare(_) aithe:
+            "chadhavakoodadhu" ni kompa_munigindhi()
+        thappu(e) aithe:
+            (e.daari == ".address.pincode") nijame()
+
+@pariksha
+extra_key_thappu() -> khali ante:
+    text ante "{\"peru\": \"Ram\", \"address\": {\"city\": \"Hyd\", \"pincode\": 1}, \"tags\": [], \"admin\": true}"
+    &text ni json.chadhuvu[User]() batti:
+        sare(_) aithe:
+            "admin key ni oppukokoodadhu" ni kompa_munigindhi()
+        thappu(e) aithe:
+            (e.daari == ".admin") nijame()

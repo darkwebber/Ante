@@ -1554,7 +1554,12 @@ impl<'a, 'p> Builder<'a, 'p> {
                     let mut ops = Vec::new();
                     for (name, x) in xs {
                         ops.push(Operand::Const(Const::Str(Rc::from(name.as_str()))));
-                        ops.push(self.arg_operand(x, &vals, injected.as_ref(), pre.as_ref(), call.span));
+                        let op = self.arg_operand(x, &vals, injected.as_ref(), pre.as_ref(), call.span);
+                        let op = match &x.tree {
+                            Some(t) => self.write_tree(op, t, &formal(fi), call.span),
+                            None => op,
+                        };
+                        ops.push(op);
                     }
                     let t = self.temp(formal(fi));
                     self.assign(Place::local(t), Rvalue::Aggregate(Agg::Jodi(formal(fi)), ops));
@@ -1570,6 +1575,27 @@ impl<'a, 'p> Builder<'a, 'p> {
             Target::Opaque => Callee::Intrinsic(Intrinsic::Unsupported("torch/python".into())),
         };
         self.call(callee, args, dest, call.span);
+    }
+
+    /// `DataChettu.raayi(x)`: a log field written as a data tree (§29.1).
+    fn write_tree(&mut self, x: Operand, t: &Ty, collector: &Ty, span: Span) -> Operand {
+        let tree = match collector {
+            Ty::App(Con::Jodi, a) => a[1].clone(),
+            _ => Ty::Error,
+        };
+        let raayi = match &tree {
+            Ty::App(Con::Adt(d), _) => self
+                .g
+                .inherent
+                .get(&crate::typeck::Head::Con(Con::Adt(*d)))
+                .and_then(|m| m.get("raayi"))
+                .copied(),
+            _ => None,
+        };
+        let Some(fid) = raayi else { return x };
+        let tmp = self.temp(tree);
+        self.call(Callee::Fn(fid, vec![t.clone()]), vec![x], Place::local(tmp), span);
+        Operand::Move(Place::local(tmp))
     }
 
     fn stable_move(&mut self, op: Operand, ty: Ty) -> Operand {

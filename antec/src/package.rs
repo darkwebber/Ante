@@ -320,9 +320,6 @@ pub fn run_source(src: &SourceFile) -> Checked {
     compile(loaded, Action::Run { stream: false, args: Vec::new(), native: false })
 }
 
-/// The stages after parsing. Each runs only when the ones before it found
-/// no errors, so one mistake doesn't cascade; warnings are kept only when
-/// there are no errors at all.
 fn compile(loaded: Loaded, action: Action) -> Checked {
     compile_with(loaded, action, &mut |_| {})
 }
@@ -337,8 +334,41 @@ pub struct Inspect<'x, 'a> {
     pub typeck: Option<&'x crate::typeck::Typeck<'a>>,
 }
 
-/// `compile`, showing `inspect` the names and types once they are known.
-fn compile_with(loaded: Loaded, action: Action, inspect: &mut dyn FnMut(Inspect)) -> Checked {
+/// Compiles parsed modules, showing `inspect` the names and types once they
+/// are known. `@automatic` implementations written in "Ante" (`derive`) are
+/// added to their files first, and the diagnostics inside them are moved to
+/// the annotation that asked for them afterwards.
+fn compile_with(mut loaded: Loaded, action: Action, inspect: &mut dyn FnMut(Inspect)) -> Checked {
+    let mut written: Vec<(FileId, Vec<crate::derive::Written>)> = Vec::new();
+    for (_, file, ast) in &mut loaded.modules {
+        let Some(module) = ast else { continue };
+        let text = &loaded.sources[*file].text;
+        let Some((extra, w)) = crate::derive::expand(text, module) else { continue };
+        let src = SourceFile::new(loaded.sources[*file].name.clone(), format!("{text}\n{extra}"));
+        let (new_ast, diags) = crate::parse_source(&src);
+        loaded.diagnostics.extend(diags.into_iter().map(|d| (*file, d)));
+        *ast = new_ast;
+        loaded.sources[*file] = src;
+        written.push((*file, w));
+    }
+    let mut checked = compile_stages(loaded, action, inspect);
+    for (file, w) in &written {
+        let (mut mine, rest): (Vec<_>, Vec<_>) = checked.diagnostics.drain(..).partition(|(f, _)| f == file);
+        let mut diags: Vec<Diagnostic> = mine.drain(..).map(|(_, d)| d).collect();
+        crate::derive::remap(&mut diags, w);
+        checked.diagnostics = rest;
+        checked.diagnostics.extend(diags.into_iter().map(|d| (*file, d)));
+    }
+    if !written.is_empty() {
+        checked.diagnostics.sort_by_key(|(file, d)| (*file, d.span.start));
+    }
+    checked
+}
+
+/// The stages after parsing. Each runs only when the ones before it found
+/// no errors, so one mistake doesn't cascade; warnings are kept only when
+/// there are no errors at all.
+fn compile_stages(loaded: Loaded, action: Action, inspect: &mut dyn FnMut(Inspect)) -> Checked {
     let Loaded { mut sources, modules: mut parsed, mut diagnostics, entry, build } = loaded;
     let failed = |d: &[(FileId, Diagnostic)]| d.iter().any(|(_, d)| d.is_error());
     if failed(&diagnostics) && entry.is_none() {
@@ -348,11 +378,22 @@ fn compile_with(loaded: Loaded, action: Action, inspect: &mut dyn FnMut(Inspect)
     let std_file = sources.len();
     sources.push(SourceFile::new(stdlib::ANTE_SOURCE_FILE, stdlib::ANTE_SOURCE));
     parsed.push((stdlib::ANTE_SOURCE_MODULE.into(), std_file, Some(ante_source_ast().clone())));
+    // Standard modules' parts written in "Ante", for the modules in use.
+    for name in ante_modules_used(&sources, &parsed) {
+        let file = sources.len();
+        sources.push(SourceFile::new(
+            format!("<ante>/{name}.ante"),
+            stdlib::ante_module_source(name).unwrap_or(""),
+        ));
+        parsed.push((stdlib::ante_module_name(name), file, ante_module_ast(name).cloned()));
+        // A standard file that doesn't parse is a bug in `antec`; say where.
+        diagnostics.extend(ante_module_diagnostics(name).iter().map(|d| (file, d.clone())));
+    }
     let modules: Vec<SourceModule> = parsed
         .iter()
         .map(|(name, file, ast)| SourceModule { name: name.clone(), file: *file, ast: ast.as_ref() })
         .collect();
-    let user_modules: Vec<SourceModule> = modules.iter().filter(|m| m.file != std_file).cloned().collect();
+    let user_modules: Vec<SourceModule> = modules.iter().filter(|m| m.file < std_file).cloned().collect();
     let resolution = resolve::resolve(&modules);
     diagnostics.extend(resolution.diagnostics.iter().cloned());
     if let Some(entry) = &entry {
@@ -444,7 +485,7 @@ fn compile_with(loaded: Loaded, action: Action, inspect: &mut dyn FnMut(Inspect)
             let text: Vec<String> = program
                 .bodies
                 .iter()
-                .filter(|b| b.file != Some(std_file))
+                .filter(|b| !b.file.is_some_and(|f| f >= std_file))
                 .map(|b| b.render(&names, &ty_name))
                 .collect();
             mir = Some(text.join("\n"));
@@ -541,8 +582,9 @@ fn compile_with(loaded: Loaded, action: Action, inspect: &mut dyn FnMut(Inspect)
             }
         }
     }
-    // Warnings about the standard library are its authors' business.
-    diagnostics.retain(|(file, d)| *file != std_file || d.is_error());
+    // Warnings about the standard library (the prelude and the modules'
+    // "Ante" files after it) are its authors' business.
+    diagnostics.retain(|(file, d)| *file < std_file || d.is_error());
     let mut checked = finish(sources, diagnostics, run, mir);
     checked.built = built;
     checked.backend_errors = backend_errors;
@@ -598,6 +640,66 @@ pub fn ante_source_ast() -> &'static Module {
     })
 }
 
+/// A standard module's part written in "Ante", parsed once per process.
+pub fn ante_module_ast(name: &str) -> Option<&'static Module> {
+    let i = stdlib::ANTE_MODULES.iter().position(|(m, _)| *m == name)?;
+    ante_modules_parsed()[i].0.as_ref()
+}
+
+/// The parse errors of a standard module's part written in "Ante" (none,
+/// unless `antec` itself is broken; the test suite checks).
+fn ante_module_diagnostics(name: &str) -> &'static [Diagnostic] {
+    match stdlib::ANTE_MODULES.iter().position(|(m, _)| *m == name) {
+        Some(i) => &ante_modules_parsed()[i].1,
+        None => &[],
+    }
+}
+
+fn ante_modules_parsed() -> &'static [(Option<Module>, Vec<Diagnostic>)] {
+    static ASTS: std::sync::OnceLock<Vec<(Option<Module>, Vec<Diagnostic>)>> = std::sync::OnceLock::new();
+    ASTS.get_or_init(|| {
+        stdlib::ANTE_MODULES
+            .iter()
+            .map(|(name, text)| {
+                let src = SourceFile::new(format!("<ante>/{name}.ante"), *text);
+                crate::parse_source(&src)
+            })
+            .collect()
+    })
+}
+
+/// The standard library parts written in "Ante" that the program needs, in
+/// a fixed order: the modules it imports, directly or through another such
+/// part, and the prelude parts whose words its text mentions.
+fn ante_modules_used(
+    sources: &[SourceFile],
+    parsed: &[(String, FileId, Option<Module>)],
+) -> Vec<&'static str> {
+    let mut used: Vec<&'static str> = Vec::new();
+    let mut work: Vec<(&str, Option<&Module>)> =
+        parsed.iter().map(|(_, file, ast)| (sources[*file].text.as_str(), ast.as_ref())).collect();
+    while let Some((text, ast)) = work.pop() {
+        let imports = ast.into_iter().flat_map(|a| &a.items).filter_map(|item| match &item.kind {
+            crate::ast::ItemKind::Import(import) => Some(import.module.segments[0].name.as_str()),
+            _ => None,
+        });
+        let parts = stdlib::PRELUDE_PART_WORDS
+            .iter()
+            .filter(|(_, words)| words.iter().any(|w| text.contains(w)))
+            .map(|(part, _)| *part);
+        let wanted: Vec<&str> = imports.chain(parts).collect();
+        for want in wanted {
+            let Some((name, text)) = stdlib::ANTE_MODULES.iter().find(|(m, _)| *m == want) else { continue };
+            if !used.contains(name) {
+                used.push(name);
+                work.push((text, ante_module_ast(name)));
+            }
+        }
+    }
+    used.sort_by_key(|name| stdlib::ANTE_MODULES.iter().position(|(m, _)| m == name));
+    used
+}
+
 /// Whether a C compiler (`$ANTE_CC`, else `clang`) answers `--version`.
 fn have_cc() -> bool {
     let cc = std::env::var("ANTE_CC").unwrap_or_else(|_| "clang".into());
@@ -630,7 +732,13 @@ fn needs_native(program: &crate::mir::Program, g: &crate::typeck::Globals, build
     if program.bodies.iter().flat_map(|b| &b.locals).any(|l| shared(&l.ty)) {
         return true;
     }
-    program.bodies.iter().flat_map(|b| &b.blocks).any(|block| match &block.term {
+    // The standard library's own bodies are checked where they are called:
+    // generic code there (a `panchukunna`'s `Chadhavochu`) shouldn't make
+    // every program that compiles it native.
+    let std_body = |b: &&crate::mir::Body| {
+        b.file.is_some_and(|f| g.res.modules[g.module_of_file(f)].name.starts_with("<ante>"))
+    };
+    program.bodies.iter().filter(|b| !std_body(b)).flat_map(|b| &b.blocks).any(|block| match &block.term {
         Term::Call { callee: Callee::Fn(fid, tys), .. } => {
             let sig = &g.fns[*fid];
             if g.res.modules[sig.module].name == "task"
@@ -640,6 +748,7 @@ fn needs_native(program: &crate::mir::Program, g: &crate::typeck::Globals, build
                 return true;
             }
             match sig.origin {
+                FnOrigin::StdUnsafe if sig.name == "sunna_cheyyi" => false,
                 FnOrigin::Foreign | FnOrigin::StdUnsafe => true,
                 FnOrigin::Std => match (sig.owner.as_deref(), sig.name.as_str()) {
                     (Some("mukka"), "pointer") | (Some("pointer"), "jarugu") => true,
@@ -728,7 +837,14 @@ pub fn link_native(
     let dir = private_temp_dir()?;
     let result = (|| {
         let ll = dir.join("program.ll");
-        fs::write(&ll, &emitted.ir).map_err(|e| e.to_string())?;
+        let ir = if release {
+            emitted
+                .ir
+                .replace(crate::codegen::RELEASE_FLAG, &crate::codegen::RELEASE_FLAG.replace("false", "true"))
+        } else {
+            emitted.ir.clone()
+        };
+        fs::write(&ll, &ir).map_err(|e| e.to_string())?;
         let runtime = runtime_object(&cc, build.target.as_deref(), &dir)?;
         // The FFI glue (§22) declares C functions its own way, so clang's
         // idea of library builtins must stay out of it.

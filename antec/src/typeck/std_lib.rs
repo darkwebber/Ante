@@ -17,6 +17,7 @@ pub const SOURCES: &[(&str, &str)] = &[
     ("samayam", include_str!("../../std/samayam.ante")),
     ("memory", include_str!("../../std/memory.ante")),
     ("task", include_str!("../../std/task.ante")),
+    ("bhadram", include_str!("../../std/bhadram.ante")),
 ];
 
 pub struct StdFile {
@@ -241,14 +242,27 @@ mod tests {
     /// without errors.
     #[test]
     fn ante_source_is_clean() {
-        let src = crate::source::SourceFile::new(stdlib::ANTE_SOURCE_FILE, stdlib::ANTE_SOURCE);
-        let (_, diags) = crate::parse_source(&src);
-        let shown: Vec<String> = diags.iter().map(|d| d.render(&src)).collect();
-        assert!(shown.is_empty(), "{}", shown.join(""));
-        let formatted = crate::fmt::format_source(&src).ok();
-        assert!(formatted.as_deref() == Some(stdlib::ANTE_SOURCE), "run `antec fmt antec/std/ante`");
-        let lib = crate::source::SourceFile::new("lib.ante", "x() -> khali ante:\n    ()\n");
+        let files = std::iter::once((stdlib::ANTE_SOURCE_FILE.to_string(), stdlib::ANTE_SOURCE))
+            .chain(stdlib::ANTE_MODULES.iter().map(|(m, text)| (format!("<ante>/{m}.ante"), *text)));
+        for (name, text) in files {
+            let src = crate::source::SourceFile::new(name.clone(), text);
+            let (_, diags) = crate::parse_source(&src);
+            let shown: Vec<String> = diags.iter().map(|d| d.render(&src)).collect();
+            assert!(shown.is_empty(), "{}", shown.join(""));
+            let formatted = crate::fmt::format_source(&src).ok();
+            assert!(formatted.as_deref() == Some(text), "run `antec fmt antec/std/ante` ({name})");
+        }
+        // Every module part checks, imported by a program that uses nothing.
+        let imports: String = stdlib::ANTE_MODULES
+            .iter()
+            .filter(|(m, _)| !m.contains('/'))
+            .map(|(m, _)| format!("{m} thechuko\n"))
+            .collect();
+        // The comment names a prelude part's word, so the part is checked too.
+        let text = format!("{imports}# Raayochu\nx() -> khali ante:\n    ()\n");
+        let lib = crate::source::SourceFile::new("lib.ante", text);
         let found = crate::on_big_stack(move || crate::package::check_single(&lib));
+        let found: Vec<String> = found.iter().filter(|d| d.is_error()).map(|d| d.message.clone()).collect();
         assert!(found.is_empty(), "{found:?}");
     }
 
@@ -263,7 +277,10 @@ mod tests {
             let marker = matches!(*name, "CopyKottochu" | "Pampochu" | "Panchukovochu");
             assert!(marker || prelude.contains(&name.to_string()), "trait `{name}` has no declaration");
         }
-        for m in stdlib::STD_MODULES.iter().filter(|m| !m.open) {
+        // Modules written wholly in "Ante" may have no signature file.
+        for m in
+            stdlib::STD_MODULES.iter().filter(|m| !m.open && !(m.values.is_empty() && m.types.is_empty()))
+        {
             let names = declared(m.name);
             for name in m.values.iter().chain(m.types) {
                 assert!(names.contains(&name.to_string()), "`{}.{name}` has no signature", m.name);

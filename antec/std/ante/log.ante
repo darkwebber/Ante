@@ -1,0 +1,85 @@
+# `log`: structured logging on stderr (spec §29.1).
+#
+#     "login fail" ni, u.id user_id ga log.warn()
+#
+# Labelled values of any `Raayochu` type become the line's fields. Release
+# builds write one JSON object per line; debug builds (and `antec run`) write
+# a coloured line for people. `ANTE_LOG=debug|info|warn|error` sets the
+# lowest level written (default `info`); `NO_COLOR` turns colours off.
+
+json thechuko
+samayam thechuko
+system thechuko
+
+andhariki debug(message: padham ni, migatha_perlu fields: jodi[padham, DataChettu]) -> khali ante:
+    0 ni, &message tho, &fields ki raayi()
+
+andhariki info(message: padham ni, migatha_perlu fields: jodi[padham, DataChettu]) -> khali ante:
+    1 ni, &message tho, &fields ki raayi()
+
+andhariki warn(message: padham ni, migatha_perlu fields: jodi[padham, DataChettu]) -> khali ante:
+    2 ni, &message tho, &fields ki raayi()
+
+andhariki error(message: padham ni, migatha_perlu fields: jodi[padham, DataChettu]) -> khali ante:
+    3 ni, &message tho, &fields ki raayi()
+
+level_peru(level: ankam ni) -> padham ante:
+    level == 0 aithe:
+        "debug" icchey
+    level == 1 aithe:
+        "info" icchey
+    level == 2 aithe:
+        "warn" icchey
+    "error" icchey
+
+# The lowest level written, from `ANTE_LOG`.
+kanisam_level() -> ankam ante:
+    "ANTE_LOG" ni system.env() batti:
+        undhi(v) aithe:
+            0 nunchi 4 lopu okko l ki:
+                v == (l ni level_peru()) aithe:
+                    l icchey
+            1 icchey
+        ledhu aithe:
+            1 icchey
+
+raayi(level: ankam ni, message: &padham tho, fields: &jodi[padham, DataChettu] ki) -> khali ante:
+    level < kanisam_level() aithe:
+        icchey
+    ippudu ante samayam.ippudu_utc().rfc3339()
+    system._release() aithe:
+        maare entries: varusa[jatha[padham, DataChettu]] ante []
+        fields lo okko (k, v) ki:
+            (k.xerox(), v.xerox()) ni entries.cherchu()
+        maare w ante Raasevaadu.kotthadhi()
+        w.jodi_modhalu()
+        "samayam" ni, &ippudu tho w.field()
+        "level" ni, &(level ni level_peru()) tho w.field()
+        "message" ni, message tho w.field()
+        "fields" ni w.key()
+        DataChettu.Jodi(entries) ni w.chettu_raayi()
+        w.jodi_mugimpu()
+        t ante w.mugimpu()
+        &t ni json.raayi() |> gola_pettu()
+        icchey
+    rangu ante ("NO_COLOR" ni system.env()).ledhaa()
+    peru ante level ni level_peru()
+    maare line ante ""
+    rangu aithe:
+        line += f"\u{1b}[2m{ippudu}\u{1b}[0m "
+        line += f"{level ni rangu_code()}{peru}\u{1b}[0m "
+    ledhante:
+        line += f"{ippudu} {peru} "
+    line += message.xerox()
+    fields lo okko (k, v) ki:
+        line += f" {k}={v ni json.raayi()}"
+    line ni gola_pettu()
+
+rangu_code(level: ankam ni) -> padham ante:
+    level == 0 aithe:
+        "\u{1b}[36m" icchey
+    level == 1 aithe:
+        "\u{1b}[32m" icchey
+    level == 2 aithe:
+        "\u{1b}[33m" icchey
+    "\u{1b}[31m" icchey

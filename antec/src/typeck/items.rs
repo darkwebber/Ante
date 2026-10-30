@@ -27,7 +27,10 @@ pub fn check_items(g: &Globals, modules: &[SourceModule]) -> Vec<(FileId, Diagno
             Ty::App(Con::Adt(d), _) => g.adts.get(d).is_some_and(|a| a.file.is_some()),
             _ => false,
         };
-        if !local_trait && !local_type {
+        // The standard library written in "Ante" implements standard traits
+        // for the standard types it adds to (`samayam.Kaalam`).
+        let std_source = g.res.modules[g.module_of_file(imp.file)].name.starts_with("<ante>");
+        if !local_trait && !local_type && !std_source {
             err(
                 imp.file,
                 "E0803",
@@ -176,6 +179,8 @@ pub fn check_items(g: &Globals, modules: &[SourceModule]) -> Vec<(FileId, Diagno
             );
         }
     }
+
+    source_derives(g, modules, &mut err);
 
     // Foreign functions (§22.1) and the entry point (§7.5).
     for sig in &g.fns {
@@ -467,6 +472,121 @@ fn sig_mismatch(
         return Some("return type tappu".into());
     }
     None
+}
+
+/// A trait written in "Ante" in the standard library, by name.
+pub fn ante_trait(g: &Globals, name: &str) -> Option<usize> {
+    g.traits
+        .iter()
+        .filter(|(_, t)| t.name == name && g.res.modules[t.module].name.starts_with("<ante>"))
+        .map(|(&d, _)| d)
+        .min()
+}
+
+/// `@automatic Raayochu, Chadhavochu, Kotthadhi` (§25.2): each field that is
+/// written or read needs the trait (E1303; E0807 for `Kotthadhi`), and a
+/// field read as its default needs `Kotthadhi` (E1304). Enums have no
+/// default value (E0807).
+fn source_derives(
+    g: &Globals,
+    modules: &[SourceModule],
+    err: &mut impl FnMut(FileId, &'static str, Span, String),
+) {
+    use crate::ast::{AnnotationArg, ItemKind};
+    let kotthadhi = ante_trait(g, "Kotthadhi");
+    for m in modules {
+        let Some(ast) = m.ast else { continue };
+        let module = g.module_of_file(m.file);
+        for item in &ast.items {
+            let (name, members): (&str, Vec<(&[crate::ast::Annotation], usize)>) = match &item.kind {
+                ItemKind::Record(r) => {
+                    (&r.name.name, r.fields.iter().map(|f| (&f.annotations[..], 1)).collect())
+                }
+                ItemKind::Enum(e) => {
+                    (&e.name.name, e.variants.iter().map(|v| (&v.annotations[..], v.fields.len())).collect())
+                }
+                _ => continue,
+            };
+            let Some(&def) = g.res.modules[module].types.get(name) else { continue };
+            let Some(adt) = g.adts.get(&def) else { continue };
+            for a in item.annotations.iter().filter(|a| a.name.name == "automatic") {
+                let AnnotationArg::Names(names) = &a.arg else { continue };
+                for n in names {
+                    let tr = n.name.as_str();
+                    if !crate::stdlib::SOURCE_DERIVED_TRAITS.contains(&tr) {
+                        continue;
+                    }
+                    let Some(tdef) = ante_trait(g, tr) else { continue };
+                    let is_enum = matches!(adt.kind, AdtKind::Enum(_));
+                    if is_enum && tr == "Kotthadhi" {
+                        err(
+                            m.file,
+                            "E0807",
+                            a.span,
+                            format!("`{name}` enum ki `Kotthadhi` derive cheyyalem, records ki matrame"),
+                        );
+                        continue;
+                    }
+                    let args: Vec<Ty> = (0..adt.generics.len() as u32).map(Ty::Param).collect();
+                    let mut generics = adt.generics.clone();
+                    for gp in &mut generics {
+                        gp.bounds.push(TraitRef { def: tdef, args: Vec::new() });
+                    }
+                    let solver = Solver { g, generics: &generics };
+                    let has = |t: &Ty, d: usize| {
+                        solver.implements(
+                            &mut InferTable::default(),
+                            t,
+                            &TraitRef { def: d, args: Vec::new() },
+                            0,
+                        )
+                    };
+                    // Field types in declaration order, next to their annotations.
+                    let types: Vec<Ty> = match &adt.kind {
+                        AdtKind::Record(fs) => fs.iter().map(|f| f.ty.subst(&args)).collect(),
+                        AdtKind::Enum(vs) => {
+                            vs.iter().flat_map(|v| v.fields.iter().map(|t| t.subst(&args))).collect()
+                        }
+                    };
+                    let mut types = types.into_iter();
+                    let mut reported = false;
+                    for (annotations, count) in &members {
+                        let hidden = annotations.iter().any(|x| x.name.name == "dhaachu");
+                        let default = annotations.iter().any(|x| x.name.name == "lekapothe_kotthadhi");
+                        for _ in 0..*count {
+                            let Some(t) = types.next() else { break };
+                            if reported {
+                                continue;
+                            }
+                            let needs_default = tr != "Raayochu" && (hidden || default) || tr == "Kotthadhi";
+                            if needs_default && !kotthadhi.is_some_and(|k| has(&t, k)) {
+                                let shown = show(g, &t);
+                                let code = if tr == "Kotthadhi" { "E0807" } else { "E1304" };
+                                err(
+                                    m.file,
+                                    code,
+                                    a.span,
+                                    format!("`{shown}` ki `Kotthadhi` (default value) ledhu"),
+                                );
+                                reported = true;
+                            } else if !hidden && tr != "Kotthadhi" && !has(&t, tdef) {
+                                let shown = show(g, &t);
+                                let what =
+                                    if tr == "Raayochu" { "raayalem (write)" } else { "chadhavalem (read)" };
+                                err(
+                                    m.file,
+                                    "E1303",
+                                    a.span,
+                                    format!("`{name}` lo `{shown}` field ni {what}: daaniki `{tr}` ledhu"),
+                                );
+                                reported = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// A type as the programmer writes it (`varusa[ankam64]`), for messages.

@@ -17,3 +17,8 @@ bayata "ante" ante:
     nadupu(prog: &padham ni, args: &mukka[padham] tho) -> sare_thappu[Phalitham, SystemThappu]
     os() -> padham
     arch() -> padham
+    # Whether this is a release build (`antec build --release`), for `log`
+    # and `config` (§29).
+    _release() -> ato_ito
+    # Every environment variable as `NAME=value`, separated by NUL, for `config`.
+    _env_text() -> padham

@@ -13,6 +13,63 @@ pub const ANTE_SOURCE: &str = include_str!("../std/ante/prelude.ante");
 /// The file name its diagnostics and traps point at.
 pub const ANTE_SOURCE_FILE: &str = "<ante>/prelude.ante";
 
+/// Standard modules with a part written in "Ante" (`antec/std/ante/<name>.ante`).
+/// A program compiles one only when it (or another such part) imports the
+/// module. The part is its own hidden module, `<ante>/<name>`; its public
+/// items are reached through the standard module's name, next to the
+/// intrinsics the module's signature file declares.
+pub const ANTE_MODULES: &[(&str, &str)] = &[
+    ("prelude/data", include_str!("../std/ante/data.ante")),
+    ("encoding", include_str!("../std/ante/encoding.ante")),
+    ("json", include_str!("../std/ante/json.ante")),
+    ("form", include_str!("../std/ante/form.ante")),
+    ("query", include_str!("../std/ante/query.ante")),
+    ("samayam", include_str!("../std/ante/samayam.ante")),
+    ("bhadram", include_str!("../std/ante/bhadram.ante")),
+    ("log", include_str!("../std/ante/log.ante")),
+    ("config", include_str!("../std/ante/config.ante")),
+    ("random", include_str!("../std/ante/random.ante")),
+];
+
+/// Parts of the prelude written in "Ante" (`prelude/<part>` above) that a
+/// program compiles only when its text mentions one of their words, so small
+/// programs stay quick to build. Their public items are in the prelude.
+pub const PRELUDE_PART_WORDS: &[(&str, &[&str])] = &[(
+    "prelude/data",
+    &[
+        "Raayochu",
+        "Chadhavochu",
+        "Kotthadhi",
+        "Rahasyam",
+        "DataChettu",
+        "Raasevaadu",
+        "Chadhivevaadu",
+        "ChadhuvuThappu",
+        "JodiChadhuvu",
+    ],
+)];
+
+/// Whether a source file is part of the standard library written in "Ante"
+/// (the prelude, its parts, and the modules' parts) rather than the program.
+pub fn is_ante_source_file(name: &str) -> bool {
+    name.starts_with("<ante>/")
+}
+
+/// Whether a hidden module is a part of the prelude.
+pub fn is_prelude_part(module: &str) -> bool {
+    module.starts_with("<ante>/prelude/")
+}
+
+/// The hidden module holding a standard module's part written in "Ante".
+pub fn ante_module_name(module: &str) -> String {
+    format!("<ante>/{module}")
+}
+
+/// That part's source, if the module has one.
+pub fn ante_module_source(module: &str) -> Option<&'static str> {
+    ANTE_MODULES.iter().find(|(m, _)| *m == module).map(|(_, s)| *s)
+}
+
 /// Built-in type words. The parser keeps them as single-segment type paths.
 pub const BUILTIN_TYPES: &[&str] = &[
     "ankam",
@@ -36,6 +93,7 @@ pub const BUILTIN_TYPES: &[&str] = &[
     "panchukunna",
     "khali",
     "raadhu",
+    "baitlu",
 ];
 
 pub fn is_builtin_type(name: &str) -> bool {
@@ -54,6 +112,7 @@ pub const PRELUDE_VALUES: &[&str] = &[
     "kolpothu_maarchu",
     "marpidi",
     "size_of",
+    "rakam_peru",
     "align_of",
     "kalipi",
     "modhati",
@@ -97,7 +156,7 @@ pub const PRELUDE_TRAITS: &[&str] = &[
 ];
 
 /// Annotations the compiler knows (§13.6, §18.3, §22, §23.3).
-pub const ANNOTATIONS: &[&str] = &["pariksha", "twaraga", "automatic", "bayata", "C"];
+pub const ANNOTATIONS: &[&str] = &["pariksha", "twaraga", "automatic", "bayata", "C", "theliyanivi_vadhiley"];
 
 /// Renamed words (old, new) that still work with warning W0100 for one
 /// minor release (§23.5, docs/VERSIONING.md). Spec r7 replaced these
@@ -122,14 +181,20 @@ pub fn renamed_message(old: &str, new: &str) -> String {
 
 /// Item annotations the spec defines that `antec` doesn't implement yet
 /// (E1202): Part IX and Annex W.
-pub const PLANNED_ANNOTATIONS: &[&str] = &["server", "theliyanivi_vadhiley"];
+pub const PLANNED_ANNOTATIONS: &[&str] = &["server"];
 
-/// Field and variant annotations (§25.2.3, Annex W.10), not implemented yet.
-pub const PLANNED_MEMBER_ANNOTATIONS: &[&str] =
-    &["peru", "lekapothe_kotthadhi", "dhaachu", "daari", "dorakaledhu"];
+/// Field and variant annotations of the data tree (§25.2.3).
+pub const MEMBER_ANNOTATIONS: &[&str] = &["peru", "lekapothe_kotthadhi", "dhaachu"];
 
-/// Standard traits of Part IX and Annex W that `@automatic` will derive.
-pub const PLANNED_TRAITS: &[&str] = &["Raayochu", "Chadhavochu", "Kotthadhi", "web.Daari"];
+/// Field and variant annotations (Annex W.10), not implemented yet.
+pub const PLANNED_MEMBER_ANNOTATIONS: &[&str] = &["daari", "dorakaledhu"];
+
+/// Standard traits of Annex W that `@automatic` will derive.
+pub const PLANNED_TRAITS: &[&str] = &["web.Daari"];
+
+/// Traits written in "Ante" (`std/ante/prelude.ante`) that `@automatic`
+/// derives by writing their implementation as "Ante" source (§25.2).
+pub const SOURCE_DERIVED_TRAITS: &[&str] = &["Raayochu", "Chadhavochu", "Kotthadhi"];
 
 pub struct StdModule {
     pub name: &'static str,
@@ -199,14 +264,30 @@ pub const STD_MODULES: &[StdModule] = &[
     },
     StdModule {
         name: "system",
-        values: &["args", "env", "line_chadhuvu", "flush", "vellipo", "nadupu", "os", "arch"],
+        values: &[
+            "args",
+            "env",
+            "line_chadhuvu",
+            "flush",
+            "vellipo",
+            "nadupu",
+            "os",
+            "arch",
+            "_release",
+            "_env_text",
+        ],
         types: &["Phalitham", "SystemThappu"],
         open: false,
     },
-    StdModule { name: "samayam", values: &["ippudu", "timer"], types: &["Kshanam", "Kaalam"], open: false },
+    StdModule {
+        name: "samayam",
+        values: &["ippudu", "timer", "_utc_nanosec"],
+        types: &["Kshanam", "Kaalam"],
+        open: false,
+    },
     StdModule {
         name: "memory",
-        values: &["allocate", "release", "reallocate", "copy"],
+        values: &["allocate", "release", "reallocate", "copy", "sunna_cheyyi"],
         types: &[],
         open: false,
     },
@@ -229,6 +310,30 @@ pub const STD_MODULES: &[StdModule] = &[
         ],
         open: false,
     },
+    // Modules written wholly in "Ante" (`ANTE_MODULES`), apart from the
+    // intrinsics their signature files declare.
+    StdModule { name: "encoding", values: &[], types: &[], open: false },
+    StdModule { name: "json", values: &[], types: &[], open: false },
+    StdModule { name: "form", values: &[], types: &[], open: false },
+    StdModule { name: "query", values: &[], types: &[], open: false },
+    StdModule {
+        name: "bhadram",
+        values: &[
+            "sha256",
+            "sha512",
+            "blake3",
+            "random_baitlu",
+            "okkatenaa",
+            "_argon2id",
+            "_aes_gcm_seal",
+            "_aes_gcm_open",
+        ],
+        types: &[],
+        open: false,
+    },
+    StdModule { name: "random", values: &[], types: &[], open: false },
+    StdModule { name: "log", values: &[], types: &[], open: false },
+    StdModule { name: "config", values: &[], types: &[], open: false },
     StdModule { name: "torch", values: &[], types: &[], open: true },
     StdModule { name: "python", values: &[], types: &[], open: true },
 ];

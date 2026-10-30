@@ -161,6 +161,10 @@ struct Resolver {
     prelude: ModId,
     /// The standard library written in "Ante" (`stdlib::ANTE_SOURCE_MODULE`).
     ante_source: Option<ModId>,
+    /// A standard module's part written in "Ante" (`stdlib::ANTE_MODULES`).
+    halves: HashMap<ModId, ModId>,
+    /// Parts of the prelude written in "Ante" (`stdlib::PRELUDE_PART_WORDS`).
+    prelude_parts: Vec<ModId>,
     variants: HashMap<DefId, Vec<String>>,
     fields: HashMap<DefId, Vec<String>>,
     members: HashMap<DefId, HashSet<String>>,
@@ -198,6 +202,8 @@ impl Resolver {
             module_by_name: HashMap::new(),
             prelude: 0,
             ante_source: None,
+            halves: HashMap::new(),
+            prelude_parts: Vec::new(),
             variants: HashMap::new(),
             fields: HashMap::new(),
             members: HashMap::new(),
@@ -299,6 +305,13 @@ impl Resolver {
             self.module_by_name.insert(source.name.clone(), m);
             if source.name == stdlib::ANTE_SOURCE_MODULE {
                 self.ante_source = Some(m);
+            }
+            if stdlib::is_prelude_part(&source.name) {
+                self.prelude_parts.push(m);
+            } else if let Some(std_name) = source.name.strip_prefix("<ante>/") {
+                if let Some(s) = self.modules.iter().position(|d| d.name == std_name && d.file.is_none()) {
+                    self.halves.insert(s, m);
+                }
             }
             ids.push(m);
         }
@@ -422,6 +435,7 @@ impl Resolver {
         }
         let module = &self.modules[m];
         let found = module.values.get(&ident.name).or_else(|| module.types.get(&ident.name)).copied();
+        let found = found.or_else(|| self.half_item(m, &ident.name));
         let Some(d) = found else {
             let module_name = self.modules[m].name.clone();
             self.error(missing_code, ident.span, format!("`{module_name}` module lo `{}` ledhu", ident.name));
@@ -439,6 +453,13 @@ impl Resolver {
             );
         }
         Some(d)
+    }
+
+    /// A public item of a standard module's part written in "Ante".
+    fn half_item(&self, m: ModId, name: &str) -> Option<DefId> {
+        let half = &self.modules[*self.halves.get(&m)?];
+        let d = *half.values.get(name).or_else(|| half.types.get(name))?;
+        self.defs[d].public.then_some(d)
     }
 
     fn bind_import(&mut self, ident: &Ident, d: DefId) {
@@ -513,7 +534,8 @@ impl Resolver {
             return Some(d);
         }
         let DefKind::Module(m) = self.defs[d].kind else { return None };
-        self.modules[m].types.get(&path.segments[1].name).copied()
+        let name = &path.segments[1].name;
+        self.modules[m].types.get(name).copied().or_else(|| self.half_item(m, name))
     }
 
     fn collect_members(&mut self, ast: &Module) {
@@ -566,9 +588,11 @@ impl Resolver {
 
     /// A public item of the standard library written in "Ante".
     fn ante_source_item(&self, name: &str, ns: Ns) -> Option<DefId> {
-        let m = &self.modules[self.ante_source?];
-        let d = *if ns == Ns::Value { m.values.get(name) } else { m.types.get(name) }?;
-        self.defs[d].public.then_some(d)
+        self.ante_source.into_iter().chain(self.prelude_parts.iter().copied()).find_map(|m| {
+            let m = &self.modules[m];
+            let d = *if ns == Ns::Value { m.values.get(name) } else { m.types.get(name) }?;
+            self.defs[d].public.then_some(d)
+        })
     }
 
     fn is_generic(&self, name: &str) -> bool {
@@ -633,12 +657,18 @@ impl Resolver {
 
     // ── pass 4: items and bodies ───────────────────────────────────────────
 
-    /// Annotations on record fields and enum variants: all of them belong to
-    /// features that this compiler doesn't implement yet (Part IX, Annex W).
+    /// Annotations on record fields and enum variants: the data tree's
+    /// (§25.2.3), and Annex W's, which this compiler doesn't implement yet.
     fn check_member_annotations(&mut self, annotations: &[Annotation]) {
         for a in annotations {
             let name = a.name.name.as_str();
-            if stdlib::PLANNED_MEMBER_ANNOTATIONS.contains(&name) {
+            if stdlib::MEMBER_ANNOTATIONS.contains(&name) {
+                let wants_text = name == "peru";
+                if wants_text != matches!(a.arg, AnnotationArg::Str(_)) {
+                    let what = if wants_text { "oka peru (\"…\") kavali" } else { "emi teeskodhu" };
+                    self.error("E1307", a.name.span, format!("`@{name}` ki {what}"));
+                }
+            } else if stdlib::PLANNED_MEMBER_ANNOTATIONS.contains(&name) {
                 self.not_yet(a.name.span, &format!("`@{name}`"));
             } else if stdlib::ANNOTATIONS.contains(&name) || stdlib::PLANNED_ANNOTATIONS.contains(&name) {
                 self.error(
@@ -673,7 +703,8 @@ impl Resolver {
                 self.not_yet(a.name.span, &format!("`@{}`", a.name.name));
                 continue;
             }
-            if stdlib::PLANNED_MEMBER_ANNOTATIONS.contains(&a.name.name.as_str()) {
+            let member = stdlib::MEMBER_ANNOTATIONS.iter().chain(stdlib::PLANNED_MEMBER_ANNOTATIONS);
+            if member.clone().any(|m| *m == a.name.name) {
                 self.error(
                     "E1307",
                     a.name.span,
@@ -1155,7 +1186,8 @@ impl Resolver {
                 self.resolve_rest(member, &rest[1..])
             }
             DefKind::Enum => {
-                let known = self.variants.get(&d).is_some_and(|vs| vs.contains(&seg.name));
+                let known = self.variants.get(&d).is_some_and(|vs| vs.contains(&seg.name))
+                    || self.members.get(&d).is_some_and(|m| m.contains(&seg.name));
                 if !known {
                     let enum_name = self.defs[d].name.clone();
                     self.error(

@@ -131,11 +131,10 @@ impl Index {
             variant_spans: HashMap::new(),
             pending_types: Vec::new(),
         };
-        let std_file = i.sources.iter().position(|s| s.name == crate::stdlib::ANTE_SOURCE_FILE);
-        for (file, src) in i.sources.iter().enumerate() {
+        for src in i.sources {
             b.ix.files.push(FileIndex {
                 text: src.text.clone(),
-                user: Some(file) != std_file,
+                user: !crate::stdlib::is_ante_source_file(&src.name),
                 ..FileIndex::default()
             });
         }
@@ -167,6 +166,22 @@ impl Index {
             f.types.sort_by_key(|(s, _)| (s.start, std::cmp::Reverse(s.end)));
         }
         b.ix
+    }
+
+    /// Cuts file `file` back to `text`, the editor's text, when the check
+    /// saw it with `@automatic` implementations added after it (`derive`):
+    /// what's in the added part has no place in the editor.
+    pub fn trim_to(&mut self, file: FileId, text: &str) {
+        let Some(f) = self.files.get_mut(file) else { return };
+        if f.text.len() <= text.len() || !f.text.starts_with(text) {
+            return;
+        }
+        let end = text.len();
+        f.text.truncate(end);
+        f.occs.retain(|o| o.span.end <= end);
+        f.types.retain(|(s, _)| s.end <= end);
+        f.locals.retain(|l| l.decl.end <= end);
+        f.fns.retain(|s| s.body.end <= end);
     }
 
     /// The occurrence under byte offset `at`, preferring one that contains

@@ -98,6 +98,9 @@ pub struct ArgRef {
     pub borrow: bool,
     /// The formal is an iterable (`Pravaham`): convert the value to an iterator.
     pub iter: Option<Ty>,
+    /// A `migatha_perlu` collector of `DataChettu` (§29.1): the argument, a
+    /// reference to a `Raayochu` value of this type, is written as a tree.
+    pub tree: Option<Ty>,
 }
 
 #[derive(Clone, Debug)]
@@ -209,6 +212,7 @@ impl Results {
             for a in &mut v.args {
                 let fix = |x: &mut ArgRef, r: &mut dyn FnMut(&Ty) -> Ty| {
                     x.iter = x.iter.as_ref().map(&mut *r);
+                    x.tree = x.tree.as_ref().map(&mut *r);
                 };
                 match a {
                     ArgPlan::One(x) => fix(x, &mut r),

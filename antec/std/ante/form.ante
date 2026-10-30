@@ -1,0 +1,139 @@
+# `form`: `application/x-www-form-urlencoded` text (spec §25.3), the way an
+# HTML form sends its fields: `name=Sita&age=20&tag=a&tag=b`.
+#
+# Only flat records fit: fields that are numbers, `padham`, `undochu` of
+# those, or `varusa` of those (a key given many times). Anything else is
+# E1305 where `form.raayi` or `form.chadhuvu` is called.
+
+encoding thechuko
+
+# `x` as form text; a space becomes `+`.
+andhariki raayi[T: Raayochu](x: &T ni) -> padham ante:
+    (x ni, avunu tho raayi_ila()) icchey
+
+# Reads a `T` from form text.
+andhariki chadhuvu[T: Chadhavochu](s: &padham ni) -> sare_thappu[T, ChadhuvuThappu] ante:
+    t ante s ni chettu_chadhuvu()?
+    maare r ante t ni Chadhivevaadu.text_nunchi()
+    (&maare r ni T.chadhuvu_cheyyi()) icchey
+
+# `x` as `key=value` pairs joined by `&`; `plus` writes a space as `+`
+# (forms) instead of `%20` (`query`).
+andhariki raayi_ila[T: Raayochu](x: &T ni, plus: ato_ito tho) -> padham ante:
+    t ante x ni DataChettu.raayi()
+    maare out ante ""
+    t batti:
+        DataChettu.Jodi(entries) aithe:
+            entries lo okko e ki:
+                &e.1 batti:
+                    DataChettu.Varusa(xs) aithe:
+                        xs lo okko v ki:
+                            &e.0 ni, v tho, &maare out ki, plus kosam jatha_raayi()
+                    v aithe:
+                        &e.0 ni, v tho, &maare out ki, plus kosam jatha_raayi()
+        _ aithe:
+            ()
+    out icchey
+
+# One `key=value` pair; `null` (an absent `undochu`) writes nothing.
+jatha_raayi(
+    k: &padham ni,
+    v: &DataChettu tho,
+    out: &maare padham ki,
+    plus: ato_ito kosam,
+) -> khali ante:
+    maare text ante ""
+    v batti:
+        DataChettu.Null aithe:
+            icchey
+        DataChettu.Bool(b) aithe:
+            text lo b.padham_ga() pettu
+        DataChettu.Ankam(n) aithe:
+            text lo n.padham_ga() pettu
+        DataChettu.Aasajeevi(n) aithe:
+            text lo n.padham_ga() pettu
+        DataChettu.PeddhaAnkam(d) aithe:
+            text lo d.xerox() pettu
+        DataChettu.Amsam(x) aithe:
+            text lo x.padham_ga() pettu
+        DataChettu.Padham(s) aithe:
+            text lo s.xerox() pettu
+        DataChettu.Baitlu(b) aithe:
+            text lo (b ni encoding.base64()) pettu
+        _ aithe:
+            icchey
+    out.byte_len() > 0 aithe:
+        *out += "&"
+    *out += k ni, plus tho escape()
+    *out += "="
+    *out += &text ni, plus tho escape()
+
+# Percent-escapes all but `A–Z a–z 0–9 - . _ ~`; a space is `+` with `plus`.
+escape(s: &padham ni, plus: ato_ito tho) -> padham ante:
+    plus aithe:
+        maare out ante ""
+        parts ante " " ni s.vidagottu()
+        maare first ante avunu
+        parts lo okko p ki:
+            !first aithe:
+                out += "+"
+            first lo kaadhu pettu
+            out += p ni encoding.url_escape()
+        out icchey
+    (s ni encoding.url_escape()) icchey
+
+# Form text as a map from keys to text; a repeated key gives a list.
+andhariki chettu_chadhuvu(s: &padham ni) -> sare_thappu[DataChettu, ChadhuvuThappu] ante:
+    maare entries: varusa[jatha[padham, DataChettu]] ante []
+    pairs ante "&" ni s.vidagottu()
+    pairs lo okko pair ki:
+        pair.byte_len() == 0 aithe:
+            vadhiley
+        kv ante "=" ni pair.vidagottu()
+        k ante &kv[0] ni unescape()?
+        maare v ante ""
+        kv.enni() > 1 aithe:
+            # `=` inside the value belongs to it.
+            maare rest ante kv[1].xerox()
+            2 nunchi kv.enni() lopu okko i ki:
+                rest += "="
+                rest += kv[i].xerox()
+            v lo (&rest ni unescape()?) pettu
+        &k ni, DataChettu.Padham(v) tho, &maare entries ki cherchu()
+    sare(DataChettu.Jodi(entries)) icchey
+
+# Adds `k = v`; a key seen before collects its values in a list.
+cherchu(
+    k: &padham ni,
+    v: DataChettu tho,
+    entries: &maare varusa[jatha[padham, DataChettu]] ki,
+) -> khali ante:
+    0 nunchi entries.enni() lopu okko i ki:
+        entries[i].0 == *k aithe:
+            paatha ante &maare entries[i].1, DataChettu.Null ni marpidi()
+            paatha batti:
+                DataChettu.Varusa(xs) aithe:
+                    maare xs ante xs
+                    v ni xs.cherchu()
+                    entries[i].1 lo DataChettu.Varusa(xs) pettu
+                p aithe:
+                    entries[i].1 lo DataChettu.Varusa([p, v]) pettu
+            icchey
+    (k.xerox(), v) ni entries.cherchu()
+
+# `+` is a space; `%XY` is the byte XY.
+unescape(s: &padham ni) -> sare_thappu[padham, ChadhuvuThappu] ante:
+    spaced ante "+" ni s.vidagottu()
+    maare joined ante ""
+    maare first ante avunu
+    spaced lo okko p ki:
+        !first aithe:
+            joined += " "
+        first lo kaadhu pettu
+        joined += p.xerox()
+    &joined ni encoding.url_unescape() batti:
+        sare(t) aithe:
+            sare(t) icchey
+        thappu(e) aithe:
+            vidham ante ChadhuvuThappuVidham.Custom(f"`{s}`: {e}")
+            thappu("." ni, vidham tho ChadhuvuThappu.kotthadhi()) icchey

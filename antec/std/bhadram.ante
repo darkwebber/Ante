@@ -1,0 +1,32 @@
+# `bhadram`: spec §27. Signatures only: the primitives are intrinsics (in
+# `src/interp/crypto.rs` and `runtime/ante_crypto.c`); the rest of the
+# module is written in "Ante" (`std/ante/bhadram.ante`).
+
+bayata "ante" ante:
+    sha256(b: &mukka[aasajeevi ankam8] ni) -> baitlu
+    sha512(b: &mukka[aasajeevi ankam8] ni) -> baitlu
+    blake3(b: &mukka[aasajeevi ankam8] ni) -> baitlu
+    random_baitlu(n: ankam ni) -> baitlu
+    okkatenaa(a: &mukka[aasajeevi ankam8] ni, b: &mukka[aasajeevi ankam8] tho) -> ato_ito
+    _argon2id(
+        password: &mukka[aasajeevi ankam8] ni,
+        salt: &mukka[aasajeevi ankam8] tho,
+        secret: &mukka[aasajeevi ankam8] tho,
+        ad: &mukka[aasajeevi ankam8] tho,
+        m: ankam,
+        t: ankam,
+        p: ankam,
+        len: ankam,
+    ) -> baitlu
+    _aes_gcm_seal(
+        key: &mukka[aasajeevi ankam8] ni,
+        nonce: &mukka[aasajeevi ankam8] tho,
+        aad: &mukka[aasajeevi ankam8] tho,
+        data: &mukka[aasajeevi ankam8] ki,
+    ) -> baitlu
+    _aes_gcm_open(
+        key: &mukka[aasajeevi ankam8] ni,
+        nonce: &mukka[aasajeevi ankam8] tho,
+        aad: &mukka[aasajeevi ankam8] tho,
+        data: &mukka[aasajeevi ankam8] ki,
+    ) -> undochu[baitlu]

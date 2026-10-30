@@ -1,0 +1,103 @@
+# `random`: a fast, seedable generator for simulations and games (spec
+# §27.1). It is NOT for secrets: use `bhadram` for those. It never seeds
+# itself from the system, so the same seed always gives the same numbers.
+#
+# The algorithm is PCG-64 (XSL RR 128/64, O'Neill 2014): a 128-bit linear
+# congruential state with multiplier 0x2360ed051fc65da44385df649fccf645 and
+# increment 0x5851f42d4c957f2d14057b7ef767814f, seeded like `pcg64_srandom`
+# (step, add the seed, step), each step giving rotr(high ^ low, state >> 122).
+
+lekkalu thechuko
+
+andhariki rakam Generator ante:
+    hi: aasajeevi ankam
+    lo_: aasajeevi ankam
+
+MUL_HI: aasajeevi ankam ante 0x2360ed051fc65da4
+
+MUL_LO: aasajeevi ankam ante 0x4385df649fccf645
+
+INC_HI: aasajeevi ankam ante 0x5851f42d4c957f2d
+
+INC_LO: aasajeevi ankam ante 0x14057b7ef767814f
+
+# The high 64 bits of `a * b`.
+mulhi(a: aasajeevi ankam ni, b: aasajeevi ankam tho) -> aasajeevi ankam ante:
+    m: aasajeevi ankam ante 0xffffffff
+    a0 ante a & m
+    a1 ante a >> 32
+    b0 ante b & m
+    b1 ante b >> 32
+    p00 ante a0 * b0
+    p01 ante a0 * b1
+    p10 ante a1 * b0
+    p11 ante a1 * b1
+    mid ante (p00 >> 32) + (p01 & m) + (p10 & m)
+    (p11 + (p01 >> 32) + (p10 >> 32) + (mid >> 32)) icchey
+
+Generator panulu ante:
+    # A generator from a seed: `42 ni random.Generator.kotthadhi()`.
+    andhariki kotthadhi(seed: ankam ni) -> Generator ante:
+        maare g ante Generator{hi: 0, lo_: 0}
+        g.step()
+        s ante seed ni kolpothu_maarchu[aasajeevi ankam]()
+        low ante g.lo_ ni, s tho lekkalu.chuttu_kalupu()
+        maare carry: aasajeevi ankam ante 0
+        low < g.lo_ aithe:
+            carry lo 1 pettu
+        g.hi lo (g.hi ni, carry tho lekkalu.chuttu_kalupu()) pettu
+        g.lo_ lo low pettu
+        g.step()
+        g icchey
+
+    # state = state * MUL + INC (mod 2^128)
+    step(naa: &maare idhi) -> khali ante:
+        low ante naa.lo_ ni, MUL_LO tho lekkalu.chuttu_guninchu()
+        maare hi ante naa.lo_ ni, MUL_LO tho mulhi()
+        hi lo (hi ni, (naa.hi ni, MUL_LO tho lekkalu.chuttu_guninchu()) tho lekkalu.chuttu_kalupu()) pettu
+        hi lo (hi ni, (naa.lo_ ni, MUL_HI tho lekkalu.chuttu_guninchu()) tho lekkalu.chuttu_kalupu()) pettu
+        lo2 ante low ni, INC_LO tho lekkalu.chuttu_kalupu()
+        maare carry: aasajeevi ankam ante 0
+        lo2 < low aithe:
+            carry lo 1 pettu
+        hi lo (hi ni, INC_HI tho lekkalu.chuttu_kalupu()) pettu
+        hi lo (hi ni, carry tho lekkalu.chuttu_kalupu()) pettu
+        naa.hi lo hi pettu
+        naa.lo_ lo lo2 pettu
+
+    # The next 64 random bits.
+    andhariki bits(naa: &maare idhi) -> aasajeevi ankam ante:
+        naa.step()
+        rot ante naa.hi >> 58
+        x ante naa.hi ^ naa.lo_
+        rot == 0 aithe:
+            x icchey
+        (x >> rot | x << 64 - rot) icchey
+
+    # Uniform in `a nunchi b lopu`, without modulo bias; T05 if `a >= b`.
+    andhariki number(naa: &maare idhi, a: ankam ni, b: ankam tho) -> ankam ante:
+        a >= b aithe:
+            f"random number: {a} < {b} kaavali" ni kompa_munigindhi()
+        ulo ante a ni kolpothu_maarchu[aasajeevi ankam]()
+        uhi ante b ni kolpothu_maarchu[aasajeevi ankam]()
+        span ante uhi ni, ulo tho lekkalu.chuttu_theesey()
+        threshold ante (0 ni, span tho lekkalu.chuttu_theesey()) % span
+        avunu unnanthasepu:
+            x ante naa.bits()
+            x >= threshold aithe:
+                r ante ulo ni, (x % span) tho lekkalu.chuttu_kalupu()
+                (r ni kolpothu_maarchu[ankam]()) icchey
+        0 icchey
+
+    # Uniform in `0.0` up to (not including) `1.0`, from 53 random bits.
+    andhariki decimal(naa: &maare idhi) -> amsam ante:
+        x ante naa.bits() >> 11
+        ((x ni kolpothu_maarchu[amsam]()) / 9007199254740992.0) icchey
+
+    # Shuffles `xs` in place (Fisher–Yates), every order equally likely.
+    andhariki kalapu[T](naa: &maare idhi, xs: &maare varusa[T] ni) -> khali ante:
+        maare i ante xs.enni() - 1
+        i > 0 unnanthasepu:
+            j ante 0 ni, (i + 1) tho naa.number()
+            i ni, j tho xs.marpidi()
+            i -= 1

@@ -1,0 +1,41 @@
+# category: run-pass
+# expect-stdout: {"user_name":"sita","tags":[],"rangu":"aakupacha"}
+# expect-stdout: sare(Profile{name: sita, age: ledhu, secret: , tags: [], rangu: Rangu.Pacha})
+# expect-stdout: thappu(.user_name: `user_name` key ledhu)
+# expect-stdout: thappu(.rangu: `Neelam` ane key theliyadhu)
+# expect-stdout: Profile{name: , age: ledhu, secret: , tags: [], rangu: Rangu.Erupu}
+# level: services
+# `@peru` renames a key or variant, `@dhaachu` hides a field, and
+# `@lekapothe_kotthadhi` reads a missing key as its default (§25.2.3, §25.2.5).
+json thechuko
+
+@automatic Raayochu, Chadhavochu, Choopinchochu
+edho_okati Rangu ante:
+    Erupu
+    @peru "aakupacha"
+    Pacha
+
+Rangu ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        Rangu.Erupu icchey
+
+@automatic Raayochu, Chadhavochu, Kotthadhi, Choopinchochu
+rakam Profile ante:
+    @peru "user_name"
+    name: padham
+    age: undochu[ankam]
+    @dhaachu
+    secret: padham
+    @lekapothe_kotthadhi
+    tags: varusa[padham]
+    rangu: Rangu
+
+modhalu() -> khali ante:
+    p ante Profile{name: "sita", age: ledhu, secret: "x", tags: [], rangu: Rangu.Pacha}
+    s ante &p ni json.raayi()
+    s ni choopinchu()
+    &s ni json.chadhuvu[Profile]() |> choopinchu()
+    "{\"rangu\": \"Erupu\"}" ni json.chadhuvu[Profile]() |> choopinchu()
+    "{\"user_name\": \"a\", \"rangu\": \"Neelam\"}" ni json.chadhuvu[Profile]() |> choopinchu()
+    d: Profile ante kotthadhi_ivvu()
+    d ni choopinchu()
