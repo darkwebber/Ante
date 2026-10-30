@@ -24,6 +24,10 @@ pub(super) struct Fx<'g, 'a> {
     pub locals: Vec<Ty>,
     flags: HashMap<Local, String>,
     pub file: Option<FileId>,
+    /// Slots holding the team of a `kalisi` in progress and its closure's
+    /// environment; the landing pad waits for each team that's set, then
+    /// lets go of the closure (§24.1.2).
+    team_slots: Vec<(String, String)>,
 }
 
 /// A place: a pointer and its type, or a slice view (data pointer and length).
@@ -51,6 +55,7 @@ pub(super) fn emit_body(gen: &mut Gen, name: &str, b: BodyId, tys: &[Ty]) -> Str
         locals,
         flags: HashMap::new(),
         file,
+        team_slots: Vec::new(),
     };
     fx.function(name);
     fx.out
@@ -68,7 +73,23 @@ impl<'g, 'a> Fx<'g, 'a> {
             locals: Vec::new(),
             flags: HashMap::new(),
             file: None,
+            team_slots: Vec::new(),
         }
+    }
+
+    /// A slot for a `kalisi`'s team, which a trapped task's unwinding waits
+    /// for before leaving this function; `None` without unwinding (or in glue).
+    pub fn team_slot(&mut self) -> Option<(String, String)> {
+        if !self.gen.unwind || self.body.is_none() {
+            return None;
+        }
+        let (team, env) = (self.r(), self.r());
+        let _ = writeln!(
+            self.allocas,
+            "  {team} = alloca ptr\n  store ptr null, ptr {team}\n  {env} = alloca ptr"
+        );
+        self.team_slots.push((team.clone(), env.clone()));
+        Some((team, env))
     }
 
     // ── small helpers ──────────────────────────────────────────────────────
@@ -217,9 +238,25 @@ impl<'g, 'a> Fx<'g, 'a> {
             let lt = self.ll(&t);
             params.push(format!("{lt} %p{i}"));
         }
-        let header = format!("define internal {rt} {name}({}) {{\nentry:\n", params.join(", "));
         // Locals that a `Drop` may find uninitialized get a drop flag (§19.3).
-        let flagged = maybe_uninit_at_drop(body, nparams);
+        let mut flagged = maybe_uninit_at_drop(body, nparams);
+        // When a task traps, unwinding drops what its frames hold (§24.5.2):
+        // every owned local, by its flag. Captures belong to the closure's
+        // environment, and a local that's ever partly moved out is left
+        // alone (a leak, never a double drop).
+        let mut unwind: Vec<Local> = Vec::new();
+        if self.gen.unwind {
+            let partial = partly_moved(body);
+            for l in first_real..self.locals.len() {
+                let t = self.locals[l].clone();
+                if !partial.contains(&(l as Local)) && self.needs_drop(&t) {
+                    unwind.push(l as Local);
+                    if !flagged.contains(&(l as Local)) {
+                        flagged.push(l as Local);
+                    }
+                }
+            }
+        }
         for i in 0..self.locals.len() {
             let t = self.locals[i].clone();
             let lt = self.ll(&t);
@@ -261,9 +298,43 @@ impl<'g, 'a> Fx<'g, 'a> {
             }
             self.term(&b.term);
         }
-        let blocks = std::mem::take(&mut self.out);
+        let mut blocks = std::mem::take(&mut self.out);
+        let cleanup = !unwind.is_empty() || !self.team_slots.is_empty();
+        if cleanup {
+            blocks = invokes(&blocks);
+            blocks.push_str(&self.landing_pad(&unwind));
+        }
         let allocas = std::mem::take(&mut self.allocas);
+        let personality = if cleanup { " personality ptr @__gcc_personality_v0" } else { "" };
+        let header = format!("define internal {rt} {name}({}){personality} {{\nentry:\n", params.join(", "));
         self.out = format!("{header}{allocas}{prologue}{blocks}}}\n");
+    }
+
+    /// Where an unwinding trap lands in this function: teams it started are
+    /// waited for, then its owned locals are dropped, last first.
+    fn landing_pad(&mut self, unwind: &[Local]) -> String {
+        let saved = std::mem::take(&mut self.out);
+        self.start("unwind");
+        self.emit("%unwind.lp = landingpad { ptr, i32 } cleanup");
+        for (slot, env_slot) in self.team_slots.clone() {
+            let team = self.load("ptr", &slot);
+            let set = self.r();
+            self.emit(format!("{set} = icmp ne ptr {team}, null"));
+            self.when(&set, |fx| {
+                fx.emit(format!("call void @ante_team_end(ptr {team})"));
+                let env = fx.load("ptr", &env_slot);
+                fx.emit(format!("call void @ante_pani_dec(ptr {env})"));
+            });
+        }
+        for &l in unwind.iter().rev() {
+            let ty = self.locals[l as usize].clone();
+            let Some(f) = self.flags.get(&l).cloned() else { continue };
+            let d = self.gen.item(Item::Drop(ty));
+            let on = self.load("i1", &f);
+            self.when(&on, |fx| fx.emit(format!("call void {d}(ptr %l{l})")));
+        }
+        self.emit("resume { ptr, i32 } %unwind.lp");
+        std::mem::replace(&mut self.out, saved)
     }
 
     // ── places ─────────────────────────────────────────────────────────────
@@ -1301,6 +1372,71 @@ pub fn env_ty(caps: &[Ty]) -> Ty {
     let mut items = vec![Ty::ANKAM, Ty::Ptr(false, Box::new(Ty::Unit))];
     items.extend(caps.iter().cloned());
     Ty::Tuple(items)
+}
+
+/// Locals that are moved out of in part (a field, an element, the inside of
+/// a `pette`), or dropped in parts: unwinding can't tell what's left in them.
+fn partly_moved(body: &Body) -> std::collections::HashSet<Local> {
+    let mut out = std::collections::HashSet::new();
+    let op = |o: &Operand, out: &mut std::collections::HashSet<Local>| {
+        if let Operand::Move(p) = o {
+            if !p.proj.is_empty() {
+                out.insert(p.local);
+            }
+        }
+    };
+    for b in &body.blocks {
+        for st in &b.stmts {
+            match st {
+                Stmt::Assign(_, rv) | Stmt::Replace(_, rv, _) => {
+                    rv.operands().into_iter().for_each(|o| op(o, &mut out))
+                }
+                Stmt::Drop(p, _) | Stmt::FreeBox(p, _)
+                    if !p.proj.is_empty() || matches!(st, Stmt::FreeBox(..)) =>
+                {
+                    out.insert(p.local);
+                }
+                _ => {}
+            }
+        }
+        match &b.term {
+            Term::Switch { discr, .. } => op(discr, &mut out),
+            Term::Call { callee, args, .. } => {
+                if let Callee::Value(o) = callee {
+                    op(o, &mut out);
+                }
+                args.iter().for_each(|o| op(o, &mut out));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Turns every call into an `invoke` that unwinds to `%unwind`, splitting
+/// its block. (Generated code has no `phi`s, so blocks split freely.)
+/// LLVM intrinsics can't unwind and stay calls.
+fn invokes(code: &str) -> String {
+    let mut out = String::with_capacity(code.len() + code.len() / 4);
+    let mut k = 0;
+    for line in code.lines() {
+        let t = line.trim_start();
+        let call_at = if t.starts_with("call ") { Some(0) } else { t.find(" = call ").map(|i| i + 3) };
+        match call_at {
+            Some(at) if !t.contains("@llvm.") => {
+                k += 1;
+                let (lhs, rest) = t.split_at(at);
+                let rest = &rest["call ".len()..];
+                let _ = writeln!(out, "  {lhs}invoke {rest} to label %uc{k} unwind label %unwind");
+                let _ = writeln!(out, "uc{k}:");
+            }
+            _ => {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+    }
+    out
 }
 
 /// The locals that some `Drop` may find uninitialized (say a temporary made
