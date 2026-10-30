@@ -2,7 +2,7 @@
   "name": "ante-language",
   "displayName": "\"Ante\" Language",
   "description": "Errors as you type, hover, go to definition, rename, completion and formatting (with `antec`), plus syntax highlighting, snippets and smart indentation for the \"Ante\" programming language. Telugu lo think cheyyi, native speed lo run cheyyi.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "darkwebber",
   "license": "(MIT OR Apache-2.0)",
   "repository": {
