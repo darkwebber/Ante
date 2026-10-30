@@ -320,10 +320,25 @@ pub fn run_source(src: &SourceFile) -> Checked {
     compile(loaded, Action::Run { stream: false, args: Vec::new(), native: false })
 }
 
-/// Compiles parsed modules. `@automatic` implementations written in "Ante"
-/// (`derive`) are added to their files first, and the diagnostics inside
-/// them are moved to the annotation that asked for them afterwards.
-fn compile(mut loaded: Loaded, action: Action) -> Checked {
+fn compile(loaded: Loaded, action: Action) -> Checked {
+    compile_with(loaded, action, &mut |_| {})
+}
+
+/// What an editor sees of a check (`antec lsp`): every file, the parsed
+/// modules, the names, and the types once they are checked.
+pub struct Inspect<'x, 'a> {
+    pub sources: &'x [SourceFile],
+    pub modules: &'x [SourceModule<'x>],
+    pub resolution: &'x resolve::Resolution,
+    /// `None` when name resolution found errors, so types weren't checked.
+    pub typeck: Option<&'x crate::typeck::Typeck<'a>>,
+}
+
+/// Compiles parsed modules, showing `inspect` the names and types once they
+/// are known. `@automatic` implementations written in "Ante" (`derive`) are
+/// added to their files first, and the diagnostics inside them are moved to
+/// the annotation that asked for them afterwards.
+fn compile_with(mut loaded: Loaded, action: Action, inspect: &mut dyn FnMut(Inspect)) -> Checked {
     let mut written: Vec<(FileId, Vec<crate::derive::Written>)> = Vec::new();
     for (_, file, ast) in &mut loaded.modules {
         let Some(module) = ast else { continue };
@@ -336,7 +351,7 @@ fn compile(mut loaded: Loaded, action: Action) -> Checked {
         loaded.sources[*file] = src;
         written.push((*file, w));
     }
-    let mut checked = compile_stages(loaded, action);
+    let mut checked = compile_stages(loaded, action, inspect);
     for (file, w) in &written {
         let (mut mine, rest): (Vec<_>, Vec<_>) = checked.diagnostics.drain(..).partition(|(f, _)| f == file);
         let mut diags: Vec<Diagnostic> = mine.drain(..).map(|(_, d)| d).collect();
@@ -353,7 +368,7 @@ fn compile(mut loaded: Loaded, action: Action) -> Checked {
 /// The stages after parsing. Each runs only when the ones before it found
 /// no errors, so one mistake doesn't cascade; warnings are kept only when
 /// there are no errors at all.
-fn compile_stages(loaded: Loaded, action: Action) -> Checked {
+fn compile_stages(loaded: Loaded, action: Action, inspect: &mut dyn FnMut(Inspect)) -> Checked {
     let Loaded { mut sources, modules: mut parsed, mut diagnostics, entry, build } = loaded;
     let failed = |d: &[(FileId, Diagnostic)]| d.iter().any(|(_, d)| d.is_error());
     if failed(&diagnostics) && entry.is_none() {
@@ -385,9 +400,11 @@ fn compile_stages(loaded: Loaded, action: Action) -> Checked {
         check_entry(entry, &parsed, &resolution, &mut diagnostics);
     }
     if failed(&diagnostics) {
+        inspect(Inspect { sources: &sources, modules: &modules, resolution: &resolution, typeck: None });
         return finish(sources, diagnostics, None, None);
     }
     let tc = crate::typeck::check(&modules, &resolution);
+    inspect(Inspect { sources: &sources, modules: &modules, resolution: &resolution, typeck: Some(&tc) });
     diagnostics.extend(tc.diagnostics.iter().cloned());
     if failed(&diagnostics) {
         diagnostics.retain(|(_, d)| d.is_error());
@@ -468,7 +485,7 @@ fn compile_stages(loaded: Loaded, action: Action) -> Checked {
             let text: Vec<String> = program
                 .bodies
                 .iter()
-                .filter(|b| b.file != Some(std_file))
+                .filter(|b| !b.file.is_some_and(|f| f >= std_file))
                 .map(|b| b.render(&names, &ty_name))
                 .collect();
             mir = Some(text.join("\n"));
@@ -565,8 +582,9 @@ fn compile_stages(loaded: Loaded, action: Action) -> Checked {
             }
         }
     }
-    // Warnings about the standard library are its authors' business.
-    diagnostics.retain(|(file, d)| *file != std_file || d.is_error());
+    // Warnings about the standard library (the prelude and the modules'
+    // "Ante" files after it) are its authors' business.
+    diagnostics.retain(|(file, d)| *file < std_file || d.is_error());
     let mut checked = finish(sources, diagnostics, run, mir);
     checked.built = built;
     checked.backend_errors = backend_errors;
@@ -1168,8 +1186,33 @@ pub fn process_package(root: &Path, action: Action) -> io::Result<Checked> {
 }
 
 fn load_package(root: &Path) -> io::Result<Loaded> {
+    load_package_with(root, &|path| fs::read(path))
+}
+
+/// Checks `path` like `check_path`, but reads files through `read` (an
+/// editor's unsaved buffers) and shows `inspect` the names and types.
+pub fn check_for_editor(
+    path: &Path,
+    read: &dyn Fn(&Path) -> io::Result<Vec<u8>>,
+    inspect: &mut dyn FnMut(Inspect),
+) -> io::Result<Checked> {
+    if let Some(root) = find_package_root(path) {
+        let in_src = path.canonicalize().is_ok_and(|p| p.starts_with(root.join("src")));
+        if in_src {
+            return Ok(compile_with(load_package_with(&root, read)?, Action::Check, inspect));
+        }
+    }
+    let (src, diags) = crate::source_from_bytes(path.display().to_string(), read(path)?);
+    if !diags.is_empty() {
+        return Ok(finish(vec![src], diags.into_iter().map(|d| (0, d)).collect(), None, None));
+    }
+    Ok(compile_with(load_single(src), Action::Check, inspect))
+}
+
+fn load_package_with(root: &Path, read: &dyn Fn(&Path) -> io::Result<Vec<u8>>) -> io::Result<Loaded> {
     let manifest_path = root.join("ante.toml");
-    let manifest_text = fs::read_to_string(&manifest_path)?;
+    let manifest_text = String::from_utf8(read(&manifest_path)?)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     let mut sources = vec![SourceFile::new("ante.toml", manifest_text.clone())];
     let mut diagnostics: Vec<(FileId, Diagnostic)> = Vec::new();
 
@@ -1204,7 +1247,7 @@ fn load_package(root: &Path) -> io::Result<Loaded> {
         let segments: Vec<String> = rel.iter().map(|s| s.to_string_lossy().into_owned()).collect();
         // Always `/`, so diagnostics read the same on every OS.
         let display = format!("src/{}.ante", segments.join("/"));
-        let (src, mut diags) = crate::source_from_bytes(display, fs::read(path)?);
+        let (src, mut diags) = crate::source_from_bytes(display, read(path)?);
         let file = sources.len();
         if let Some(bad) = segments.iter().find(|s| !is_module_name(s)) {
             diags.push(Diagnostic::error(

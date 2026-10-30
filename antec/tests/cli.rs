@@ -182,6 +182,19 @@ fn run_interp_flag() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Programs that pull in the standard modules written in "Ante" (`json`,
+/// `encoding`, the data tree) hear nothing about those files.
+#[test]
+fn std_ante_files_stay_quiet() {
+    let dt = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/conformance/dt");
+    for entry in fs::read_dir(&dt).unwrap() {
+        let path = entry.unwrap().path();
+        let out = antec(&["check", path.to_str().unwrap()]);
+        let all = text(&out.stdout) + &text(&out.stderr);
+        assert!(!all.contains("<ante>/"), "{}:\n{all}", path.display());
+    }
+}
+
 /// Every lesson in `learn/` passes its tests and is formatted.
 #[test]
 fn learn_lessons_pass() {

@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r17. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r18. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -1161,6 +1161,7 @@ The C standard library (and `libm`) is always linked. Bad entries are E0905. The
 | `antec pariksha [path] [peru]` | build and run the tests ("exam", §23.3); `peru` keeps the tests whose name contains it; a folder without `ante.toml` has each of its files tested on its own |
 | `antec fmt [path] [--check]` | canonical formatting; must preserve the AST and evaluation order. `--check` changes nothing and fails if a file isn't formatted |
 | `antec check [path]` | check a file, or a package folder (default: the current folder), without generating code |
+| `antec lsp` | a language server for editors (the Language Server Protocol over standard input and output): the diagnostics of `antec check` as files change, types on hover, definitions, references, rename, completion and formatting |
 | `antec migrate` | rewrite code for renamed words and new editions (§23.5) |
 | `antec emit (tokens\|ast\|mir\|llvm)` | debugging output |
 | `antec web (new\|dev\|build\|check)` | web applications (Annex W.22) |
@@ -3593,6 +3594,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r18 | `antec` 0.1.1 | `antec lsp`, a language server for editors (§23.1). |
 | r17 | `antec` 0.1.1 | M13, data and security, settled while implementing it: `Raasevaadu`/`Chadhivevaadu` are concrete types over `DataChettu`, the data tree, which keeps integers beyond 64 bits as digits; text mode for text-only formats; paths, `Duplicate`, `ChaalaLothu` and `line:column` positions in `ChadhuvuThappu` (§25.2); `T.f()` for a trait's associated functions, also on type parameters (§25.2.1b); `Raayochu`/`Chadhavochu`/`Kotthadhi` derived as written "Ante" source (§13.6); `Rahasyam` is `Chadhavochu` (§25.2.2, §27.4); JSON writes NaN as `null` and floats JavaScript's way (§25.3.1); `form`/`query` spaces (§25.3.1); `Kaalam` getters are `millisec_lu`/`nanosec_lu`, `g + k` is `k ni g.kalupu()` and `a - b` is `b ni a.theda()`, `Date`/`Time` fields, the zone database may be the system's (§26); `random`'s `number`/`decimal` and its PCG-64 constants (§27.1); password rehash rules (§27.3); a `migatha_perlu` collector of `DataChettu` takes any `Raayochu` values (§11.4, §29.1); `config` names, `.env` and precedence (§29.2); `rakam_peru`, `kotthadhi_ivvu`, `baitlu_ga`, `baitlu_nunchi_lossy` (§21); seed cases DT008–DT020. |
 | r16 | `antec` 0.1.1 | Beginner readiness: `kuppa`, `line` and `sardina_jodi`, written in "Ante" (§21.2); `marpidi` and `varusa.marpidi` (§21.1, §21.2); a callee's receiver may be indexed (D7); a returned reference may come from any reference parameter (§9.3.2c); `antec run` builds natively when it can, and `antec pariksha` takes a name filter and folders (§23.1); a bad `@pariksha` signature is E1307 (§23.3); seed cases S020, S021, D017–D021, O037, O038, and O008 now tests a reference with no source. |
 | r15 | `antec` 0.1.1 | Hardening: deadlock is trap T15 (§20.3, §24.4); a recursive type may derive what its components need (§13.6); seed cases KK017, KK018, G029, O035, O036. |

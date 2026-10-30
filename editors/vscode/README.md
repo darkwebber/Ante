@@ -10,6 +10,32 @@
 - **Snippets:** `sundharaniki` 🎬, `modhalu`, `pani`, `aithe`, `ledhante`, `okko`, `nunchi`, `unnanthasepu`, `batti`, `rakam`, `edho_okati`, `panulu`, `gunam`, `choopinchu`, `naa_risk`.
 - **Comment toggle** (`Cmd+/`), bracket matching, indentation tho code folding.
 
+### `antec` unte inka 🧠
+
+Extension `antec lsp` (language server) ni start chesthundhi:
+
+- **Type chesthunnappude errors, warnings** (red/yellow squiggles), package motham, save cheyyani files tho sahaa.
+- **Hover:** variable type, function signature, paina raasina `#` comments.
+- **Go to definition** (`F12`), **find references** (`Shift+F12`), **rename** (`F2`), package lo anni files lo.
+- **Completion:** `p.` tharvatha fields, methods; `naa.`, `lekkalu.`, `Rangu.`; scope lo unna names, prelude, keywords.
+- **Format document** (`Shift+Alt+F`), `antec fmt` tho.
+
+`antec` install cheyyadam (repo root nunchi):
+
+```bash
+cargo install --path antec
+```
+
+`antec` `PATH` lo leka `~/.cargo/bin` lo lekapothe, Settings lo `ante.antecPath` ki path ivvandi. `antec` lekapothe extension highlighting, snippets tho pani chesthune untundhi.
+
+| Setting | Default | Em chesthundhi |
+|---|---|---|
+| `ante.antecPath` | `antec` | `antec` ekkada undhi (peru, full path, leka workspace nunchi relative path) |
+| `ante.lsp.enabled` | `true` | Language server on/off |
+| `ante.trace.server` | `off` | `messages` / `verbose`: server tho messages Output panel lo |
+
+Command palette lo **"Ante": Language server restart cheyyi** kuda undhi. Full details, vere editors (Neovim, Helix) setup [docs/TOOLING.md](../../docs/TOOLING.md#language-server-antec-lsp) lo.
+
 ## Install (source nunchi)
 
 Marketplace lo inka publish cheyyaledhu. Ippatiki repo nunchi:
@@ -39,6 +65,12 @@ npm test
 ```
 
 Ee test VS Code vaade TextMate engine tho "Ante" lines ni tokenize chesi prathi token ki correct scope vachindho check chesthundhi. Inka compiler (`antec/src/token.rs`) lo unna prathi keyword highlight avthondho kuda check chesthundhi. Compiler ki kottha keyword add chesi grammar update cheyyakapothe, test fail avthundhi. 😉
+
+Client tests (`test/server.test.js`) `antec` ni ela vethukuthundho, `antec` lekapothe extension quiet ga highlighting tho start avthundho check chesthayi. `antec` build chesi unte, nijam `antec lsp` tho handshake kuda chesthayi:
+
+```bash
+ANTEC=../../target/release/antec npm test
+```
 
 ## License
 

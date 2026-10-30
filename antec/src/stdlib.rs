@@ -49,6 +49,12 @@ pub const PRELUDE_PART_WORDS: &[(&str, &[&str])] = &[(
     ],
 )];
 
+/// Whether a source file is part of the standard library written in "Ante"
+/// (the prelude, its parts, and the modules' parts) rather than the program.
+pub fn is_ante_source_file(name: &str) -> bool {
+    name.starts_with("<ante>/")
+}
+
 /// Whether a hidden module is a part of the prelude.
 pub fn is_prelude_part(module: &str) -> bool {
     module.starts_with("<ante>/prelude/")
