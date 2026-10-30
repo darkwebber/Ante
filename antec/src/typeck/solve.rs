@@ -3,6 +3,11 @@
 use super::{AdtKind, Generic, Globals, TraitRef};
 use crate::types::{Con, InferTable, IntTy, Ty, VarKind};
 
+thread_local! {
+    /// The `@automatic` derives being checked right now (`implements`).
+    static DERIVING: std::cell::RefCell<Vec<(Ty, crate::resolve::DefId)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 /// Makes two types equal, binding inference variables. Returns false on a
 /// mismatch; variables bound before the mismatch stay bound, which only
 /// sharpens later messages.
@@ -129,8 +134,17 @@ impl Solver<'_, '_> {
         if let Ty::App(Con::Adt(d), args) = &ty {
             if let Some(adt) = self.g.adts.get(d) {
                 if adt.derives.contains(&tr.def) {
+                    // A recursive type's derive may rely on itself (a list
+                    // shows its tail): while one is being checked, it holds.
+                    let key = (ty.clone(), tr.def);
+                    if DERIVING.with(|d| d.borrow().contains(&key)) {
+                        return true;
+                    }
+                    DERIVING.with(|d| d.borrow_mut().push(key));
                     let fields = adt_field_types(self.g, *d, args);
-                    return fields.iter().all(|f| self.implements(t, f, tr, depth + 1));
+                    let ok = fields.iter().all(|f| self.implements(t, f, tr, depth + 1));
+                    DERIVING.with(|d| d.borrow_mut().pop());
+                    return ok;
                 }
             }
         }

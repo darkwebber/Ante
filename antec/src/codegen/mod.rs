@@ -27,7 +27,7 @@ mod native;
 mod peephole;
 mod task;
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
 
 use crate::mir::{BodyId, Program, Resolved};
@@ -50,6 +50,9 @@ enum Item {
     Cmp(Ty),
     Xerox(Ty),
     Drop(Ty),
+    /// One step of dropping a recursive type off the runtime's drop stack:
+    /// its `sardhu`, then its parts pushed (§19.3 order).
+    DropStep(Ty),
     /// `i64 hash(ptr v, i64 h)`: mixes a map key into `h` (§21.2 `jodi`).
     Hash(Ty),
     /// `int (*)(const void *, const void *, void *)` for the runtime's sort.
@@ -87,6 +90,8 @@ pub struct Gen<'a> {
     g: &'a Globals<'a>,
     files: &'a [SourceFile],
     items: HashMap<Item, String>,
+    /// Whether a type contains itself (a list, a tree), by `cyclic`.
+    cyclic: HashMap<Ty, bool>,
     queue: VecDeque<Item>,
     /// Named struct types for records and enums, by type.
     named: HashMap<Ty, String>,
@@ -104,9 +109,20 @@ pub struct Gen<'a> {
     c_structs: HashMap<Ty, String>,
     /// The glue function of each `bayata "C"` function called.
     ffi: HashMap<FnId, String>,
-    /// Whether a trapped task unwinds its frames, dropping their values
-    /// (§24.5.2); off where the C unwinder isn't used (Windows).
-    unwind: bool,
+    /// How a trapped task unwinds its frames, dropping their values (§24.5.2).
+    unwind: Unwind,
+}
+
+/// How a trapped task's frames are unwound (§24.5.2).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Unwind {
+    /// Not at all: a trapped task's values are left as they are.
+    Off,
+    /// By the C unwinder (`_Unwind_ForcedUnwind`), through landing pads.
+    Dwarf,
+    /// By Windows' own unwinder, which `longjmp` runs there, through
+    /// cleanup funclets.
+    Seh,
 }
 
 /// A program ready for the C toolchain.
@@ -123,7 +139,7 @@ pub fn emit_llvm(
     entry: FnId,
     stack: u64,
     task_stack: u64,
-    unwind: bool,
+    unwind: Unwind,
 ) -> Result<Emitted, Vec<String>> {
     let mut gen = Gen {
         prog,
@@ -131,6 +147,7 @@ pub fn emit_llvm(
         g: &tc.globals,
         files,
         items: HashMap::new(),
+        cyclic: HashMap::new(),
         queue: VecDeque::new(),
         named: HashMap::new(),
         type_defs: String::new(),
@@ -183,7 +200,7 @@ pub fn emit_llvm(
     }
     out.push('\n');
     out.push_str(&gen.funcs);
-    if gen.unwind {
+    if gen.unwind != Unwind::Off {
         // Every frame needs unwind tables, so an unwinding trap can pass through it.
         out.push_str("\n!llvm.module.flags = !{!0}\n!0 = !{i32 7, !\"uwtable\", i32 2}\n");
     }
@@ -228,7 +245,11 @@ declare void @ante_str_append(ptr, ptr)
 declare void @free(ptr)
 declare void @ante_pani_inc(ptr)
 declare void @ante_pani_dec(ptr)
+declare void @ante_drop_push(ptr, ptr)
+declare void @ante_drop_deep(ptr, ptr)
+declare void @ante_drop_buf(ptr)
 declare i32 @__gcc_personality_v0(...)
+declare i32 @__C_specific_handler(...)
 declare ptr @ante_team_new()
 declare void @ante_team_end(ptr)
 declare void @ante_team_cancel(ptr)
@@ -351,6 +372,7 @@ impl<'a> Gen<'a> {
             Item::Cmp(_) => "cmp".into(),
             Item::Xerox(_) => "xerox".into(),
             Item::Drop(_) => "drop".into(),
+            Item::DropStep(_) => "dropstep".into(),
             Item::TaskRun(_) => "taskrun".into(),
             Item::Hash(_) => "hash".into(),
             Item::SortCmp(_) => "sortcmp".into(),
@@ -376,6 +398,7 @@ impl<'a> Gen<'a> {
             Item::Cmp(t) => glue::cmp(self, &name, t),
             Item::Xerox(t) => glue::xerox(self, &name, t),
             Item::Drop(t) => glue::drop_glue(self, &name, t),
+            Item::DropStep(t) => glue::drop_step(self, &name, t),
             Item::Hash(t) => glue::hash(self, &name, t),
             Item::EnvDrop(caps) => glue::env_drop(self, &name, caps),
             Item::TaskRun(t) => task::run_fn(self, &name, t),
@@ -535,10 +558,19 @@ impl<'a> Gen<'a> {
             Ty::Char => "i32".into(),
             Ty::Unit | Ty::Never => "{}".into(),
             Ty::Str => "%str".into(),
-            Ty::Tuple(items) => {
-                let parts: Vec<String> = items.iter().map(|t| self.ll(t)).collect();
-                format!("{{ {} }}", parts.join(", "))
+            // A long tuple gets a name, so the IR doesn't spell it out at
+            // every use (quadratic in its length).
+            Ty::Tuple(items) if items.len() > 8 => {
+                if let Some(n) = self.named.get(ty) {
+                    return n.clone();
+                }
+                let name = format!("%\"{}\"", self.fresh("tuple"));
+                self.named.insert(ty.clone(), name.clone());
+                let body = self.struct_body(items);
+                let _ = writeln!(self.type_defs, "{name} = type {body}");
+                name
             }
+            Ty::Tuple(items) => self.struct_body(items),
             Ty::Array(e, Some(n)) => format!("[{n} x {}]", self.ll(e)),
             Ty::Ref(_, inner) | Ty::Ptr(_, inner) => {
                 if matches!(**inner, Ty::App(Con::Mukka, _)) {
@@ -595,6 +627,46 @@ impl<'a> Gen<'a> {
         }
     }
 
+    /// Whether `ty` contains itself, through boxes, collections, options or
+    /// fields: dropping such a value may go arbitrarily deep, so it's done
+    /// off the runtime's drop stack instead of the C stack.
+    fn cyclic(&mut self, ty: &Ty) -> bool {
+        if let Some(&c) = self.cyclic.get(ty) {
+            return c;
+        }
+        let mut seen: HashSet<Ty> = HashSet::new();
+        let mut work = self.parts(ty);
+        let mut found = false;
+        while let Some(t) = work.pop() {
+            if t == *ty {
+                found = true;
+                break;
+            }
+            // Generic records can grow their types forever; that far in,
+            // just assume so.
+            if seen.len() > 4096 {
+                found = true;
+                break;
+            }
+            if seen.insert(t.clone()) {
+                work.extend(self.parts(&t));
+            }
+        }
+        self.cyclic.insert(ty.clone(), found);
+        found
+    }
+
+    /// The types a value of `ty` directly owns, as far as dropping goes.
+    fn parts(&self, ty: &Ty) -> Vec<Ty> {
+        match ty {
+            Ty::Tuple(items) => items.clone(),
+            Ty::Array(e, _) => vec![(**e).clone()],
+            Ty::App(Con::Pette | Con::Varusa, a) => a.clone(),
+            Ty::App(Con::Undochu | Con::SareThappu | Con::Adt(_), _) => self.variants(ty).concat(),
+            _ => Vec::new(),
+        }
+    }
+
     fn named_type(&mut self, ty: &Ty) -> String {
         if let Some(n) = self.named.get(ty) {
             return n.clone();
@@ -616,10 +688,16 @@ impl<'a> Gen<'a> {
             format!("{{ i32, [{} x i64] }}", max.div_ceil(8))
         } else {
             let fields = self.variants(ty).pop().unwrap_or_default();
-            self.ll(&Ty::Tuple(fields))
+            self.struct_body(&fields)
         };
         let _ = writeln!(self.type_defs, "{name} = type {body}");
         name
+    }
+
+    /// `{ a, b, … }`, spelled out.
+    fn struct_body(&mut self, items: &[Ty]) -> String {
+        let parts: Vec<String> = items.iter().map(|t| self.ll(t)).collect();
+        format!("{{ {} }}", parts.join(", "))
     }
 
     /// The anonymous struct type of a variant's payload.

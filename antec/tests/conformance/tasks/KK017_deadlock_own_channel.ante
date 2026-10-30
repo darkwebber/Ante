@@ -1,0 +1,11 @@
+# category: runtime-trap
+# expect-trap: T15 @ 0:0
+# level: services
+# Waiting on a channel only this task could send on: nothing can ever wake
+# it, so the program ends with T15 instead of hanging (§24.4).
+task thechuko
+
+modhalu() -> khali ante:
+    (p, a) ante 0 ni task.kaluva[ankam]()
+    a.andhuko() ni choopinchu()
+    1 ni p.pampu()

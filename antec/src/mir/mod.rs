@@ -233,8 +233,9 @@ pub enum Rvalue {
     /// `&xs[a nunchi b lopu]`; traps T10 on bad bounds.
     Slice {
         place: Place,
-        lo: Operand,
-        hi: Operand,
+        // Boxed: slices are rare, and keep every other rvalue small.
+        lo: Box<Operand>,
+        hi: Box<Operand>,
         inclusive: bool,
         mutable: bool,
         span: Span,
@@ -302,7 +303,7 @@ impl Rvalue {
         match self {
             Rvalue::Use(o) | Rvalue::Unary(_, _, o, _) => vec![o],
             Rvalue::Binary(_, _, a, b, _) | Rvalue::Range(a, b, _, _) => vec![a, b],
-            Rvalue::Slice { lo, hi, .. } => vec![lo, hi],
+            Rvalue::Slice { lo, hi, .. } => vec![&**lo, &**hi],
             Rvalue::Aggregate(_, ops) => ops.iter().collect(),
             Rvalue::Ref(..) | Rvalue::Discriminant(_) => Vec::new(),
         }

@@ -1,0 +1,51 @@
+# category: run-pass
+# expect-stdout: body
+# expect-stdout: D6
+# expect-stdout: D2
+# expect-stdout: D5
+# expect-stdout: D4
+# expect-stdout: D3
+# expect-stdout: D1
+# expect-stdout: D7
+# expect-stdout: node 3
+# expect-stdout: D103
+# expect-stdout: node 2
+# expect-stdout: D102
+# expect-stdout: node 1
+# expect-stdout: D101
+# expect-stdout: node 0
+# expect-stdout: D100
+# expect-stdout: D0
+# expect-stdout: D1
+# expect-stdout: D2
+# expect-stdout: D3
+# level: core
+# Recursive values (a list of nodes, a tree with a list of children) drop
+# in §19.3 order: `sardhu` first, then fields last first, elements first first.
+rakam D ante:
+    n: ankam
+
+D ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"D{n}" ni choopinchu()
+
+rakam Node ante:
+    a: D
+    next: undochu[pette[Node]]
+    b: D
+
+Node ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"node {a.n}" ni choopinchu()
+
+edho_okati Chettu ante:
+    Aaku(D)
+    Komma(D, varusa[Chettu], pette[Chettu])
+
+modhalu() -> khali ante:
+    maare l: undochu[pette[Node]] ante ledhu
+    0 nunchi 4 lopu okko i ki:
+        l lo undhi(Node{a: D{n: i}, next: l, b: D{n: 100 + i}} ni pette.kotthadhi()) pettu
+    t ante Chettu.Komma(D{n: 1}, [Chettu.Aaku(D{n: 2}), Chettu.Komma(D{n: 3}, [Chettu.Aaku(D{n: 4})], (Chettu.Aaku(D{n: 5}) ni pette.kotthadhi()))], (Chettu.Aaku(D{n: 6}) ni pette.kotthadhi()))
+    jt ante (D{n: 7}, t)
+    "body" ni choopinchu()

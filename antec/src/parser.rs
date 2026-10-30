@@ -639,6 +639,19 @@ impl<'a> Parser<'a> {
             {
                 ItemKind::Fn(self.parse_fn_decl()?)
             }
+            // `pani(…) -> … ante:`: a function named with a keyword.
+            (Some(TokenKind::Keyword(kw)), _)
+                if matches!(second, Some(TokenKind::LParen) | Some(TokenKind::LBracket))
+                    && line.iter().any(|t| t.kind == TokenKind::Arrow) =>
+            {
+                let span = self.span();
+                self.error(
+                    "E0201",
+                    span,
+                    format!("`{}` keyword, function peru ga vaadalem. Vere peru pettandi", kw.as_str()),
+                );
+                return Err(());
+            }
             _ => {
                 let reserved = line
                     .iter()
@@ -1143,7 +1156,7 @@ impl<'a> Parser<'a> {
         self.expect_kw(Keyword::Ante)?;
         let value = self.parse_pipe_expr()?;
         self.expect_newline()?;
-        Ok(StmtKind::Binding { mutable, target, ty, value })
+        Ok(StmtKind::Binding { mutable, target, ty: ty.map(Box::new), value })
     }
 
     fn parse_place(&mut self) -> PResult<Expr> {
@@ -1266,7 +1279,7 @@ impl<'a> Parser<'a> {
         let pattern = self.parse_pattern()?;
         self.expect_kw(Keyword::Ki)?;
         self.expect(&TokenKind::Colon, "`:`")?;
-        Ok(StmtKind::For { iter, pattern, body: self.parse_loop_body()? })
+        Ok(StmtKind::For { iter, pattern: Box::new(pattern), body: self.parse_loop_body()? })
     }
 
     fn parse_match(&mut self) -> PResult<StmtKind> {

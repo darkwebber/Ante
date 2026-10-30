@@ -40,13 +40,32 @@ impl Diagnostic {
         let width = if end_line == line && end_col > col { end_col - col } else { 1 };
         let gutter = line.to_string();
         let pad = " ".repeat(gutter.len());
+        // A very long line shows only a window around the mark; a tab shows
+        // as one space, so the mark stays under its column.
+        const WINDOW: usize = 120;
+        let chars: Vec<char> = src.line_text(line).chars().map(|c| if c == '\t' { ' ' } else { c }).collect();
+        let start = if chars.len() > WINDOW {
+            (col - 1).saturating_sub(WINDOW / 3).min(chars.len() - WINDOW)
+        } else {
+            0
+        };
+        let end = (start + WINDOW).min(chars.len());
+        let mut text: String = chars[start..end].iter().collect();
+        let mut indent = col - 1 - start;
+        if start > 0 {
+            text.insert(0, '…');
+            indent += 1;
+        }
+        if end < chars.len() {
+            text.push('…');
+        }
+        let width = width.min((end + 1).saturating_sub(col).max(1));
         format!(
             "{severity}[{code}]: {message}\n{pad}--> {file}:{line}:{col}\n{pad} |\n{gutter} | {text}\n{pad} | {indent}{marks}\n",
             code = self.code,
             message = self.message,
             file = src.name,
-            text = src.line_text(line),
-            indent = " ".repeat(col - 1),
+            indent = " ".repeat(indent),
             marks = "^".repeat(width),
         )
     }

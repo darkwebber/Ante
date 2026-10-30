@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 
-use super::value::{key_of, Addr, Elem, IterState};
+use super::value::{key_of, Addr, DeepBox, Elem, IterState, OrdMap};
 use super::{int_name, wrap, Halt, Machine, Value, R};
 use crate::mir::Intrinsic;
 use crate::source::Span;
@@ -206,8 +206,7 @@ impl Machine<'_> {
                     out.push_str(t);
                     if let (Some(v), Some(ty)) = (args.get(i), tys.get(i)) {
                         let ty = self.subst(ty);
-                        let v = self.target(v).clone();
-                        out.push_str(&self.display(&v, &ty)?);
+                        self.display_into(&mut out, v, &ty)?;
                     }
                 }
                 Ok(Value::Str(Rc::from(out)))
@@ -420,42 +419,80 @@ impl Machine<'_> {
     // ── display (§13.5 `Choopinchochu`) ────────────────────────────────────
 
     pub(super) fn display(&mut self, v: &Value, ty: &Ty) -> R<String> {
-        let v = self.target(v).clone();
-        Ok(match ty {
-            Ty::Int(_) => v.int().to_string(),
+        let mut out = String::new();
+        self.display_into(&mut out, v, ty)?;
+        Ok(out)
+    }
+
+    /// Appends `v` shown (§19.1 built-in display) to `out`. Parts are
+    /// borrowed, not copied, and written straight into `out`, so showing a
+    /// long list is linear.
+    fn display_into(&mut self, out: &mut String, v: &Value, ty: &Ty) -> R<()> {
+        self.deeper()?;
+        let r = self.display_at(out, v, ty);
+        self.value_depth -= 1;
+        r
+    }
+
+    /// One more level into a value; T08 past `MAX_VALUE_DEPTH`.
+    fn deeper(&mut self) -> R<()> {
+        self.value_depth += 1;
+        if self.value_depth > super::MAX_VALUE_DEPTH {
+            self.value_depth = 0;
+            return Err(self.trap(
+                "T08",
+                "stack nindipoyindhi (ee data chaala lothuga undhi)",
+                Span::default(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn display_at(&mut self, out: &mut String, v: &Value, ty: &Ty) -> R<()> {
+        if let Value::Ref(a) = v {
+            // Shown where it lives: taken out of its place for the while,
+            // not copied (showing never writes, and nothing refers to itself).
+            let a = a.clone();
+            let t = std::mem::replace(self.read_mut(&a), Value::Uninit);
+            let r = self.display_into(out, &t, ty);
+            *self.read_mut(&a) = t;
+            return r;
+        }
+        match ty {
+            Ty::Int(_) => out.push_str(&v.int().to_string()),
             Ty::Float(32) => match v {
-                Value::F32(x) => fmt_f32(x),
-                Value::F64(x) => fmt_f64(x),
-                _ => String::new(),
+                Value::F32(x) => out.push_str(&fmt_f32(*x)),
+                Value::F64(x) => out.push_str(&fmt_f64(*x)),
+                _ => {}
             },
             Ty::Float(_) => match v {
-                Value::F64(x) => fmt_f64(x),
-                Value::F32(x) => fmt_f32(x),
-                _ => String::new(),
+                Value::F64(x) => out.push_str(&fmt_f64(*x)),
+                Value::F32(x) => out.push_str(&fmt_f32(*x)),
+                _ => {}
             },
-            Ty::Bool => (if matches!(v, Value::Bool(true)) { "avunu" } else { "kaadhu" }).into(),
+            Ty::Bool => out.push_str(if matches!(v, Value::Bool(true)) { "avunu" } else { "kaadhu" }),
             // Text shows as itself, also inside records and lists (spec D.2).
-            Ty::Char => match v {
-                Value::Char(c) => c.to_string(),
-                _ => String::new(),
-            },
-            Ty::Str => v.str().to_string(),
-            Ty::Unit => "()".into(),
-            Ty::Ref(_, inner) => self.display(&v, inner)?,
+            Ty::Char => {
+                if let Value::Char(c) = v {
+                    out.push(*c);
+                }
+            }
+            Ty::Str => out.push_str(&v.str()),
+            Ty::Unit => out.push_str("()"),
+            Ty::Ref(_, inner) => self.display_into(out, v, inner)?,
             Ty::Tuple(items) => {
-                let xs = match v {
+                let xs: &[Value] = match v {
                     Value::Tuple(xs) => xs,
-                    _ => Vec::new(),
+                    _ => &[],
                 };
-                let mut parts = Vec::new();
-                for (x, t) in xs.iter().zip(items) {
-                    parts.push(self.display(x, t)?);
+                out.push('(');
+                for (k, (x, t)) in xs.iter().zip(items).enumerate() {
+                    if k > 0 {
+                        out.push_str(", ");
+                    }
+                    self.display_into(out, x, t)?;
                 }
-                if parts.len() == 1 {
-                    format!("({},)", parts[0])
-                } else {
-                    format!("({})", parts.join(", "))
-                }
+                out.push_str(if xs.len() == 1 { ",)" } else { ")" });
             }
             Ty::Array(..) | Ty::App(Con::Varusa | Con::Mukka, _) => {
                 let elem = match ty {
@@ -463,62 +500,96 @@ impl Machine<'_> {
                     Ty::App(_, a) => a[0].clone(),
                     _ => Ty::Error,
                 };
-                let xs = self.seq(&v);
-                let mut parts = Vec::new();
-                for x in &xs {
-                    parts.push(self.display(x, &elem)?);
+                let copied;
+                let xs: &[Value] = match v {
+                    Value::Vec(xs) | Value::Array(xs) | Value::Tuple(xs) => xs,
+                    _ => {
+                        copied = self.seq(v);
+                        &copied
+                    }
+                };
+                out.push('[');
+                for (k, x) in xs.iter().enumerate() {
+                    if k > 0 {
+                        out.push_str(", ");
+                    }
+                    self.display_into(out, x, &elem)?;
                 }
-                format!("[{}]", parts.join(", "))
+                out.push(']');
             }
             Ty::App(Con::Jodi | Con::GajibijiJodi, a) => {
-                let Value::Map(m) = v else { return Ok("{}".into()) };
-                let mut parts = Vec::new();
-                for i in m.positions() {
-                    let k = self.display(m.key(i), &a[0])?;
-                    let x = self.display(m.val(i), &a[1])?;
-                    parts.push(format!("{k}: {x}"));
+                let Value::Map(m) = v else {
+                    out.push_str("{}");
+                    return Ok(());
+                };
+                out.push('{');
+                for (k, i) in m.positions().into_iter().enumerate() {
+                    if k > 0 {
+                        out.push_str(", ");
+                    }
+                    self.display_into(out, m.key(i), &a[0])?;
+                    out.push_str(": ");
+                    self.display_into(out, m.val(i), &a[1])?;
                 }
-                format!("{{{}}}", parts.join(", "))
+                out.push('}');
             }
             Ty::App(Con::Gumpu, a) => {
-                let Value::Map(m) = v else { return Ok("{}".into()) };
-                let mut parts = Vec::new();
-                for i in m.positions() {
-                    parts.push(self.display(m.key(i), &a[0])?);
+                let Value::Map(m) = v else {
+                    out.push_str("{}");
+                    return Ok(());
+                };
+                out.push('{');
+                for (k, i) in m.positions().into_iter().enumerate() {
+                    if k > 0 {
+                        out.push_str(", ");
+                    }
+                    self.display_into(out, m.key(i), &a[0])?;
                 }
-                format!("{{{}}}", parts.join(", "))
+                out.push('}');
             }
             Ty::App(Con::Undochu, a) => match v {
-                Value::Adt(0, xs) => format!("undhi({})", self.display(&xs[0], &a[0])?),
-                _ => "ledhu".into(),
+                Value::Adt(0, xs) => {
+                    out.push_str("undhi(");
+                    self.display_into(out, &xs[0], &a[0])?;
+                    out.push(')');
+                }
+                _ => out.push_str("ledhu"),
             },
             Ty::App(Con::SareThappu, a) => match v {
-                Value::Adt(0, xs) => format!("sare({})", self.display(&xs[0], &a[0])?),
-                Value::Adt(_, xs) => format!("thappu({})", self.display(&xs[0], &a[1])?),
-                _ => String::new(),
+                Value::Adt(0, xs) => {
+                    out.push_str("sare(");
+                    self.display_into(out, &xs[0], &a[0])?;
+                    out.push(')');
+                }
+                Value::Adt(_, xs) => {
+                    out.push_str("thappu(");
+                    self.display_into(out, &xs[0], &a[1])?;
+                    out.push(')');
+                }
+                _ => {}
             },
             Ty::App(Con::Pette, a) => match v {
-                Value::Box(b) => self.display(&b, &a[0])?,
-                other => self.display(&other, &a[0])?,
+                Value::Box(b) => self.display_into(out, b, &a[0])?,
+                other => self.display_into(out, other, &a[0])?,
             },
-            Ty::App(Con::Paridhi, _) => match v {
-                Value::Range(lo, hi, inc, _) => {
-                    format!("{lo} nunchi {hi} {}", if inc { "varaku" } else { "lopu" })
+            Ty::App(Con::Paridhi, _) => {
+                if let Value::Range(lo, hi, inc, _) = v {
+                    out.push_str(&format!("{lo} nunchi {hi} {}", if *inc { "varaku" } else { "lopu" }));
                 }
-                _ => String::new(),
-            },
-            Ty::App(Con::Adt(_), _) => self.display_adt(&v, ty)?,
-            Ty::Fn(..) => "<pani>".into(),
+            }
+            Ty::App(Con::Adt(_), _) => self.display_adt(out, v, ty)?,
+            Ty::Fn(..) => out.push_str("<pani>"),
             _ => match v {
-                Value::Int(i) => i.to_string(),
-                Value::Str(s) => s.to_string(),
-                _ => "?".into(),
+                Value::Int(i) => out.push_str(&i.to_string()),
+                Value::Str(s) => out.push_str(s),
+                _ => out.push('?'),
             },
-        })
+        }
+        Ok(())
     }
 
-    fn display_adt(&mut self, v: &Value, ty: &Ty) -> R<String> {
-        let Ty::App(Con::Adt(d), args) = ty else { return Ok(String::new()) };
+    fn display_adt(&mut self, out: &mut String, v: &Value, ty: &Ty) -> R<()> {
+        let Ty::App(Con::Adt(d), args) = ty else { return Ok(()) };
         let g = &self.tc.globals;
         // A user implementation of `Choopinchochu` wins.
         if let Some(def) = g.std_trait("Choopinchochu") {
@@ -530,44 +601,61 @@ impl Machine<'_> {
                 let r = self.scratch(v.clone());
                 let s = self.call_trait(fid, vec![ty.clone()], vec![r], Span::default())?;
                 self.release(mark);
-                return Ok(s.str().to_string());
+                out.push_str(&s.str());
+                return Ok(());
             }
         }
-        let Some(adt) = g.adts.get(d) else { return Ok(String::new()) };
+        let Some(adt) = g.adts.get(d) else { return Ok(()) };
         let name = adt.name.clone();
         let std_type = adt.file.is_none();
         match (&adt.kind.clone(), v) {
             (AdtKind::Record(fields), Value::Adt(_, xs)) => {
                 if std_type && xs.len() == 1 {
-                    return Ok(match &xs[0] {
-                        Value::Int(i) => i.to_string(),
-                        other => other.str().to_string(),
-                    });
+                    match &xs[0] {
+                        Value::Int(i) => out.push_str(&i.to_string()),
+                        other => out.push_str(&other.str()),
+                    }
+                    return Ok(());
                 }
-                let mut parts = Vec::new();
-                for (f, x) in fields.iter().zip(xs) {
-                    parts.push(format!("{}: {}", f.name, self.display(x, &f.ty.subst(args))?));
+                out.push_str(&name);
+                out.push('{');
+                for (k, (f, x)) in fields.iter().zip(xs).enumerate() {
+                    if k > 0 {
+                        out.push_str(", ");
+                    }
+                    out.push_str(&f.name);
+                    out.push_str(": ");
+                    self.display_into(out, x, &f.ty.subst(args))?;
                 }
-                Ok(format!("{name}{{{}}}", parts.join(", ")))
+                out.push('}');
             }
             (AdtKind::Enum(variants), Value::Adt(i, xs)) => {
                 let var = &variants[*i as usize];
-                if xs.is_empty() {
-                    return Ok(format!("{name}.{}", var.name));
+                out.push_str(&name);
+                out.push('.');
+                out.push_str(&var.name);
+                if !xs.is_empty() {
+                    out.push('(');
+                    for (k, (t, x)) in var.fields.iter().zip(xs).enumerate() {
+                        if k > 0 {
+                            out.push_str(", ");
+                        }
+                        self.display_into(out, x, &t.subst(args))?;
+                    }
+                    out.push(')');
                 }
-                let mut parts = Vec::new();
-                for (t, x) in var.fields.iter().zip(xs) {
-                    parts.push(self.display(x, &t.subst(args))?);
-                }
-                Ok(format!("{name}.{}({})", var.name, parts.join(", ")))
             }
-            _ => Ok(String::new()),
+            _ => {}
         }
+        Ok(())
     }
 
     // ── equality, order, hashing (§13.5) ───────────────────────────────────
 
-    fn adt_trait_call(&mut self, trait_name: &str, ty: &Ty, vals: Vec<Value>) -> R<Option<Value>> {
+    /// Calls the user's implementation of a derivable trait, if there is
+    /// one; the values are copied only then.
+    #[inline(never)]
+    fn adt_trait_call(&mut self, trait_name: &str, ty: &Ty, vals: &[&Value]) -> R<Option<Value>> {
         let g = &self.tc.globals;
         let Some(def) = g.std_trait(trait_name) else { return Ok(None) };
         let solver = crate::typeck::solve::Solver { g, generics: &[] };
@@ -577,7 +665,7 @@ impl Machine<'_> {
         }
         let fid = g.traits[&def].methods[0].1;
         let mark = self.heap.len();
-        let refs: Vec<Value> = vals.into_iter().map(|v| self.scratch(v)).collect();
+        let refs: Vec<Value> = vals.iter().map(|&v| self.scratch(v.clone())).collect();
         let r = self.call_trait(fid, vec![ty.clone()], refs, Span::default())?;
         self.release(mark);
         Ok(Some(r))
@@ -608,71 +696,98 @@ impl Machine<'_> {
         }
     }
 
-    fn parts(&self, v: &Value) -> (i128, Vec<Value>) {
+    /// A value's variant and parts, borrowed where they're in `v` itself.
+    fn parts<'v>(&self, v: &'v Value) -> (i128, std::borrow::Cow<'v, [Value]>) {
+        use std::borrow::Cow;
         match v {
-            Value::Adt(i, xs) => (*i as i128, xs.clone()),
-            Value::Tuple(xs) | Value::Array(xs) | Value::Vec(xs) => (0, xs.clone()),
-            Value::Box(b) => (0, vec![(**b).clone()]),
-            Value::Slice(..) | Value::Ref(_) => (0, self.seq(v)),
-            _ => (0, Vec::new()),
+            Value::Adt(i, xs) => (*i as i128, Cow::Borrowed(xs)),
+            Value::Tuple(xs) | Value::Array(xs) | Value::Vec(xs) => (0, Cow::Borrowed(xs)),
+            Value::Box(b) => (0, Cow::Borrowed(std::slice::from_ref(&**b))),
+            Value::Slice(..) | Value::Ref(_) => (0, Cow::Owned(self.seq(v))),
+            _ => (0, Cow::Owned(Vec::new())),
         }
     }
 
     pub(super) fn values_eq(&mut self, a: &Value, b: &Value, ty: &Ty) -> R<bool> {
-        let a = self.target(a).clone();
-        let b = self.target(b).clone();
+        self.deeper()?;
+        let r = self.eq_at(a, b, ty);
+        self.value_depth -= 1;
+        r
+    }
+
+    /// `==` on two maps, kept out of `eq_at` so its frame stays small
+    /// (that one recurses once per level of a value).
+    #[inline(never)]
+    fn maps_eq(&mut self, m: &OrdMap, n: &OrdMap, b: &Value, ty: &Ty) -> R<bool> {
+        let ty = ty.clone();
+        if m.len() != n.len() {
+            return Ok(false);
+        }
+        let vt = match &ty {
+            Ty::App(_, args) if args.len() > 1 => args[1].clone(),
+            _ => Ty::Error,
+        };
+        let kt = match &ty {
+            Ty::App(_, args) => args.first().cloned().unwrap_or(Ty::Error),
+            _ => Ty::Error,
+        };
+        // Look each key of `a` up in `b`, held where `map_find` can see it.
+        let mark = self.heap.len();
+        let nb = self.alloc(b.clone());
+        let mut same = true;
+        for i in m.positions() {
+            match self.map_find(&nb, m.key(i), &kt)? {
+                (_, Some(j)) => {
+                    if !self.values_eq(m.val(i), n.val(j), &vt)? {
+                        same = false;
+                        break;
+                    }
+                }
+                (_, None) => {
+                    same = false;
+                    break;
+                }
+            }
+        }
+        self.release(mark);
+        Ok(same)
+    }
+
+    fn eq_at(&mut self, a: &Value, b: &Value, ty: &Ty) -> R<bool> {
+        // Parts are compared in place; only a reference is followed by a copy.
+        let (ca, cb);
+        let a = if let Value::Ref(_) = a {
+            ca = self.target(a).clone();
+            &ca
+        } else {
+            a
+        };
+        let b = if let Value::Ref(_) = b {
+            cb = self.target(b).clone();
+            &cb
+        } else {
+            b
+        };
         let ty = strip_ref(ty).clone();
         if matches!(ty, Ty::App(Con::Adt(_), _)) {
-            if let Some(r) = self.adt_trait_call("Polchochu", &ty, vec![a.clone(), b.clone()])? {
+            if let Some(r) = self.adt_trait_call("Polchochu", &ty, &[a, b])? {
                 return Ok(matches!(r, Value::Bool(true)));
             }
         }
         Ok(match (&a, &b) {
             (Value::F32(x), Value::F32(y)) => x == y,
             (Value::F64(x), Value::F64(y)) => x == y,
-            (Value::Int(_) | Value::Bool(_) | Value::Char(_) | Value::Unit, _) => key_of(&a) == key_of(&b),
+            (Value::Int(_) | Value::Bool(_) | Value::Char(_) | Value::Unit, _) => key_of(a) == key_of(b),
             (Value::Str(_) | Value::Buf(_), _) => a.str() == b.str(),
-            (Value::Map(m), Value::Map(n)) => {
-                if m.len() != n.len() {
-                    return Ok(false);
-                }
-                let vt = match &ty {
-                    Ty::App(_, args) if args.len() > 1 => args[1].clone(),
-                    _ => Ty::Error,
-                };
-                let kt = match &ty {
-                    Ty::App(_, args) => args.first().cloned().unwrap_or(Ty::Error),
-                    _ => Ty::Error,
-                };
-                // Look each key of `a` up in `b`, held where `map_find` can see it.
-                let mark = self.heap.len();
-                let nb = self.alloc(b.clone());
-                let mut same = true;
-                for i in m.positions() {
-                    match self.map_find(&nb, m.key(i), &kt)? {
-                        (_, Some(j)) => {
-                            if !self.values_eq(m.val(i), n.val(j), &vt)? {
-                                same = false;
-                                break;
-                            }
-                        }
-                        (_, None) => {
-                            same = false;
-                            break;
-                        }
-                    }
-                }
-                self.release(mark);
-                same
-            }
+            (Value::Map(m), Value::Map(n)) => self.maps_eq(m, n, b, &ty)?,
             _ => {
-                let (ia, xa) = self.parts(&a);
-                let (ib, xb) = self.parts(&b);
+                let (ia, xa) = self.parts(a);
+                let (ib, xb) = self.parts(b);
                 if ia != ib || xa.len() != xb.len() {
                     return Ok(false);
                 }
-                let tys = self.field_types(&ty, &a);
-                for (k, (x, y)) in xa.iter().zip(&xb).enumerate() {
+                let tys = self.field_types(&ty, a);
+                for (k, (x, y)) in xa.iter().zip(xb.iter()).enumerate() {
                     let t = tys.get(k).cloned().unwrap_or(Ty::Error);
                     if !self.values_eq(x, y, &t)? {
                         return Ok(false);
@@ -684,12 +799,31 @@ impl Machine<'_> {
     }
 
     pub(super) fn values_cmp(&mut self, a: &Value, b: &Value, ty: &Ty) -> R<std::cmp::Ordering> {
+        self.deeper()?;
+        let r = self.cmp_at(a, b, ty);
+        self.value_depth -= 1;
+        r
+    }
+
+    fn cmp_at(&mut self, a: &Value, b: &Value, ty: &Ty) -> R<std::cmp::Ordering> {
         use std::cmp::Ordering;
-        let a = self.target(a).clone();
-        let b = self.target(b).clone();
+        // Parts are compared in place; only a reference is followed by a copy.
+        let (ca, cb);
+        let a = if let Value::Ref(_) = a {
+            ca = self.target(a).clone();
+            &ca
+        } else {
+            a
+        };
+        let b = if let Value::Ref(_) = b {
+            cb = self.target(b).clone();
+            &cb
+        } else {
+            b
+        };
         let ty = strip_ref(ty).clone();
         if matches!(ty, Ty::App(Con::Adt(_), _)) {
-            if let Some(r) = self.adt_trait_call("VarusaPettochu", &ty, vec![a.clone(), b.clone()])? {
+            if let Some(r) = self.adt_trait_call("VarusaPettochu", &ty, &[a, b])? {
                 return Ok(match r {
                     Value::Adt(0, _) => Ordering::Less,
                     Value::Adt(1, _) => Ordering::Equal,
@@ -705,13 +839,13 @@ impl Machine<'_> {
             (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
             (Value::Str(_) | Value::Buf(_), _) => a.str().cmp(&b.str()),
             _ => {
-                let (ia, xa) = self.parts(&a);
-                let (ib, xb) = self.parts(&b);
+                let (ia, xa) = self.parts(a);
+                let (ib, xb) = self.parts(b);
                 if ia != ib {
                     return Ok(ia.cmp(&ib));
                 }
-                let tys = self.field_types(&ty, &a);
-                for (k, (x, y)) in xa.iter().zip(&xb).enumerate() {
+                let tys = self.field_types(&ty, a);
+                for (k, (x, y)) in xa.iter().zip(xb.iter()).enumerate() {
                     let t = tys.get(k).cloned().unwrap_or(Ty::Error);
                     let o = self.values_cmp(x, y, &t)?;
                     if o != Ordering::Equal {
@@ -724,10 +858,18 @@ impl Machine<'_> {
     }
 
     fn xerox(&mut self, v: &Value, ty: &Ty) -> R<Value> {
+        // Copying recurses on `antec`'s stack; measured first, without.
+        if nesting(self.target(v)) > super::MAX_VALUE_DEPTH {
+            return Err(self.trap(
+                "T08",
+                "stack nindipoyindhi (ee data chaala lothuga undhi)",
+                Span::default(),
+            ));
+        }
         let v = self.target(v).clone();
         let ty = strip_ref(ty).clone();
         if matches!(ty, Ty::App(Con::Adt(_), _)) {
-            if let Some(r) = self.adt_trait_call("XeroxTheeyochu", &ty, vec![v.clone()])? {
+            if let Some(r) = self.adt_trait_call("XeroxTheeyochu", &ty, &[&v])? {
                 return Ok(r);
             }
         }
@@ -1012,13 +1154,24 @@ impl Machine<'_> {
     }
 
     #[allow(clippy::cognitive_complexity)]
-    fn native_call(&mut self, name: &str, tys: &[Ty], args: Vec<Value>, span: Span) -> R<Value> {
-        let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Unit);
+    fn native_call(&mut self, name: &str, tys: &[Ty], mut args: Vec<Value>, span: Span) -> R<Value> {
+        macro_rules! arg {
+            ($i:expr) => {
+                args.get($i).cloned().unwrap_or(Value::Unit)
+            };
+        }
+        // An argument the native keeps is moved out, not copied: copying a
+        // long list on every push would be quadratic.
+        macro_rules! take {
+            ($i:expr) => {
+                args.get_mut($i).map(|v| std::mem::replace(v, Value::Uninit)).unwrap_or(Value::Unit)
+            };
+        }
         let ty = |i: usize| tys.get(i).cloned().unwrap_or(Ty::Error);
         match name {
             // ── prelude ──
             "prelude.choopinchu" | "prelude.cheppu" | "prelude.gola_pettu" => {
-                let mut s = self.display(&arg(0), &ty(0))?;
+                let mut s = self.display(&arg!(0), &ty(0))?;
                 if name != "prelude.cheppu" {
                     s.push('\n');
                 }
@@ -1033,8 +1186,8 @@ impl Machine<'_> {
                 Ok(Value::Unit)
             }
             "prelude.nijame" => {
-                if matches!(arg(0), Value::Bool(false)) {
-                    let msg = arg(1).str();
+                if matches!(arg!(0), Value::Bool(false)) {
+                    let msg = arg!(1).str();
                     let text = if msg.is_empty() {
                         "nijame() fail ayyindhi".to_string()
                     } else {
@@ -1045,7 +1198,7 @@ impl Machine<'_> {
                 Ok(Value::Unit)
             }
             "prelude.kompa_munigindhi" => {
-                let msg = arg(0).str();
+                let msg = arg!(0).str();
                 Err(self.trap(
                     "T05",
                     if msg.is_empty() { "kompa_munigindhi()".to_string() } else { msg.to_string() },
@@ -1053,17 +1206,17 @@ impl Machine<'_> {
                 ))
             }
             "prelude.maarchu" | "prelude.kudhirithe_maarchu" | "prelude.kolpothu_maarchu" => {
-                self.convert(name, &ty(1), &ty(0), arg(0), span)
+                self.convert(name, &ty(1), &ty(0), arg!(0), span)
             }
             "prelude.size_of" | "prelude.align_of" => Ok(Value::Int(size_of(&ty(0)))),
             "prelude.kalipi" => {
-                let a = self.take_iter(arg(0));
-                let b = self.take_iter(arg(1));
+                let a = self.take_iter(arg!(0));
+                let b = self.take_iter(arg!(1));
                 Ok(Value::Iter(Box::new(IterState::Zip(Box::new(a), Box::new(b), ty(0)))))
             }
             "prelude.modhati" | "prelude.dhaatu" => {
-                let it = self.take_iter(arg(0));
-                let n = arg(1).int().max(0) as usize;
+                let it = self.take_iter(arg!(0));
+                let n = arg!(1).int().max(0) as usize;
                 let st = if name == "prelude.modhati" {
                     IterState::Take(Box::new(it), n)
                 } else {
@@ -1072,21 +1225,21 @@ impl Machine<'_> {
                 Ok(Value::Iter(Box::new(st)))
             }
             "prelude.prathi_dhaaniki" => {
-                let it = self.take_iter(arg(0));
-                Ok(Value::Iter(Box::new(IterState::Map2(Box::new(it), arg(1)))))
+                let it = self.take_iter(arg!(0));
+                Ok(Value::Iter(Box::new(IterState::Map2(Box::new(it), arg!(1)))))
             }
             "prelude.jalleda_pattu" => {
-                let it = self.take_iter(arg(0));
-                Ok(Value::Iter(Box::new(IterState::Filter(Box::new(it), arg(1), ty(0)))))
+                let it = self.take_iter(arg!(0));
+                Ok(Value::Iter(Box::new(IterState::Filter(Box::new(it), arg!(1), ty(0)))))
             }
             "prelude.number_vesi" => {
-                let it = self.take_iter(arg(0));
+                let it = self.take_iter(arg!(0));
                 Ok(Value::Iter(Box::new(IterState::Enumerate(Box::new(it), 0))))
             }
             "prelude.poguchey" => {
-                let mut it = self.take_iter(arg(0));
-                let mut acc = arg(1);
-                let f = arg(2);
+                let mut it = self.take_iter(arg!(0));
+                let mut acc = arg!(1);
+                let f = arg!(2);
                 while let Some(x) = self.iter_next(&mut it, span)? {
                     acc = self.call_value(&f, vec![acc, x], span)?;
                 }
@@ -1094,7 +1247,7 @@ impl Machine<'_> {
                 Ok(acc)
             }
             "prelude.varusa_ga" => {
-                let mut it = self.take_iter(arg(0));
+                let mut it = self.take_iter(arg!(0));
                 let mut out = Vec::new();
                 while let Some(x) = self.iter_next(&mut it, span)? {
                     out.push(x);
@@ -1102,7 +1255,7 @@ impl Machine<'_> {
                 self.drop_iter(it)?;
                 Ok(Value::Vec(out))
             }
-            "prelude.anni_theesuko" | "varusa.anni_theesuko" => match arg(0) {
+            "prelude.anni_theesuko" | "varusa.anni_theesuko" => match take!(0) {
                 Value::Vec(xs) | Value::Array(xs) => {
                     // A method's first type is its receiver's (`idhi`).
                     let t = if name.starts_with("varusa.") { ty(1) } else { ty(0) };
@@ -1112,15 +1265,15 @@ impl Machine<'_> {
             },
 
             // ── padham ──
-            "padham.enni" => Ok(Value::Int(self.arg_str(&arg(0)).chars().count() as i128)),
-            "padham.byte_len" => Ok(Value::Int(self.arg_str(&arg(0)).len() as i128)),
+            "padham.enni" => Ok(Value::Int(self.arg_str(&arg!(0)).chars().count() as i128)),
+            "padham.byte_len" => Ok(Value::Int(self.arg_str(&arg!(0)).len() as i128)),
             "padham.aksharaalu" => {
-                let text = self.arg_str(&arg(0));
+                let text = self.arg_str(&arg!(0));
                 Ok(Value::Iter(Box::new(IterState::Chars { text, pos: 0 })))
             }
             "padham.vidagottu" => {
-                let s = self.arg_str(&arg(0));
-                let sep = self.arg_str(&arg(1));
+                let s = self.arg_str(&arg!(0));
+                let sep = self.arg_str(&arg!(1));
                 let parts: Vec<Value> = if sep.is_empty() {
                     s.chars().map(|c| Value::Str(Rc::from(c.to_string()))).collect()
                 } else {
@@ -1128,18 +1281,18 @@ impl Machine<'_> {
                 };
                 Ok(Value::Vec(parts))
             }
-            "padham.kathirinchu" => Ok(Value::Str(Rc::from(self.arg_str(&arg(0)).trim()))),
+            "padham.kathirinchu" => Ok(Value::Str(Rc::from(self.arg_str(&arg!(0)).trim()))),
             "padham.tho_modhalaindha" => {
-                let (s, p) = (self.arg_str(&arg(0)), self.arg_str(&arg(1)));
+                let (s, p) = (self.arg_str(&arg!(0)), self.arg_str(&arg!(1)));
                 Ok(bool_v(s.starts_with(&*p)))
             }
             "padham.lo_undha" => {
-                let (s, p) = (self.arg_str(&arg(0)), self.arg_str(&arg(1)));
+                let (s, p) = (self.arg_str(&arg!(0)), self.arg_str(&arg!(1)));
                 Ok(bool_v(s.contains(&*p)))
             }
             "padham.ankam_ga" | "padham.aasajeevi_ga" => {
-                let s = self.arg_str(&arg(0));
-                let base = arg(1).int() as u32;
+                let s = self.arg_str(&arg!(0));
+                let base = arg!(1).int() as u32;
                 let it =
                     if name == "padham.ankam_ga" { IntTy::ANKAM } else { IntTy { signed: false, bits: 64 } };
                 let parsed = (2..=36).contains(&base).then(|| i128::from_str_radix(&s, base).ok()).flatten();
@@ -1149,29 +1302,29 @@ impl Machine<'_> {
                 })
             }
             "padham.amsam_ga" => {
-                let s = self.arg_str(&arg(0));
+                let s = self.arg_str(&arg!(0));
                 Ok(match s.trim().parse::<f64>() {
                     Ok(x) => Value::ok(Value::F64(x)),
                     Err(_) => Value::err(thappu_record(format!("`{s}` amsam kaadhu"))),
                 })
             }
             "padham.baitlu" => {
-                let s = self.arg_str(&arg(0));
+                let s = self.arg_str(&arg!(0));
                 let bytes: Vec<Value> = s.bytes().map(|b| Value::Int(i128::from(b))).collect();
                 let n = bytes.len();
                 let a = self.alloc(Value::Array(bytes));
                 Ok(Value::Slice(a, 0, n))
             }
             "padham.baitlu_nunchi" => {
-                let bytes: Vec<u8> = self.seq(&arg(0)).iter().map(|v| v.int() as u8).collect();
+                let bytes: Vec<u8> = self.seq(&arg!(0)).iter().map(|v| v.int() as u8).collect();
                 Ok(match String::from_utf8(bytes) {
                     Ok(s) => Value::ok(Value::Str(Rc::from(s))),
                     Err(e) => Value::err(thappu_record(format!("UTF-8 kaadhu: {e}"))),
                 })
             }
             "padham.byte_mukka" => {
-                let s = self.arg_str(&arg(0));
-                let (a, b) = (arg(1).int(), arg(2).int());
+                let s = self.arg_str(&arg!(0));
+                let (a, b) = (arg!(1).int(), arg!(2).int());
                 let part = (a >= 0 && b >= a).then(|| s.get(a as usize..b as usize)).flatten();
                 Ok(match part {
                     Some(p) => Value::ok(Value::Str(Rc::from(p))),
@@ -1181,11 +1334,11 @@ impl Machine<'_> {
 
             // ── varusa and mukka ──
             "varusa.kotthadhi" => Ok(Value::Vec(Vec::new())),
-            "varusa.enni" | "mukka.enni" => Ok(Value::Int(self.seq_len_of(&arg(0)) as i128)),
-            "varusa.khaaliyaa" | "mukka.khaaliyaa" => Ok(bool_v(self.seq_len_of(&arg(0)) == 0)),
+            "varusa.enni" | "mukka.enni" => Ok(Value::Int(self.seq_len_of(&arg!(0)) as i128)),
+            "varusa.khaaliyaa" | "mukka.khaaliyaa" => Ok(bool_v(self.seq_len_of(&arg!(0)) == 0)),
             "varusa.cherchu" => {
-                let x = arg(1);
-                self.with_target_mut(&arg(0), |v| {
+                let x = take!(1);
+                self.with_target_mut(&arg!(0), |v| {
                     if let Value::Vec(xs) = v {
                         xs.push(x);
                     }
@@ -1193,20 +1346,20 @@ impl Machine<'_> {
                 Ok(Value::Unit)
             }
             "varusa.theesey" => {
-                let popped = self.with_target_mut(&arg(0), |v| match v {
+                let popped = self.with_target_mut(&arg!(0), |v| match v {
                     Value::Vec(xs) => xs.pop(),
                     _ => None,
                 });
                 Ok(popped.map_or_else(Value::none, Value::some))
             }
             "varusa.thechu" | "varusa.maare_thechu" | "mukka.thechu" => {
-                Ok(match self.elem_addr(&arg(0), arg(1).int()) {
+                Ok(match self.elem_addr(&arg!(0), arg!(1).int()) {
                     Some(a) => Value::some(Value::Ref(a)),
                     None => Value::none(),
                 })
             }
             "varusa.sort_cheyyi" | "varusa.ila_sort_cheyyi" => {
-                let a = self.ref_addr(&arg(0));
+                let a = self.ref_addr(&arg!(0));
                 let xs = match std::mem::replace(self.read_mut(&a), Value::Uninit) {
                     Value::Vec(xs) => xs,
                     other => {
@@ -1215,7 +1368,7 @@ impl Machine<'_> {
                     }
                 };
                 let elem = ty(1);
-                let f = arg(1);
+                let f = arg!(1);
                 let by_fn = name == "varusa.ila_sort_cheyyi";
                 let sorted = self.sort_by(xs, &mut |m, x, y| {
                     if by_fn {
@@ -1250,19 +1403,19 @@ impl Machine<'_> {
                 Ok(Value::Map(Box::default()))
             }
             "jodi.cherchu" | "gajibiji_jodi.cherchu" | "gumpu.cherchu" => {
-                let base = self.ref_addr(&arg(0));
+                let base = self.ref_addr(&arg!(0));
                 let kt = map_key_ty(tys);
                 let set = name == "gumpu.cherchu";
-                let v = if set { Value::Unit } else { arg(2) };
-                let old = self.map_insert(&base, arg(1), v, &kt)?;
+                let v = if set { Value::Unit } else { take!(2) };
+                let old = self.map_insert(&base, take!(1), v, &kt)?;
                 if set {
                     return Ok(bool_v(old.is_none()));
                 }
                 Ok(old.map_or_else(Value::none, Value::some))
             }
             "jodi.thechu" | "jodi.maare_thechu" | "gajibiji_jodi.thechu" => {
-                let k = self.target(&arg(1)).clone();
-                let base = self.ref_addr(&arg(0));
+                let k = self.target(&arg!(1)).clone();
+                let base = self.ref_addr(&arg!(0));
                 let (_, found) = self.map_find(&base, &k, &map_key_ty(tys))?;
                 Ok(match found {
                     Some(i) => Value::some(Value::Ref(base.with(Elem::MapVal(i)))),
@@ -1270,8 +1423,8 @@ impl Machine<'_> {
                 })
             }
             "jodi.lekapothe_cherchu" => {
-                let (k, d) = (arg(1), arg(2));
-                let base = self.ref_addr(&arg(0));
+                let (k, d) = (take!(1), take!(2));
+                let base = self.ref_addr(&arg!(0));
                 let kt = map_key_ty(tys);
                 let (h, found) = self.map_find(&base, &k, &kt)?;
                 let i = match (found, self.read_mut(&base)) {
@@ -1288,8 +1441,8 @@ impl Machine<'_> {
                 Ok(Value::Ref(base.with(Elem::MapVal(i))))
             }
             "jodi.theesey" | "gajibiji_jodi.theesey" | "gumpu.theesey" => {
-                let k = self.target(&arg(1)).clone();
-                let base = self.ref_addr(&arg(0));
+                let k = self.target(&arg!(1)).clone();
+                let base = self.ref_addr(&arg!(0));
                 let (h, found) = self.map_find(&base, &k, &map_key_ty(tys))?;
                 let old = match (found, self.read_mut(&base)) {
                     (Some(i), Value::Map(m)) => m.remove_at(h, i),
@@ -1301,39 +1454,41 @@ impl Machine<'_> {
                 Ok(old.map_or_else(Value::none, |(_, v)| Value::some(v)))
             }
             "jodi.undhaa" | "gajibiji_jodi.undhaa" | "gumpu.undhaa" => {
-                let k = self.target(&arg(1)).clone();
-                let base = self.ref_addr(&arg(0));
+                let k = self.target(&arg!(1)).clone();
+                let base = self.ref_addr(&arg!(0));
                 Ok(bool_v(self.map_find(&base, &k, &map_key_ty(tys))?.1.is_some()))
             }
-            "jodi.enni" | "gajibiji_jodi.enni" | "gumpu.enni" => Ok(Value::Int(match self.target(&arg(0)) {
-                Value::Map(m) => m.len() as i128,
-                _ => 0,
-            })),
+            "jodi.enni" | "gajibiji_jodi.enni" | "gumpu.enni" => {
+                Ok(Value::Int(match self.target(&arg!(0)) {
+                    Value::Map(m) => m.len() as i128,
+                    _ => 0,
+                }))
+            }
 
             // ── undochu, sare_thappu, pette ──
-            "undochu.undhaa" => Ok(bool_v(matches!(self.target(&arg(0)), Value::Adt(0, _)))),
-            "undochu.ledhaa" => Ok(bool_v(matches!(self.target(&arg(0)), Value::Adt(1, _)))),
-            "undochu.lekapothe" => Ok(match arg(0) {
+            "undochu.undhaa" => Ok(bool_v(matches!(self.target(&arg!(0)), Value::Adt(0, _)))),
+            "undochu.ledhaa" => Ok(bool_v(matches!(self.target(&arg!(0)), Value::Adt(1, _)))),
+            "undochu.lekapothe" => Ok(match take!(0) {
                 Value::Adt(0, mut xs) => {
                     // The unused default is dropped.
-                    self.drop_value(arg(1), &ty(1))?;
+                    self.drop_value(take!(1), &ty(1))?;
                     xs.pop().unwrap_or(Value::Unit)
                 }
-                _ => arg(1),
+                _ => take!(1),
             }),
-            "undochu.kachithanga" => match arg(0) {
+            "undochu.kachithanga" => match take!(0) {
                 Value::Adt(0, mut xs) => Ok(xs.pop().unwrap_or(Value::Unit)),
                 _ => Err(self.trap("T06", "`ledhu` meeda kachithanga() pilicharu", span)),
             },
-            "undochu.prathi_dhaaniki" => match arg(0) {
+            "undochu.prathi_dhaaniki" => match take!(0) {
                 Value::Adt(0, mut xs) => {
                     let x = xs.pop().unwrap_or(Value::Unit);
-                    Ok(Value::some(self.call_value(&arg(1), vec![x], span)?))
+                    Ok(Value::some(self.call_value(&arg!(1), vec![x], span)?))
                 }
                 other => Ok(other),
             },
-            "sare_thappu.sareyaa" => Ok(bool_v(matches!(self.target(&arg(0)), Value::Adt(0, _)))),
-            "sare_thappu.kachithanga" => match arg(0) {
+            "sare_thappu.sareyaa" => Ok(bool_v(matches!(self.target(&arg!(0)), Value::Adt(0, _)))),
+            "sare_thappu.kachithanga" => match take!(0) {
                 Value::Adt(0, mut xs) => Ok(xs.pop().unwrap_or(Value::Unit)),
                 Value::Adt(_, xs) => {
                     let et = match &ty(0) {
@@ -1348,26 +1503,26 @@ impl Machine<'_> {
                 }
                 _ => Err(self.trap("T06", "kachithanga()", span)),
             },
-            "sare_thappu.thappu_maarchu" => match arg(0) {
+            "sare_thappu.thappu_maarchu" => match take!(0) {
                 Value::Adt(1, mut xs) => {
                     let e = xs.pop().unwrap_or(Value::Unit);
-                    Ok(Value::err(self.call_value(&arg(1), vec![e], span)?))
+                    Ok(Value::err(self.call_value(&arg!(1), vec![e], span)?))
                 }
                 other => Ok(other),
             },
-            "sare_thappu.prathi_dhaaniki" => match arg(0) {
+            "sare_thappu.prathi_dhaaniki" => match take!(0) {
                 Value::Adt(0, mut xs) => {
                     let x = xs.pop().unwrap_or(Value::Unit);
-                    Ok(Value::ok(self.call_value(&arg(1), vec![x], span)?))
+                    Ok(Value::ok(self.call_value(&arg!(1), vec![x], span)?))
                 }
                 other => Ok(other),
             },
-            "pette.kotthadhi" => Ok(Value::Box(Box::new(arg(0)))),
+            "pette.kotthadhi" => Ok(Value::Box(DeepBox::new(take!(0)))),
 
             // ── scalars ──
             "aksharam.digit_aa" | "aksharam.letter_aa" | "aksharam.space_aa" | "aksharam.alnum_aa"
             | "aksharam.ascii_aa" => {
-                let c = match self.target(&arg(0)) {
+                let c = match self.target(&arg!(0)) {
                     Value::Char(c) => *c,
                     _ => '\0',
                 };
@@ -1380,7 +1535,7 @@ impl Machine<'_> {
                 }))
             }
             "ankamlu.hex_ga" => {
-                let v = self.target(&arg(0)).int();
+                let v = self.target(&arg!(0)).int();
                 let it = match ty(0) {
                     Ty::Int(it) => it,
                     _ => IntTy::ANKAM,
@@ -1389,29 +1544,29 @@ impl Machine<'_> {
                 let unsigned = if bits >= 128 { v as u128 } else { (v as u128) & ((1u128 << bits) - 1) };
                 Ok(Value::Str(Rc::from(format!("{unsigned:x}"))))
             }
-            "amsam64.bits" => Ok(Value::Int(match self.target(&arg(0)) {
+            "amsam64.bits" => Ok(Value::Int(match self.target(&arg!(0)) {
                 Value::F64(x) => i128::from(x.to_bits()),
                 _ => 0,
             })),
-            "amsam32.bits" => Ok(Value::Int(match self.target(&arg(0)) {
+            "amsam32.bits" => Ok(Value::Int(match self.target(&arg!(0)) {
                 Value::F32(x) => i128::from(x.to_bits()),
                 _ => 0,
             })),
-            "amsam64.bits_nunchi" => Ok(Value::F64(f64::from_bits(arg(0).int() as u64))),
-            "amsam32.bits_nunchi" => Ok(Value::F32(f32::from_bits(arg(0).int() as u32))),
+            "amsam64.bits_nunchi" => Ok(Value::F64(f64::from_bits(arg!(0).int() as u64))),
+            "amsam32.bits_nunchi" => Ok(Value::F32(f32::from_bits(arg!(0).int() as u32))),
 
             // ── Raatha, Hasher ──
             "Raatha.kotthadhi" => Ok(Value::Adt(0, vec![Value::Buf(String::new())])),
             "Raatha.raayi" | "Raatha.akshara_raayi" => {
                 let text = if name == "Raatha.raayi" {
-                    self.display(&arg(1), &ty(1))?
+                    self.display(&arg!(1), &ty(1))?
                 } else {
-                    match arg(1) {
+                    match arg!(1) {
                         Value::Char(c) => c.to_string(),
                         _ => String::new(),
                     }
                 };
-                self.with_target_mut(&arg(0), |r| {
+                self.with_target_mut(&arg!(0), |r| {
                     if let Value::Adt(_, fs) = r {
                         match fs.first_mut() {
                             Some(Value::Buf(b)) => b.push_str(&text),
@@ -1426,12 +1581,12 @@ impl Machine<'_> {
                 });
                 Ok(Value::Unit)
             }
-            "Raatha.enni" => Ok(Value::Int(match self.target(&arg(0)) {
+            "Raatha.enni" => Ok(Value::Int(match self.target(&arg!(0)) {
                 Value::Adt(_, fs) => fs.first().map_or(0, |f| f.str().chars().count()) as i128,
                 _ => 0,
             })),
             "Raatha.padham_ga" => {
-                let s = self.with_target_mut(&arg(0), |r| match r {
+                let s = self.with_target_mut(&arg!(0), |r| match r {
                     Value::Adt(_, fs) => match fs.first_mut() {
                         Some(f) => std::mem::replace(f, Value::Buf(String::new())).str(),
                         None => Rc::from(""),
@@ -1441,12 +1596,12 @@ impl Machine<'_> {
                 Ok(Value::Str(s))
             }
             "Hasher.kalupu" => {
-                let base = self.ref_addr(&arg(0));
+                let base = self.ref_addr(&arg!(0));
                 let h = match self.read(&base) {
                     Value::Adt(_, fs) => fs.first().map_or(0, Value::int) as u64,
                     _ => 0,
                 };
-                let h = self.key_hash(h, &arg(1), &ty(1))?;
+                let h = self.key_hash(h, &arg!(1), &ty(1))?;
                 if let Value::Adt(_, fs) = self.read_mut(&base) {
                     if let Some(f) = fs.first_mut() {
                         *f = Value::Int(i128::from(h));
@@ -1454,7 +1609,7 @@ impl Machine<'_> {
                 }
                 Ok(Value::Unit)
             }
-            "Hasher.chaalu" => Ok(match self.target(&arg(0)) {
+            "Hasher.chaalu" => Ok(match self.target(&arg!(0)) {
                 Value::Adt(_, fs) => fs.first().cloned().unwrap_or(Value::Int(0)),
                 _ => Value::Int(0),
             }),
@@ -1464,15 +1619,15 @@ impl Machine<'_> {
 
             // ── file ──
             "file.chadhuvu" => {
-                let p = self.arg_str(&arg(0));
+                let p = self.arg_str(&arg!(0));
                 Ok(open_result(&p, std::fs::read_to_string(&*p).map(|s| Value::Str(Rc::from(s)))))
             }
             "file.raayi" => {
-                let (p, t) = (self.arg_str(&arg(0)), self.arg_str(&arg(1)));
+                let (p, t) = (self.arg_str(&arg!(0)), self.arg_str(&arg!(1)));
                 Ok(open_result(&p, std::fs::write(&*p, t.as_bytes()).map(|_| Value::Unit)))
             }
             "file.baitlu_chadhuvu" => {
-                let p = self.arg_str(&arg(0));
+                let p = self.arg_str(&arg!(0));
                 Ok(open_result(
                     &p,
                     std::fs::read(&*p)
@@ -1480,14 +1635,14 @@ impl Machine<'_> {
                 ))
             }
             "file.baitlu_raayi" => {
-                let p = self.arg_str(&arg(0));
-                let bytes: Vec<u8> = self.seq(&arg(1)).iter().map(|v| v.int() as u8).collect();
+                let p = self.arg_str(&arg!(0));
+                let bytes: Vec<u8> = self.seq(&arg!(1)).iter().map(|v| v.int() as u8).collect();
                 Ok(open_result(&p, std::fs::write(&*p, bytes).map(|_| Value::Unit)))
             }
-            "file.undhaa" => Ok(bool_v(std::path::Path::new(&*self.arg_str(&arg(0))).exists())),
-            "file.folderaa" => Ok(bool_v(std::path::Path::new(&*self.arg_str(&arg(0))).is_dir())),
+            "file.undhaa" => Ok(bool_v(std::path::Path::new(&*self.arg_str(&arg!(0))).exists())),
+            "file.folderaa" => Ok(bool_v(std::path::Path::new(&*self.arg_str(&arg!(0))).is_dir())),
             "file.list_cheyyi" => {
-                let p = self.arg_str(&arg(0));
+                let p = self.arg_str(&arg!(0));
                 Ok(file_result(std::fs::read_dir(&*p).map(|rd| {
                     let mut names: Vec<String> = rd
                         .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
@@ -1497,14 +1652,14 @@ impl Machine<'_> {
                 })))
             }
             "file.folder_cheyyi" => {
-                Ok(file_result(std::fs::create_dir_all(&*self.arg_str(&arg(0))).map(|_| Value::Unit)))
+                Ok(file_result(std::fs::create_dir_all(&*self.arg_str(&arg!(0))).map(|_| Value::Unit)))
             }
             "file.theesey" => {
-                Ok(file_result(std::fs::remove_file(&*self.arg_str(&arg(0))).map(|_| Value::Unit)))
+                Ok(file_result(std::fs::remove_file(&*self.arg_str(&arg!(0))).map(|_| Value::Unit)))
             }
             "file.path_kalupu" => {
                 // Joined with `/` on every system, the same as the native runtime.
-                let (a, b) = (self.arg_str(&arg(0)), self.arg_str(&arg(1)));
+                let (a, b) = (self.arg_str(&arg!(0)), self.arg_str(&arg!(1)));
                 let sep = |c: char| c == '/' || (cfg!(windows) && c == '\\');
                 let joined = if b.starts_with(sep) || a.is_empty() {
                     b.to_string()
@@ -1516,7 +1671,7 @@ impl Machine<'_> {
                 Ok(Value::Str(Rc::from(joined)))
             }
             "file.path_peru" | "file.path_folder" | "file.path_extension" => {
-                let p = self.arg_str(&arg(0));
+                let p = self.arg_str(&arg!(0));
                 let path = std::path::Path::new(&*p);
                 let part = match name {
                     "file.path_peru" => path.file_name(),
@@ -1535,7 +1690,7 @@ impl Machine<'_> {
             "system.args" => {
                 Ok(Value::Vec(self.args.iter().map(|a| Value::Str(Rc::from(a.as_str()))).collect()))
             }
-            "system.env" => Ok(match std::env::var(&*self.arg_str(&arg(0))) {
+            "system.env" => Ok(match std::env::var(&*self.arg_str(&arg!(0))) {
                 Ok(v) => Value::some(Value::Str(Rc::from(v))),
                 Err(_) => Value::none(),
             }),
@@ -1550,11 +1705,11 @@ impl Machine<'_> {
                 self.flush();
                 Ok(Value::Unit)
             }
-            "system.vellipo" => Err(Halt::Exit(arg(0).int() as i32)),
+            "system.vellipo" => Err(Halt::Exit(arg!(0).int() as i32)),
             "system.nadupu" => {
-                let prog = self.arg_str(&arg(0));
+                let prog = self.arg_str(&arg!(0));
                 let argv: Vec<String> =
-                    self.seq(&arg(1)).iter().map(|v| self.target(v).str().to_string()).collect();
+                    self.seq(&arg!(1)).iter().map(|v| self.target(v).str().to_string()).collect();
                 Ok(match std::process::Command::new(&*prog).args(&argv).output() {
                     Ok(o) => Value::ok(Value::Adt(
                         0,
@@ -1575,7 +1730,7 @@ impl Machine<'_> {
                 Ok(Value::Adt(0, vec![Value::Int(self.started.elapsed().as_nanos() as i128)]))
             }
             "Kshanam.gadichindhi" => {
-                let then = match self.target(&arg(0)) {
+                let then = match self.target(&arg!(0)) {
                     Value::Adt(_, fs) => fs.first().map_or(0, Value::int),
                     _ => 0,
                 };
@@ -1583,14 +1738,14 @@ impl Machine<'_> {
                 Ok(Value::Adt(0, vec![Value::Int(now - then)]))
             }
             "Kaalam.sec" => {
-                let n = arg(0).int();
+                let n = arg!(0).int();
                 match n.checked_mul(1_000_000_000).filter(|ns| (0..=u64::MAX as i128).contains(ns)) {
                     Some(ns) => Ok(Value::Adt(0, vec![Value::Int(ns)])),
                     None => Err(self.trap("T01", format!("`Kaalam` lo {n} sec pattadhu"), span)),
                 }
             }
             "Kaalam.millisec" | "Kaalam.nanosec" => {
-                let ns = match self.target(&arg(0)) {
+                let ns = match self.target(&arg!(0)) {
                     Value::Adt(_, fs) => fs.first().map_or(0, Value::int),
                     _ => 0,
                 };
@@ -1812,6 +1967,23 @@ impl Machine<'_> {
             (false, None) => Err(self.trap("T01", format!("`{}` ki maarchalem", super::show_ty(to)), span)),
         }
     }
+}
+
+/// How deeply `v` nests, found without recursing.
+fn nesting(v: &Value) -> usize {
+    let mut deepest = 0;
+    let mut work = vec![(v, 1usize)];
+    while let Some((v, d)) = work.pop() {
+        deepest = deepest.max(d);
+        match v {
+            Value::Box(b) => work.push((b, d + 1)),
+            Value::Tuple(xs) | Value::Array(xs) | Value::Vec(xs) | Value::Adt(_, xs) => {
+                work.extend(xs.iter().map(|x| (x, d + 1)))
+            }
+            _ => {}
+        }
+    }
+    deepest
 }
 
 fn file_result(r: std::io::Result<Value>) -> Value {

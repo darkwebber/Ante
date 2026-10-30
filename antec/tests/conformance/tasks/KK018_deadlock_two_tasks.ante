@@ -1,0 +1,20 @@
+# category: runtime-trap
+# expect-trap: T15 @ 0:0
+# level: services
+# Two tasks each wait for the other to send first, and the first task waits
+# for its team: every task waits, so the program ends with T15 (§24.4).
+task thechuko
+
+okati(a: &task.Andhuko[ankam] ni, p: &task.Pampey[ankam] tho) -> khali ante:
+    x ante a.andhuko()
+    1 ni p.pampu()
+
+rendu(c1: &jatha[task.Pampey[ankam], task.Andhuko[ankam]] ni, c2: &jatha[task.Pampey[ankam], task.Andhuko[ankam]] tho, j: &task.Jattu tho) -> khali ante:
+    (() => &c1.1 ni, &c2.0 tho okati()) ni j.pampu()
+    (() => &c2.1 ni, &c1.0 tho okati()) ni j.pampu()
+
+modhalu() -> khali ante:
+    c1 ante 0 ni task.kaluva[ankam]()
+    c2 ante 0 ni task.kaluva[ankam]()
+    ((j: &task.Jattu) => &c1 ni, &c2 tho, j tho rendu()) ni task.kalisi()
+    "never" ni choopinchu()

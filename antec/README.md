@@ -13,8 +13,10 @@
 | M7 LLVM code generation (native binaries) | ✅ done |
 | M8 Borrow checker (§15) | ✅ done |
 | M9 Generics, traits, closures (§13, §10.7) | ✅ done |
-| M10 Standard library (§21) | ⏳ next |
-| M11–M24 | inka start avvaledhu (spec Appendix E) |
+| M10 Standard library (§21) | ✅ done |
+| M11 C FFI (§22) | ✅ done |
+| M12 Tasks and sharing (§24) | ✅ done |
+| M13–M24 | inka start avvaledhu (spec Appendix E) |
 
 ## Build and test
 
@@ -165,7 +167,7 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 - **Textual LLVM IR + clang.** `antec` LLVM IR text raasthundhi, `antec/runtime/ante_rt.c` tho kalipi `clang` ki isthundhi: default `-O0` (fast build), `--release` aithe `-O2`. Rust dependencies emi levu; `clang` (leka `$ANTE_CC`) unte chaalu.
 - **Runtime cache.** `ante_rt.c` okkasari compile ayyi cache lo untundhi (`$ANTE_CACHE_DIR`, leka macOS lo `~/Library/Caches/antec`, Linux lo `~/.cache/antec`, Windows lo `%LOCALAPPDATA%\antec`). Runtime, compiler, target maarithe kottha object.
 - **Temp files** prathi build ki kottha, guess cheyyaleni peru tho, owner matrame chadavagalige folder lo; build ayyaaka delete.
-- **`[build]` settings** (`ante.toml`): `stack = "64MB"` `modhalu` thread stack (minimum, default 8MB), `target = "aarch64-unknown-linux-gnu"` laanti 64-bit triple clang ki `--target` ga velthundhi.
+- **`[build]` settings** (`ante.toml`): `stack = "256MB"` `modhalu` thread stack (minimum 8MB, default 64MB), `target = "aarch64-unknown-linux-gnu"` laanti 64-bit triple clang ki `--target` ga velthundhi.
 - **Stack overflow = T08.** `modhalu` thana sontha thread lo run avthundhi, stack kindha 1MB guard region tho. Adhi touch aithe crash kaakunda `kompa munigindhi! stack nindipoyindhi` (exit 101). Position ikkada theliyadhu, anduke message lo `(file:line:col)` undadhu (§20.3).
 - **Monomorphization.** `modhalu` nunchi reachable aina prathi function, prathi concrete type combination ki okasari generate avthundhi. Trait calls compile time lone resolve avthayi.
 - **Layouts.** `padham`/`varusa` = `{ptr, len, cap}`, `&mukka` = `{ptr, len}`, enums = `{i32 tag, payload}`, `pani` = `{fn, env}`.
@@ -179,16 +181,29 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 | Vishayam | `antec` lo |
 |---|---|
 | Value layout | Native: paina [Layouts](#native-binaries-ela-vasthayi-short-ga). `size_of` ints/floats ki bytes, migathavi ki 8 |
-| Stack size | `[build] stack`, default and minimum 8MB. Native lo stack kindha 1MB guard; interpreter lo 8MB ki 20,000 calls (stack penchithe proportional ga ekkuva) |
+| Stack size | `[build] stack`, default 64MB, minimum 8MB (reserve matrame chesthundhi, vaadinantha memory matrame theesukuntundhi). Native lo stack kindha 1MB guard; interpreter lo 8MB ki 20,000 calls (default 64MB ki 160,000, stack penchithe proportional ga ekkuva) |
 | Nesting limits | Brackets, unary operators, blocks, types, patterns kalipi 512 levels; okka expression tree 1,000 levels varaku (`a + b + …` lo prathi operator oka level). Daati vellithe E0216 |
 | Transcendental functions (`lekkalu.sin` etc.) | Platform C library (`libm`) / Rust `f64` methods; accuracy vaati documentation laage |
 | `lekkalu.motham` / `dot` | Floats ni 8 lanes lo kalipi, chivarlo lanes ni order lo kaluputhayi |
 | Collection elements drop order | `varusa`/arrays: modhati element nunchi chivari varaku. Records/tuples: fields reverse order lo (§19.3) |
 | Hash seeds | Fixed (deterministic) |
 | Constant evaluation step limit | Avasaram ledhu: constants lo loops, function calls raavu (E1101), kaabatti evaluation eppudu aagipothundhi |
-| T08/T09 position | Interpreter lo position untundhi; native lo T08/T09 ki position undadhu |
+| T08/T09 position | Interpreter lo position untundhi; native lo T08/T09 ki position undadhu. T15 (deadlock) ki position eppudu undadhu |
+| Lothu data (list, tree) | Drop ki limit ledhu: rendu backends lo okko step ga, stack vaadakunda. `xerox`, `==`, order, display matram recursion: interpreter lo 200,000 levels (≈100,000 list nodes) daatithe T08; native lo stack meedha aadharapadi (default 64MB ki ≈200,000 nodes varaku ok) |
 | File error text | Common errors (`aa file ledhu`, `permission ledhu`, `adhi file kaadhu, folder`, …) rendu backends lo same; migathavi OS message |
 | Diagnostics text | Tinglish, Unicode characters lo columns |
+
+## Telisina quirks (break cheyyalani try chesi kanukunnavi)
+
+Ivi bugs kaavu, kaani telisi undali:
+
+- **Text ni loop lo penchadam:** `s lo (s + x) pettu` prathisaari kotha `padham` chesthundhi, kaabatti loop lo quadratic. `s += x` vaadandi, adhi alaage penchuthundhi.
+- **Verb mundhu index:** `i ni ps[i].pampu()` parse avvadhu (`ps[i]` generic call laaga chadhuvuthundhi). Mundhu `p ante &ps[i]`, tharvatha `i ni p.pampu()`.
+- **Rendu calls madhya operator:** `a ni f() + b ni g()` raayalem; `(a ni f()) + (b ni g())` raayandi (E0201 ade cheputhundhi).
+- **Chaala tasks okesaari wait chesthe:** anni okate condition variable meedha wait chesthayi, kaabatti prathi wake-up anni tasks ni leputhundhi. Vandala tasks ok; velalo block ayithe slow (2,000 tasks ki ≈15s).
+- **Deadlock:** anni tasks time limit lekunda wait chesthunte program hang avvadhu, T15 tho aagipothundhi (§24.4). Okati input kosam leka C code lo block ayithe adhi wait kaadhu, program alaage untundhi.
+- **Windows:** task trap ayinappudu values drop avthayi (MSVC `longjmp` unwinding, cleanup funclets tho). MinGW lo inka ledhu. Sort comparator lo trap ayithe runtime sort buffer Windows lo leak avthundhi.
+- **`antec emit … | head`:** output madhyalo pipe close ayina panic avvadhu, migatha output vadilesthundhi.
 
 ## Gurthu pettukovalsinavi
 

@@ -34,11 +34,12 @@ pub fn check(prog: &Program, g: &Globals) -> Vec<(FileId, Diagnostic)> {
         let mut reach = |callee: BodyId, ctys: Vec<Ty>, span: Span| -> Option<Diagnostic> {
             let mut budget = MAX_SIZE;
             if ctys.iter().any(|t| !fits(t, &mut budget)) {
-                return Some(Diagnostic::error(
-                    "E0805",
-                    span,
-                    "ee generic function thanani thaane peddha type tho pilusthondhi, monomorphization ekkadiki aagadhu",
-                ));
+                let message = if callee == bid {
+                    "ee generic function thanani thaane peddha type tho pilusthondhi, monomorphization ekkadiki aagadhu"
+                } else {
+                    "ee generic call ki type chaala pedhdhadhi ayipoyindhi (512 parts daatindhi). Madhyalo oka `rakam` pettandi"
+                };
+                return Some(Diagnostic::error("E0805", span, message));
             }
             work.push((callee, ctys));
             None

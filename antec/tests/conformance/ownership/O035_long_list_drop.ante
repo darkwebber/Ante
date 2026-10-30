@@ -1,0 +1,19 @@
+# category: run-pass
+# expect-stdout: built
+# expect-stdout: 300000
+# level: core
+# A list 300 000 links long is dropped without running out of stack (§19.3).
+edho_okati Jabitha ante:
+    Konasaagu(ankam, pette[Jabitha])
+    Ayipoyindhi
+
+modhalu() -> khali ante:
+    maare j ante Jabitha.Ayipoyindhi
+    0 nunchi 300000 lopu okko i ki:
+        j lo Jabitha.Konasaagu(i, (j ni pette.kotthadhi())) pettu
+    "built" ni choopinchu()
+    j batti:
+        Jabitha.Konasaagu(x, _) aithe:
+            (x + 1) ni choopinchu()
+        Jabitha.Ayipoyindhi aithe:
+            0 ni choopinchu()

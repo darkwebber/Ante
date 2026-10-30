@@ -109,7 +109,7 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 | M9 | Generics, traits, closures | ✅ done |
 | M10 | Standard library: `jodi`, `gumpu`, files, paths, bytes, `system.nadupu`, `lekkalu` (spec §21), anni backends lo okela | ✅ done |
 | M11 | FFI: `naa_risk`, `@C` records, `@bayata` exports, package lo C files, libraries link cheyyadam (spec §22) | ✅ done |
-| M12 | Tasks and sharing: `task.kalisi`, `pampu`, channels, `Thaalam`, `Atomic`, `panchukunna`, cancel (spec §24) | ✅ done (Windows lo matram task trap ayithe values inka drop avvavu) |
+| M12 | Tasks and sharing: `task.kalisi`, `pampu`, channels, `Thaalam`, `Atomic`, `panchukunna`, cancel (spec §24) | ✅ done |
 | M13–M14 | Services: JSON, crypto, time zones, HTTP, SQL (spec Part IX) | 🔜 |
 | M15–M18 | Web apps "Ante" lone: pages, styles, routes, server functions, `antec web` deploy (spec Annex W) | 🔜 |
 | M19 | Official website, "Ante" lone raasindhi: playground, docs, learn | 🔜 |

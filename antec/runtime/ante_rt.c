@@ -373,6 +373,20 @@ static _Thread_local ante_task *cur;
 
 static ante_task *current(void) { return cur ? cur : &main_task; }
 
+/* The drop stack of recursive values (see `ante_drop_deep`). */
+typedef struct {
+    void *p;
+    void (*f)(void *);
+} drop_item;
+
+#if defined(_MSC_VER) && !defined(__clang__)
+static __declspec(thread) drop_item *dstack;
+static __declspec(thread) int64_t dlen, dcap;
+#else
+static _Thread_local drop_item *dstack;
+static _Thread_local int64_t dlen, dcap;
+#endif
+
 int64_t ante_cpus(void) {
 #ifdef _WIN32
     SYSTEM_INFO si;
@@ -449,6 +463,31 @@ static void dispatch(void) {
         start_worker();
 }
 
+/* Deadlock (T15): every live task, the first one too, waits with no time
+   limit and nothing has woken any of them since they started waiting, so
+   none ever will. A task blocked outside `tk` (reading input, in C code)
+   isn't waiting here and keeps the program alive. */
+static int64_t live_tasks = 1, stuck_tasks, wake_gen;
+static void report_trap(const char *code, const ante_loc *loc);
+
+/* With `tk` held: wakes every waiting task. They may all be able to go on
+   now, so none counts as stuck until it waits again. */
+static void tk_wake(void) {
+    wake_gen++;
+    stuck_tasks = 0;
+    c_wake_all(&tk_changed);
+}
+
+static NORETURN void deadlock(void) {
+    m_lock(&out_lock);
+    flush_locked();
+    fprintf(stderr, "kompa munigindhi! anni tasks okadhaani kosam okati wait chesthunnayi, evvaru munduku vellaru (deadlock)\n");
+    fflush(stderr);
+    m_unlock(&out_lock);
+    report_trap("T15", NULL);
+    end_now(101);
+}
+
 /* Waits on `tk_changed` (with `tk` held) for at most `ms` (-1: no limit).
    While the task waits, its worker doesn't count as running. */
 static void tk_wait(int64_t ms) {
@@ -457,10 +496,16 @@ static void tk_wait(int64_t ms) {
         workers_running--;
         dispatch();
     }
-    if (ms < 0)
+    if (ms < 0) {
+        int64_t gen = wake_gen;
+        if (++stuck_tasks >= live_tasks) deadlock();
         c_wait(&tk_changed, &tk);
-    else
+        /* Woken without a broadcast (spuriously): still stuck until it
+           waits again, which counts it again. */
+        if (gen == wake_gen) stuck_tasks--;
+    } else {
         c_wait_ms(&tk_changed, &tk, ms);
+    }
     if (worker) workers_running++;
 }
 
@@ -519,6 +564,7 @@ void *ante_task_spawn(void *h, ante_run_fn run, const void *pani, int64_t result
     t->refs = 3;
     m_lock(&tk);
     t->id = next_task_id++;
+    live_tasks++;
     t->team = team;
     t->next_in_team = team->tasks;
     team->tasks = t;
@@ -550,10 +596,13 @@ static void finish_task(ante_task *t, int32_t state) {
     if (drop && t->drop_result) t->drop_result(t->result);
     m_lock(&tk);
     if (t->team) t->team->active--;
-    c_wake_all(&tk_changed);
+    live_tasks--;
+    tk_wake();
     task_unref(t);
     m_unlock(&tk);
 }
+
+static void release_held(ante_task *t);
 
 static void run_task(ante_task *t) {
     cur = t;
@@ -568,6 +617,19 @@ static void run_task(ante_task *t) {
         t->run(t->pani, t->result);
         finish_task(t, 2);
     } else {
+        /* Whatever unwinding didn't give back (frames without cleanups,
+           or no unwinding at all) is given back now. Drops the trap cut
+           short stay undone (a leak, never a double drop). */
+        dlen = 0;
+        m_lock(&tk);
+        release_held(t);
+        while (t->teams) {
+            ante_team *team = t->teams;
+            m_unlock(&tk);
+            ante_team_end(team);
+            m_lock(&tk);
+        }
+        m_unlock(&tk);
         finish_task(t, 3);
     }
     cur = NULL;
@@ -617,7 +679,7 @@ void ante_task_drop(void *h) {
 void ante_task_cancel(void *h) {
     m_lock(&tk);
     ((ante_task *)h)->cancel = 1;
-    c_wake_all(&tk_changed);
+    tk_wake();
     m_unlock(&tk);
 }
 
@@ -625,7 +687,7 @@ void ante_team_cancel(void *h) {
     m_lock(&tk);
     for (ante_task *t = ((ante_team *)h)->tasks; t; t = t->next_in_team)
         if (t->state < 2) t->cancel = 1;
-    c_wake_all(&tk_changed);
+    tk_wake();
     m_unlock(&tk);
 }
 
@@ -726,7 +788,7 @@ void ante_lock_close(void *h) {
         }
     }
     b->holder = 0;
-    c_wake_all(&tk_changed);
+    tk_wake();
     m_unlock(&tk);
 }
 
@@ -834,7 +896,7 @@ int32_t ante_chan_send(void *h, const void *v) {
     memcpy(c->buf + ((c->head + c->count) % c->slots) * c->size, v, (size_t)c->size);
     c->count++;
     int64_t mine = ++c->sent;
-    c_wake_all(&tk_changed);
+    tk_wake();
     /* A rendezvous ends when the value is taken. */
     while (c->cap == 0 && c->taken < mine && c->receiver && !cancelled_now()) tk_wait(-1);
     m_unlock(&tk);
@@ -856,7 +918,7 @@ int32_t ante_chan_recv(void *h, void *out, int32_t wait) {
     c->head = (c->head + 1) % c->slots;
     c->count--;
     c->taken++;
-    c_wake_all(&tk_changed);
+    tk_wake();
     m_unlock(&tk);
     return 1;
 }
@@ -872,7 +934,7 @@ void ante_chan_sender_drop(void *h) {
     chan *c = (chan *)h;
     m_lock(&tk);
     c->senders--;
-    c_wake_all(&tk_changed);
+    tk_wake();
     chan_unref(c);
     m_unlock(&tk);
 }
@@ -881,7 +943,7 @@ void ante_chan_receiver_drop(void *h) {
     chan *c = (chan *)h;
     m_lock(&tk);
     c->receiver = 0;
-    c_wake_all(&tk_changed);
+    tk_wake();
     chan_unref(c);
     m_unlock(&tk);
 }
@@ -991,7 +1053,7 @@ void ante_rc_free(void *h) { free(h); }
 static void release_held(ante_task *t) {
     for (int32_t i = 0; i < t->nheld; i++) t->held[i]->holder = 0;
     t->nheld = 0;
-    c_wake_all(&tk_changed);
+    tk_wake();
 }
 
 #ifndef _WIN32
@@ -1002,12 +1064,7 @@ static _Unwind_Reason_Code unwind_stop(int version, _Unwind_Action actions, _Unw
     (void)cls;
     (void)exc;
     ante_task *t = (ante_task *)arg;
-    if ((actions & _UA_END_OF_STACK) || _Unwind_GetCFA(ctx) >= t->stack_mark) {
-        m_lock(&tk);
-        release_held(t);
-        m_unlock(&tk);
-        longjmp(t->jb, 1);
-    }
+    if ((actions & _UA_END_OF_STACK) || _Unwind_GetCFA(ctx) >= t->stack_mark) longjmp(t->jb, 1);
     return _URC_NO_REASON;
 }
 #endif
@@ -1033,17 +1090,10 @@ static NORETURN void task_trapped(const char *code, const char *msg, const char 
     memset(&t->exc, 0, sizeof t->exc);
     t->exc.exception_class = 0x414e544555574e44ULL; /* "ANTEUWND" */
     _Unwind_ForcedUnwind(&t->exc, unwind_stop, t);
-    /* No unwind information: fall back to leaving the frames as they are. */
+    /* No unwind information: the frames are left as they are. */
 #endif
-    m_lock(&tk);
-    release_held(t);
-    while (t->teams) {
-        ante_team *team = t->teams;
-        m_unlock(&tk);
-        ante_team_end(team);
-        m_lock(&tk);
-    }
-    m_unlock(&tk);
+    /* On Windows (x64) `longjmp` itself unwinds, running each frame's
+       cleanup funclet on the way. */
     longjmp(t->jb, 1);
 }
 
@@ -1224,6 +1274,43 @@ void ante_pani_dec(void *env) {
     if (__atomic_fetch_sub(&e->rc, 1, __ATOMIC_ACQ_REL) == 1) {
         e->drop(env);
         free(env);
+    }
+}
+
+/* Dropping a recursive value (a list, a tree) runs off this stack rather
+   than the C stack, so a list a million links long doesn't overflow
+   (spec §19.3 order: each step pushes its parts so they pop in order). */
+void ante_drop_push(void *p, void (*f)(void *)) {
+    if (dlen == dcap) {
+        int64_t cap = dcap ? size_mul(dcap, 2) : 64;
+        drop_item *n = (drop_item *)realloc(dstack, (size_t)size_mul(cap, (int64_t)sizeof(drop_item)));
+        if (!n) out_of_memory();
+        dstack = n;
+        dcap = cap;
+    }
+    dstack[dlen].p = p;
+    dstack[dlen].f = f;
+    dlen++;
+}
+
+/* `ante_buf_free` with the drop stack's signature: calling it through a
+   `void (*)(void *)` directly is undefined behavior. */
+void ante_drop_buf(void *v) { ante_buf_free((ante_str *)v); }
+
+/* Drops `p` with step `f` and everything the steps push, then returns.
+   Nested calls (a `sardhu` that drops a list) work on their own part. */
+void ante_drop_deep(void *p, void (*f)(void *)) {
+    int64_t base = dlen;
+    ante_drop_push(p, f);
+    while (dlen > base) {
+        dlen--;
+        dstack[dlen].f(dstack[dlen].p);
+    }
+    /* A stack grown big for one huge value is given back. */
+    if (base == 0 && dcap > 4096) {
+        free(dstack);
+        dstack = NULL;
+        dcap = 0;
     }
 }
 

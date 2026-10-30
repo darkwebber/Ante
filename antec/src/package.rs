@@ -83,19 +83,30 @@ pub struct BuildSettings {
 }
 
 impl BuildSettings {
-    /// Whether the target unwinds a trapped task with the C unwinder
-    /// (§24.5.2). Windows uses its own exception model; there a trapped
-    /// task's values aren't dropped yet.
-    pub fn unwinds(&self) -> bool {
-        match &self.target {
-            Some(t) => !t.contains("windows"),
-            None => !cfg!(windows),
+    /// How the target unwinds a trapped task (§24.5.2): with the C unwinder,
+    /// or on Windows (MSVC) with its own, which `longjmp` runs. MinGW isn't
+    /// handled yet; there a trapped task's values aren't dropped.
+    pub fn unwinds(&self) -> crate::codegen::Unwind {
+        use crate::codegen::Unwind;
+        let (windows, msvc) = match &self.target {
+            Some(t) => (t.contains("windows"), t.contains("msvc")),
+            None => (cfg!(windows), cfg!(target_env = "msvc")),
+        };
+        match (windows, msvc) {
+            (false, _) => Unwind::Dwarf,
+            (true, true) => Unwind::Seh,
+            (true, false) => Unwind::Off,
         }
     }
 }
 
-/// The smallest (and default) `[build] stack`: 8 MB.
+/// The smallest `[build] stack`: 8 MB.
 pub const MIN_STACK: u64 = 8 << 20;
+
+/// The default `[build] stack`: 64 MB, so deep recursion on big inputs
+/// (a DFS over a long path) works. It's only reserved; pages are used as
+/// the stack grows.
+pub const DEFAULT_STACK: u64 = 64 << 20;
 
 /// `[build] task_stack`: 1 MB unless set; at least 256 KB (§24.5.4).
 pub const DEFAULT_TASK_STACK: u64 = 1 << 20;
@@ -104,7 +115,7 @@ const MIN_TASK_STACK: u64 = 256 << 10;
 impl Default for BuildSettings {
     fn default() -> Self {
         BuildSettings {
-            stack: MIN_STACK,
+            stack: DEFAULT_STACK,
             task_stack: DEFAULT_TASK_STACK,
             target: None,
             c_sources: Vec::new(),

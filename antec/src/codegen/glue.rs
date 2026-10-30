@@ -756,7 +756,99 @@ pub(super) fn env_drop(gen: &mut Gen, name: &str, caps: &[Ty]) -> String {
 
 pub(super) fn drop_glue(gen: &mut Gen, name: &str, ty: &Ty) -> String {
     let mut fx = Fx::new_for_glue(gen);
-    drop_into(&mut fx, ty, "%v");
+    if fx.gen.cyclic(ty) {
+        // A list or tree may be any depth: its parts are dropped off the
+        // runtime's drop stack, one step at a time.
+        let step = fx.gen.item(Item::DropStep(ty.clone()));
+        fx.emit(format!("call void @ante_drop_deep(ptr %v, ptr {step})"));
+    } else {
+        drop_into(&mut fx, ty, "%v");
+    }
+    format!("define internal void {name}(ptr %v) {{\nentry:\n{}  ret void\n}}\n", fx.code())
+}
+
+/// One step of dropping a recursive type: its `sardhu`, then each part
+/// pushed on the drop stack so that they pop in the order `drop_into`
+/// would visit them (§19.3), each with its own step or drop function.
+pub(super) fn drop_step(gen: &mut Gen, name: &str, ty: &Ty) -> String {
+    let mut fx = Fx::new_for_glue(gen);
+    let push = |fx: &mut Fx, t: &Ty, p: &str| {
+        if !fx.needs_drop(t) {
+            return;
+        }
+        let f = if fx.gen.cyclic(t) { Item::DropStep(t.clone()) } else { Item::Drop(t.clone()) };
+        let f = fx.gen.item(f);
+        fx.emit(format!("call void @ante_drop_push(ptr {p}, ptr {f})"));
+    };
+    if let Ty::App(Con::Adt(_), _) = ty {
+        if let Some((bd, tys)) = user_impl(fx.gen, "Sardhukochu", ty) {
+            fx.call_body_vals(bd, &tys, &["%v".to_string()]);
+        }
+    }
+    // Fields go last first, so they're pushed first first.
+    match ty {
+        Ty::Tuple(items) => {
+            let ptrs = field_ptrs(&mut fx, ty, "%v", items.len());
+            for (p, t) in ptrs.iter().zip(items) {
+                push(&mut fx, t, p);
+            }
+        }
+        Ty::App(Con::Pette, a) => {
+            // The box is freed once everything in it is gone.
+            let p = fx.load("ptr", "%v");
+            fx.emit(format!("call void @ante_drop_push(ptr {p}, ptr @free)"));
+            push(&mut fx, &a[0], &p);
+        }
+        Ty::Array(..) | Ty::App(Con::Varusa, _) => {
+            if matches!(ty, Ty::App(..)) {
+                fx.emit("call void @ante_drop_push(ptr %v, ptr @ante_drop_buf)");
+            }
+            if let Some((data, len, elem)) = seq_at(&mut fx, ty, "%v") {
+                // Elements go first to last, so they're pushed last first.
+                if fx.needs_drop(&elem) {
+                    let et = fx.ll(&elem);
+                    let i = fx.alloca("i64");
+                    fx.emit(format!("store i64 {len}, ptr {i}"));
+                    let head = fx.label();
+                    let body = fx.label();
+                    let done = fx.label();
+                    fx.emit(format!("br label %{head}"));
+                    fx.start(&head);
+                    let iv = fx.load("i64", &i);
+                    let more = fx.r();
+                    fx.emit(format!("{more} = icmp ugt i64 {iv}, 0"));
+                    fx.emit(format!("br i1 {more}, label %{body}, label %{done}"));
+                    fx.start(&body);
+                    let k = fx.r();
+                    fx.emit(format!("{k} = sub i64 {iv}, 1"));
+                    fx.emit(format!("store i64 {k}, ptr {i}"));
+                    let p = fx.gep(&et, &data, &[format!("i64 {k}")]);
+                    push(&mut fx, &elem, &p);
+                    fx.emit(format!("br label %{head}"));
+                    fx.start(&done);
+                }
+            }
+        }
+        Ty::App(Con::Undochu | Con::SareThappu | Con::Adt(_), _) => {
+            if !fx.gen.is_enum(ty) {
+                let fields = fx.gen.variants(ty).pop().unwrap_or_default();
+                let st = Ty::Tuple(fields.clone());
+                let ptrs = field_ptrs(&mut fx, &st, "%v", fields.len());
+                for (p, t) in ptrs.iter().zip(&fields) {
+                    push(&mut fx, t, p);
+                }
+            } else {
+                by_variant(&mut fx, ty, "%v", &mut |fx, _, pay, fields| {
+                    let st = Ty::Tuple(fields.to_vec());
+                    let ptrs = field_ptrs(fx, &st, pay, fields.len());
+                    for (p, t) in ptrs.iter().zip(fields) {
+                        push(fx, t, p);
+                    }
+                });
+            }
+        }
+        _ => drop_into(&mut fx, ty, "%v"),
+    }
     format!("define internal void {name}(ptr %v) {{\nentry:\n{}  ret void\n}}\n", fx.code())
 }
 

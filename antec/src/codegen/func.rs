@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use super::{float_lit, Gen, Item};
+use super::{float_lit, Gen, Item, Unwind};
 use crate::ast::{BinOp, UnOp};
 use crate::mir::*;
 use crate::resolve::FileId;
@@ -80,7 +80,7 @@ impl<'g, 'a> Fx<'g, 'a> {
     /// A slot for a `kalisi`'s team, which a trapped task's unwinding waits
     /// for before leaving this function; `None` without unwinding (or in glue).
     pub fn team_slot(&mut self) -> Option<(String, String)> {
-        if !self.gen.unwind || self.body.is_none() {
+        if self.gen.unwind == Unwind::Off || self.body.is_none() {
             return None;
         }
         let (team, env) = (self.r(), self.r());
@@ -245,7 +245,7 @@ impl<'g, 'a> Fx<'g, 'a> {
         // environment, and a local that's ever partly moved out is left
         // alone (a leak, never a double drop).
         let mut unwind: Vec<Local> = Vec::new();
-        if self.gen.unwind {
+        if self.gen.unwind != Unwind::Off {
             let partial = partly_moved(body);
             for l in first_real..self.locals.len() {
                 let t = self.locals[l].clone();
@@ -305,7 +305,11 @@ impl<'g, 'a> Fx<'g, 'a> {
             blocks.push_str(&self.landing_pad(&unwind));
         }
         let allocas = std::mem::take(&mut self.allocas);
-        let personality = if cleanup { " personality ptr @__gcc_personality_v0" } else { "" };
+        let personality = match (cleanup, self.gen.unwind) {
+            (false, _) | (_, Unwind::Off) => "",
+            (true, Unwind::Dwarf) => " personality ptr @__gcc_personality_v0",
+            (true, Unwind::Seh) => " personality ptr @__C_specific_handler",
+        };
         let header = format!("define internal {rt} {name}({}){personality} {{\nentry:\n", params.join(", "));
         self.out = format!("{header}{allocas}{prologue}{blocks}}}\n");
     }
@@ -315,7 +319,12 @@ impl<'g, 'a> Fx<'g, 'a> {
     fn landing_pad(&mut self, unwind: &[Local]) -> String {
         let saved = std::mem::take(&mut self.out);
         self.start("unwind");
-        self.emit("%unwind.lp = landingpad { ptr, i32 } cleanup");
+        let seh = self.gen.unwind == Unwind::Seh;
+        if seh {
+            self.emit("%unwind.cp = cleanuppad within none []");
+        } else {
+            self.emit("%unwind.lp = landingpad { ptr, i32 } cleanup");
+        }
         for (slot, env_slot) in self.team_slots.clone() {
             let team = self.load("ptr", &slot);
             let set = self.r();
@@ -330,11 +339,29 @@ impl<'g, 'a> Fx<'g, 'a> {
             let ty = self.locals[l as usize].clone();
             let Some(f) = self.flags.get(&l).cloned() else { continue };
             let d = self.gen.item(Item::Drop(ty));
-            let on = self.load("i1", &f);
+            // Volatile, so the optimizer doesn't merge every flag's value
+            // from every call site into this one block (quadratic in GVN).
+            let on = self.r();
+            self.emit(format!("{on} = load volatile i1, ptr {f}"));
             self.when(&on, |fx| fx.emit(format!("call void {d}(ptr %l{l})")));
         }
-        self.emit("resume { ptr, i32 } %unwind.lp");
-        std::mem::replace(&mut self.out, saved)
+        if !seh {
+            self.emit("resume { ptr, i32 } %unwind.lp");
+            return std::mem::replace(&mut self.out, saved);
+        }
+        self.emit("cleanupret from %unwind.cp unwind to caller");
+        // Every call inside a funclet names it.
+        let pad = std::mem::replace(&mut self.out, saved);
+        let mut out = String::with_capacity(pad.len() + 256);
+        for line in pad.lines() {
+            out.push_str(line);
+            let t = line.trim_start();
+            if t.starts_with("call ") || t.contains(" = call ") {
+                out.push_str(" [ \"funclet\"(token %unwind.cp) ]");
+            }
+            out.push('\n');
+        }
+        out
     }
 
     // ── places ─────────────────────────────────────────────────────────────
@@ -868,23 +895,24 @@ impl<'g, 'a> Fx<'g, 'a> {
     }
 
     pub fn build_struct(&mut self, lt: &str, ops: &[Operand], fields: &[Ty]) -> String {
-        let mut acc = "undef".to_string();
-        if fields.is_empty() {
-            return "zeroinitializer".into();
-        }
-        for (i, (o, t)) in ops.iter().zip(fields).enumerate() {
-            let v = self.operand(o, t);
-            let ft = self.ll(t);
-            let r = self.r();
-            self.emit(format!("{r} = insertvalue {lt} {acc}, {ft} {v}, {i}"));
-            acc = r;
-        }
-        acc
+        let vals: Vec<String> = ops.iter().zip(fields).map(|(o, t)| self.operand(o, t)).collect();
+        self.build_struct_vals(lt, &vals, fields)
     }
 
     pub fn build_struct_vals(&mut self, lt: &str, vals: &[String], fields: &[Ty]) -> String {
         if fields.is_empty() {
             return "zeroinitializer".into();
+        }
+        // A wide struct is built in memory: a chain of `insertvalue`s is
+        // quadratic in its width for LLVM's instruction selector.
+        if fields.len() > 16 {
+            let tmp = self.alloca(lt);
+            for (i, (v, t)) in vals.iter().zip(fields).enumerate() {
+                let ft = self.ll(t);
+                let p = self.gep(lt, &tmp, &["0".into(), i.to_string()]);
+                self.emit(format!("store {ft} {v}, ptr {p}"));
+            }
+            return self.load(lt, &tmp);
         }
         let mut acc = "undef".to_string();
         for (i, (v, t)) in vals.iter().zip(fields).enumerate() {
