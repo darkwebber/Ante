@@ -192,6 +192,8 @@ impl Lower<'_, '_> {
             "khali" => scalar(Ty::Unit),
             "raadhu" => scalar(Ty::Never),
             "padham" => scalar(Ty::Str),
+            // `baitlu` = `varusa[aasajeevi ankam8]` (§25.1).
+            "baitlu" => Some(Ty::App(Con::Varusa, vec![Ty::Int(IntTy { signed: false, bits: 8 })])),
             "jatha" => Some(Ty::Tuple(args.to_vec())),
             "varusa" => Some(self.arity(env, Ty::App(Con::Varusa, args.to_vec()), 1, name, span)),
             "mukka" => Some(self.arity(env, Ty::App(Con::Mukka, args.to_vec()), 1, name, span)),

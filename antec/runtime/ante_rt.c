@@ -8,6 +8,9 @@
  * { pointer, length, capacity }; capacity 0 marks static (literal) data.
  */
 
+#ifdef _WIN32
+#define _CRT_RAND_S /* `rand_s`, the system's secure generator (ante_crypto.c) */
+#endif
 #include <errno.h>
 #include <math.h>
 #include <setjmp.h>
@@ -1757,16 +1760,27 @@ int32_t ante_str_parse_int(const ante_str *s, int32_t base, int32_t is_unsigned,
     return 1;
 }
 
+static char *cstr(const ante_str *s);
+
 int32_t ante_str_parse_float(const ante_str *s, double *out) {
-    char t[128];
-    if (s->len == 0 || s->len >= (int64_t)sizeof t) return 0;
-    memcpy(t, s->ptr, (size_t)s->len);
-    t[s->len] = 0;
+    /* Long texts (a float written out in full has hundreds of digits) go on
+       the heap. */
+    char small[128];
+    char *t = small;
+    if (s->len == 0) return 0;
+    if (s->len >= (int64_t)sizeof small) {
+        t = cstr(s);
+    } else {
+        memcpy(t, s->ptr, (size_t)s->len);
+        t[s->len] = 0;
+    }
     char *end;
     errno = 0;
     double v = strtod(t, &end);
     while (*end && is_space((uint8_t)*end)) end++;
-    if (*end || end == t) return 0;
+    int ok = !*end && end != t;
+    if (t != small) free(t);
+    if (!ok) return 0;
     *out = v;
     return 1;
 }
@@ -1923,6 +1937,45 @@ int32_t ante_str_from_bytes(const uint8_t *p, int64_t n, ante_str *out, ante_str
     ante_buf_push(&r, p, n);
     *out = r;
     return 1;
+}
+
+/* `padham.baitlu_nunchi_lossy`: each invalid sequence becomes U+FFFD, the
+   same maximal-subpart rule as Rust's `String::from_utf8_lossy`. */
+void ante_str_from_bytes_lossy(const uint8_t *p, int64_t n, ante_str *out) {
+    static const uint8_t fffd[3] = {0xEF, 0xBF, 0xBD};
+    ante_str r = {0, 0, 0};
+    while (n > 0) {
+        int64_t upto = 0;
+        int bad = 0;
+        if (utf8_check(p, n, &upto, &bad)) {
+            ante_buf_push(&r, p, n);
+            break;
+        }
+        ante_buf_push(&r, p, upto);
+        ante_buf_push(&r, fffd, 3);
+        int64_t skip = bad ? upto + bad : n;
+        p += skip;
+        n -= skip;
+    }
+    *out = r;
+}
+
+/* Zeroes memory in a way the optimizer can't drop (`Rahasyam`, §27.4). */
+void ante_secure_zero(void *p, int64_t n) {
+    volatile uint8_t *q = (volatile uint8_t *)p;
+    for (int64_t i = 0; i < n; i++) q[i] = 0;
+}
+
+/* Zeroes every byte a `padham` or `baitlu` owns, spare room included. */
+void ante_zero_buf(ante_str *s) {
+    if (s->ptr && s->cap > 0) ante_secure_zero(s->ptr, s->cap);
+}
+
+/* `s.baitlu_ga()` and other byte copies into a new `varusa`. */
+void ante_bytes_copy(ante_vec *out, const uint8_t *p, int64_t n) {
+    ante_vec r = {0, 0, 0};
+    ante_buf_push(&r, p, n);
+    *out = r;
 }
 
 static int char_start(const ante_str *s, int64_t i) { return i == s->len || (i < s->len && (s->ptr[i] & 0xC0) != 0x80); }
@@ -2436,6 +2489,46 @@ void ante_arch(ante_str *out) {
     push_c(&r, "x86_64");
 #endif
     *out = r;
+}
+
+/* Every environment variable as `NAME=value`, sorted, separated by NUL
+   (`config`, §29.2). */
+#ifdef _WIN32
+#define ante_environ _environ
+#else
+extern char **environ;
+#define ante_environ environ
+#endif
+
+static int env_cmp(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
+
+void ante_env_text(ante_str *out) {
+    ante_str r = {0, 0, 0};
+    int64_t n = 0;
+    while (ante_environ && ante_environ[n]) n++;
+    char **sorted = (char **)ante_alloc((n > 0 ? n : 1) * (int64_t)sizeof(char *));
+    for (int64_t i = 0; i < n; i++) sorted[i] = ante_environ[i];
+    qsort(sorted, (size_t)n, sizeof(char *), env_cmp);
+    for (int64_t i = 0; i < n; i++) {
+        if (i > 0) ante_buf_push(&r, (const uint8_t *)"", 1);
+        push_c(&r, sorted[i]);
+    }
+    free(sorted);
+    *out = r;
+}
+
+/* Wall-clock time: nanoseconds since 1970-01-01 UTC (`samayam`, §26). */
+int64_t ante_utc_ns(void) {
+#ifdef _WIN32
+    FILETIME ft;
+    GetSystemTimePreciseAsFileTime(&ft);
+    int64_t t = ((int64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime; /* 100 ns since 1601 */
+    return (t - 116444736000000000LL) * 100;
+#else
+    struct timespec t;
+    clock_gettime(CLOCK_REALTIME, &t);
+    return (int64_t)t.tv_sec * 1000000000 + t.tv_nsec;
+#endif
 }
 
 int64_t ante_now_ns(void) {

@@ -1,0 +1,28 @@
+# category: run-pass
+# expect-stdout: .x
+# expect-stdout: .x: `x` ane key theliyadhu
+# expect-stdout: sare(Loose{a: 1})
+# level: services
+# Reading JSON with a key the record doesn't have is a `thappu` at its path,
+# unless the record allows it with `@theliyanivi_vadhiley` (§25.2.3).
+json thechuko
+
+@automatic Chadhavochu, Choopinchochu
+rakam Point ante:
+    a: ankam
+    b: ankam
+
+@automatic Chadhavochu, Choopinchochu
+@theliyanivi_vadhiley
+rakam Loose ante:
+    a: ankam
+
+modhalu() -> khali ante:
+    text ante "{\"a\": 1, \"b\": 2, \"x\": 3}"
+    &text ni json.chadhuvu[Point]() batti:
+        sare(p) aithe:
+            p ni choopinchu()
+        thappu(e) aithe:
+            e.daari ni choopinchu()
+            e ni choopinchu()
+    &text ni json.chadhuvu[Loose]() |> choopinchu()

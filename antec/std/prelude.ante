@@ -85,6 +85,7 @@ bayata "ante" ante:
     kolpothu_maarchu[T, S](vishayam: S ni) -> T
     marpidi[T](ekkada: &maare T, kotthadhi: T ni) -> T
     size_of[T]() -> ankam
+    rakam_peru[T]() -> padham
     align_of[T]() -> ankam
     kalipi[A, B](a: Pravaham[A], b: Pravaham[B]) -> Pravaham[jatha[A, B]]
     modhati[I](xs: Pravaham[I], n: ankam ni) -> Pravaham[I]
@@ -111,6 +112,8 @@ gunam padham_panulu ante:
     amsam_ga(naa: &padham) -> sare_thappu[amsam, ParseThappu]
     baitlu(naa: &padham) -> &mukka[aasajeevi ankam8]
     baitlu_nunchi(b: &mukka[aasajeevi ankam8] ni) -> sare_thappu[padham, Utf8Thappu]
+    baitlu_nunchi_lossy(b: &mukka[aasajeevi ankam8] ni) -> padham
+    baitlu_ga(naa: &padham) -> baitlu
     byte_mukka(naa: &padham, a: ankam ni, b: ankam tho) -> sare_thappu[padham, Utf8Thappu]
 
 gunam varusa_panulu ante:

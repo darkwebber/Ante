@@ -1,0 +1,34 @@
+# category: run-pass
+# expect-stdout: sare(Signup{name: Sita R, age: 20, remember: avunu, tags: [a, b&c], note: ledhu, password: ***})
+# expect-stdout: q=ante+lang+%26+more&page=2&tag=x&tag=y
+# expect-stdout: q=ante%20lang%20%26%20more&page=2&tag=x&tag=y
+# expect-stdout: sare(Search{q: x y, page: 3, tag: [z]})
+# expect-stdout: thappu(.page: ankam kavali, padham vachindhi)
+# level: services
+# `form` and `query`: flat records to and from `key=value&…` text; repeated
+# keys are lists, and text is read as the field's type (§25.3).
+form thechuko
+query thechuko
+
+@automatic Chadhavochu, Choopinchochu
+rakam Signup ante:
+    name: padham
+    age: ankam
+    remember: ato_ito
+    tags: varusa[padham]
+    note: undochu[padham]
+    password: Rahasyam[padham]
+
+@automatic Raayochu, Chadhavochu, Choopinchochu
+rakam Search ante:
+    q: padham
+    page: ankam
+    tag: varusa[padham]
+
+modhalu() -> khali ante:
+    "name=Sita+R&age=20&remember=on&tags=a&tags=b%26c&password=p%40ss" ni form.chadhuvu[Signup]() |> choopinchu()
+    s ante Search{q: "ante lang & more", page: 2, tag: ["x", "y"]}
+    &s ni form.raayi() |> choopinchu()
+    &s ni query.raayi() |> choopinchu()
+    "?q=x%20y&page=3&tag=z" ni query.chadhuvu[Search]() |> choopinchu()
+    "q=x&page=many&tag=z" ni query.chadhuvu[Search]() |> choopinchu()

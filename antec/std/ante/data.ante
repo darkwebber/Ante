@@ -1,0 +1,1249 @@
+# The data tree (spec §25.2): how values are written to and read from any
+# format. A part of the prelude, compiled when a program mentions one of its
+# words (`Raayochu`, `Chadhavochu`, `Kotthadhi`, `Rahasyam`, …).
+#
+# A value writes itself into a `Raasevaadu` ("writer"), which builds a
+# `DataChettu`; a format (`json`, `form`) turns the tree into text. Reading
+# goes the other way through a `Chadhivevaadu` ("reader"), which remembers
+# the path to the value it holds, so errors can say where they happened.
+
+memory thechuko
+encoding thechuko
+
+# ── the traits ──────────────────────────────────────────────────────────────
+
+# "Can be written."
+andhariki gunam Raayochu ante:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali
+
+# "Can be read."
+andhariki gunam Chadhavochu ante:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu]
+
+# "A new one": the default value.
+andhariki gunam Kotthadhi ante:
+    kotthadhi() -> idhi
+
+# ── the tree ────────────────────────────────────────────────────────────────
+
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki edho_okati DataChettu ante:
+    Null
+    Bool(ato_ito)
+    Ankam(ankam)
+    # An unsigned value too big for `ankam`.
+    Aasajeevi(aasajeevi ankam)
+    # An integer too big for 64 bits, kept as its decimal digits.
+    PeddhaAnkam(padham)
+    Amsam(amsam)
+    Padham(padham)
+    Baitlu(baitlu)
+    Varusa(varusa[DataChettu])
+    # Keys in order.
+    Jodi(varusa[jatha[padham, DataChettu]])
+
+DataChettu panulu ante:
+    # `x` written as a tree.
+    andhariki raayi[T: Raayochu](x: &T ni) -> DataChettu ante:
+        maare w ante Raasevaadu.kotthadhi()
+        x ni w.raayi()
+        w.mugimpu() icchey
+
+    # A `T` read from the tree.
+    andhariki chadhuvu[T: Chadhavochu](t: DataChettu ni) -> sare_thappu[T, ChadhuvuThappu] ante:
+        maare r ante t ni Chadhivevaadu.kotthadhi()
+        (&maare r ni T.chadhuvu_cheyyi()) icchey
+
+    # What kind of value this is, for error messages.
+    andhariki rakam_peru(naa: &idhi) -> padham ante:
+        naa batti:
+            DataChettu.Null aithe:
+                "null" icchey
+            DataChettu.Bool(_) aithe:
+                "ato_ito" icchey
+            DataChettu.Ankam(_) aithe:
+                "ankam" icchey
+            DataChettu.Aasajeevi(_) aithe:
+                "ankam" icchey
+            DataChettu.PeddhaAnkam(_) aithe:
+                "ankam" icchey
+            DataChettu.Amsam(_) aithe:
+                "amsam" icchey
+            DataChettu.Padham(_) aithe:
+                "padham" icchey
+            DataChettu.Baitlu(_) aithe:
+                "baitlu" icchey
+            DataChettu.Varusa(_) aithe:
+                "varusa" icchey
+            DataChettu.Jodi(_) aithe:
+                "jodi" icchey
+
+# ── errors ──────────────────────────────────────────────────────────────────
+
+@automatic XeroxTheeyochu, Polchochu
+andhariki edho_okati ChadhuvuThappuVidham ante:
+    Missing(padham)
+    Theliyani(padham)
+    # The type wanted ("kavali") and what came ("vachindhi").
+    TypeMismatch(padham, padham)
+    Number
+    Text
+    Duplicate(padham)
+    ChaalaLothu
+    Custom(padham)
+
+@automatic XeroxTheeyochu, Polchochu
+andhariki rakam ChadhuvuThappu ante:
+    # Where: `.users[3].email`; `.` is the whole value. For a syntax error in
+    # the text, the `line:column`.
+    andhariki daari: padham
+    andhariki vidham: ChadhuvuThappuVidham
+
+ChadhuvuThappuVidham ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        naa batti:
+            ChadhuvuThappuVidham.Missing(k) aithe:
+                f"`{k}` key ledhu" icchey
+            ChadhuvuThappuVidham.Theliyani(k) aithe:
+                f"`{k}` ane key theliyadhu" icchey
+            ChadhuvuThappuVidham.TypeMismatch(kavali, vachindhi) aithe:
+                f"{kavali} kavali, {vachindhi} vachindhi" icchey
+            ChadhuvuThappuVidham.Number aithe:
+                "number pattadhu (range daatindhi, leka NaN/inf)" icchey
+            ChadhuvuThappuVidham.Text aithe:
+                "text sariga ledhu" icchey
+            ChadhuvuThappuVidham.Duplicate(k) aithe:
+                f"`{k}` key rendu saarlu vachindhi" icchey
+            ChadhuvuThappuVidham.ChaalaLothu aithe:
+                "nesting chaala lothuga undhi (128 daatindhi)" icchey
+            ChadhuvuThappuVidham.Custom(m) aithe:
+                m.xerox() icchey
+
+ChadhuvuThappu ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        f"{naa.daari}: {naa.vidham}" icchey
+
+ChadhuvuThappu panulu ante:
+    andhariki kotthadhi(daari: padham ni, vidham: ChadhuvuThappuVidham tho) -> ChadhuvuThappu ante:
+        ChadhuvuThappu{daari: daari, vidham: vidham} icchey
+
+# ── writing ─────────────────────────────────────────────────────────────────
+
+# A list or map still being written.
+rakam Gadhi ante:
+    jodi_aa: ato_ito
+    vi: varusa[DataChettu]
+    keys: varusa[padham]
+    # The key this list or map goes under in the one outside it.
+    bayati_key: undochu[padham]
+
+# "Writer": builds a `DataChettu` from calls in order. Lists and maps open and
+# close like brackets; inside a map, `key` comes before each value.
+andhariki rakam Raasevaadu ante:
+    gadhulu: varusa[Gadhi]
+    key_: undochu[padham]
+    phalitham: undochu[DataChettu]
+
+Raasevaadu panulu ante:
+    andhariki kotthadhi() -> Raasevaadu ante:
+        Raasevaadu{gadhulu: [], key_: ledhu, phalitham: ledhu} icchey
+
+    # Writes a whole tree as one value.
+    andhariki chettu_raayi(naa: &maare idhi, t: DataChettu ni) -> khali ante:
+        n ante naa.gadhulu.enni()
+        n == 0 aithe:
+            naa.phalitham lo undhi(t) pettu
+            icchey
+        k ante &maare naa.key_, ledhu ni marpidi()
+        g ante ((n - 1) ni naa.gadhulu.maare_thechu()).kachithanga()
+        g.jodi_aa aithe:
+            k batti:
+                undhi(k) aithe:
+                    k ni g.keys.cherchu()
+                ledhu aithe:
+                    "Raasevaadu: jodi lo `key` lekunda value raasaaru" ni kompa_munigindhi()
+        t ni g.vi.cherchu()
+
+    andhariki null_raayi(naa: &maare idhi) -> khali ante:
+        DataChettu.Null ni naa.chettu_raayi()
+
+    andhariki bool_raayi(naa: &maare idhi, b: ato_ito ni) -> khali ante:
+        DataChettu.Bool(b) ni naa.chettu_raayi()
+
+    andhariki ankam_raayi(naa: &maare idhi, n: ankam ni) -> khali ante:
+        DataChettu.Ankam(n) ni naa.chettu_raayi()
+
+    andhariki aasajeevi_raayi(naa: &maare idhi, n: aasajeevi ankam ni) -> khali ante:
+        n ni kudhirithe_maarchu[ankam]() batti:
+            undhi(s) aithe:
+                DataChettu.Ankam(s) ni naa.chettu_raayi()
+            ledhu aithe:
+                DataChettu.Aasajeevi(n) ni naa.chettu_raayi()
+
+    andhariki amsam_raayi(naa: &maare idhi, x: amsam ni) -> khali ante:
+        DataChettu.Amsam(x) ni naa.chettu_raayi()
+
+    andhariki padham_raayi(naa: &maare idhi, s: &padham ni) -> khali ante:
+        DataChettu.Padham(s.xerox()) ni naa.chettu_raayi()
+
+    andhariki baitlu_raayi(naa: &maare idhi, b: &mukka[aasajeevi ankam8] ni) -> khali ante:
+        maare v: baitlu ante []
+        b lo okko x ki:
+            x ni v.cherchu()
+        DataChettu.Baitlu(v) ni naa.chettu_raayi()
+
+    # Opens a list; the values written next are its elements.
+    andhariki varusa_modhalu(naa: &maare idhi) -> khali ante:
+        k ante &maare naa.key_, ledhu ni marpidi()
+        Gadhi{jodi_aa: kaadhu, vi: [], keys: [], bayati_key: k} ni naa.gadhulu.cherchu()
+
+    andhariki varusa_mugimpu(naa: &maare idhi) -> khali ante:
+        g ante naa.gadhulu.theesey().kachithanga()
+        naa.key_ lo g.bayati_key pettu
+        DataChettu.Varusa(g.vi) ni naa.chettu_raayi()
+
+    # Opens a map; write `key`, then its value, for each entry.
+    andhariki jodi_modhalu(naa: &maare idhi) -> khali ante:
+        k ante &maare naa.key_, ledhu ni marpidi()
+        Gadhi{jodi_aa: avunu, vi: [], keys: [], bayati_key: k} ni naa.gadhulu.cherchu()
+
+    andhariki key(naa: &maare idhi, k: &padham ni) -> khali ante:
+        naa.key_ lo undhi(k.xerox()) pettu
+
+    andhariki jodi_mugimpu(naa: &maare idhi) -> khali ante:
+        maare g ante naa.gadhulu.theesey().kachithanga()
+        maare out: varusa[jatha[padham, DataChettu]] ante []
+        0 nunchi g.keys.enni() lopu okko i ki:
+            v ante &maare g.vi[i], DataChettu.Null ni marpidi()
+            (g.keys[i].xerox(), v) ni out.cherchu()
+        naa.key_ lo g.bayati_key pettu
+        DataChettu.Jodi(out) ni naa.chettu_raayi()
+
+    # Any value that can be written.
+    andhariki raayi[T: Raayochu](naa: &maare idhi, x: &T ni) -> khali ante:
+        naa ni x.raayi_cheyyi()
+
+    # One map entry: `key`, then the value.
+    andhariki field[T: Raayochu](naa: &maare idhi, k: &padham ni, x: &T tho) -> khali ante:
+        k ni naa.key()
+        x ni naa.raayi()
+
+    # The finished tree (`Null` if nothing was written).
+    andhariki mugimpu(naa: idhi) -> DataChettu ante:
+        maare w ante naa
+        &maare w.phalitham, ledhu ni marpidi() batti:
+            undhi(t) aithe:
+                t icchey
+            ledhu aithe:
+                DataChettu.Null icchey
+
+# ── reading ─────────────────────────────────────────────────────────────────
+
+# "Reader": holds one value of the tree and the path to it.
+andhariki rakam Chadhivevaadu ante:
+    viluva: DataChettu
+    daari_: padham
+    # Text mode: values came as text (`form`, `query`, `config`), so text is
+    # also read as the number or truth value it spells.
+    text_: ato_ito
+    # Unknown map keys are ignored (`config`, where the environment has
+    # plenty of variables the program doesn't read).
+    vadhiley_: ato_ito
+
+Chadhivevaadu panulu ante:
+    # A reader for a whole tree; its path is `.`.
+    andhariki kotthadhi(t: DataChettu ni) -> Chadhivevaadu ante:
+        Chadhivevaadu{viluva: t, daari_: ".", text_: kaadhu, vadhiley_: kaadhu} icchey
+
+    # A reader in text mode, for formats whose values are all text.
+    andhariki text_nunchi(t: DataChettu ni) -> Chadhivevaadu ante:
+        Chadhivevaadu{viluva: t, daari_: ".", text_: avunu, vadhiley_: kaadhu} icchey
+
+    # A reader for settings (`config`): text mode, unknown keys ignored.
+    andhariki config_nunchi(t: DataChettu ni) -> Chadhivevaadu ante:
+        Chadhivevaadu{viluva: t, daari_: ".", text_: avunu, vadhiley_: avunu} icchey
+
+    # A reader for a part of the tree, at `daari`.
+    andhariki daari_tho(t: DataChettu ni, daari: padham tho) -> Chadhivevaadu ante:
+        Chadhivevaadu{viluva: t, daari_: daari, text_: kaadhu, vadhiley_: kaadhu} icchey
+
+    # A reader for a part of this one's value, in the same mode.
+    andhariki pilla(naa: &idhi, t: DataChettu ni, daari: padham tho) -> Chadhivevaadu ante:
+        Chadhivevaadu{viluva: t, daari_: daari, text_: naa.text_, vadhiley_: naa.vadhiley_} icchey
+
+    # In text mode, a text value spelling what `kavali` wants becomes it.
+    text_maarchu(naa: &maare idhi, kavali: &padham ni) -> khali ante:
+        !naa.text_ aithe:
+            icchey
+        &naa.viluva ni padham_unte() batti:
+            undhi(s) aithe:
+                *kavali == "ato_ito" aithe:
+                    s == "true" || s == "on" || s == "1" aithe:
+                        naa.viluva lo DataChettu.Bool(avunu) pettu
+                    ledhante s == "false" || s == "off" || s == "0" aithe:
+                        naa.viluva lo DataChettu.Bool(kaadhu) pettu
+                ledhante *kavali == "amsam" aithe:
+                    s.amsam_ga() batti:
+                        sare(x) aithe:
+                            naa.viluva lo DataChettu.Amsam(x) pettu
+                        thappu(_) aithe:
+                            ()
+                ledhante:
+                    s.ankam_ga() batti:
+                        sare(n) aithe:
+                            naa.viluva lo DataChettu.Ankam(n) pettu
+                        thappu(_) aithe:
+                            s.aasajeevi_ga() batti:
+                                sare(n) aithe:
+                                    naa.viluva lo DataChettu.Aasajeevi(n) pettu
+                                thappu(_) aithe:
+                                    ()
+            ledhu aithe:
+                ()
+
+    andhariki daari(naa: &idhi) -> padham ante:
+        naa.daari_.xerox() icchey
+
+    andhariki chettu(naa: &idhi) -> &DataChettu ante:
+        &naa.viluva icchey
+
+    # Takes the tree out, leaving `Null`.
+    andhariki chettu_theesuko(naa: &maare idhi) -> DataChettu ante:
+        (&maare naa.viluva, DataChettu.Null ni marpidi()) icchey
+
+    # An error at this reader's path.
+    andhariki thappu_ga(naa: &idhi, vidham: ChadhuvuThappuVidham ni) -> ChadhuvuThappu ante:
+        ChadhuvuThappu{daari: naa.daari_.xerox(), vidham: vidham} icchey
+
+    # `TypeMismatch`: wanted `kavali`, found what this reader holds.
+    andhariki type_thappu(naa: &idhi, kavali: padham ni) -> ChadhuvuThappu ante:
+        (ChadhuvuThappuVidham.TypeMismatch(kavali, naa.viluva.rakam_peru()) ni naa.thappu_ga()) icchey
+
+    andhariki null_aa(naa: &idhi) -> ato_ito ante:
+        naa.viluva batti:
+            DataChettu.Null aithe:
+                avunu icchey
+            _ aithe:
+                kaadhu icchey
+
+    andhariki bool_chadhuvu(naa: &maare idhi) -> sare_thappu[ato_ito, ChadhuvuThappu] ante:
+        "ato_ito" ni naa.text_maarchu()
+        naa.viluva batti:
+            DataChettu.Bool(b) aithe:
+                sare(b) icchey
+            _ aithe:
+                thappu("ato_ito" ni naa.type_thappu()) icchey
+
+    andhariki ankam_chadhuvu(naa: &maare idhi) -> sare_thappu[ankam, ChadhuvuThappu] ante:
+        "ankam" ni naa.text_maarchu()
+        naa.viluva batti:
+            DataChettu.Ankam(n) aithe:
+                sare(n) icchey
+            DataChettu.Aasajeevi(_) aithe:
+                thappu(ChadhuvuThappuVidham.Number ni naa.thappu_ga()) icchey
+            DataChettu.PeddhaAnkam(_) aithe:
+                thappu(ChadhuvuThappuVidham.Number ni naa.thappu_ga()) icchey
+            _ aithe:
+                thappu("ankam" ni naa.type_thappu()) icchey
+
+    andhariki aasajeevi_chadhuvu(
+        naa: &maare idhi,
+    ) -> sare_thappu[aasajeevi ankam, ChadhuvuThappu] ante:
+        "ankam" ni naa.text_maarchu()
+        naa.viluva batti:
+            DataChettu.Ankam(n) aithe:
+                n ni kudhirithe_maarchu[aasajeevi ankam]() batti:
+                    undhi(u) aithe:
+                        sare(u) icchey
+                    ledhu aithe:
+                        thappu(ChadhuvuThappuVidham.Number ni naa.thappu_ga()) icchey
+            DataChettu.Aasajeevi(n) aithe:
+                sare(n) icchey
+            DataChettu.PeddhaAnkam(_) aithe:
+                thappu(ChadhuvuThappuVidham.Number ni naa.thappu_ga()) icchey
+            _ aithe:
+                thappu("aasajeevi ankam" ni naa.type_thappu()) icchey
+
+    andhariki amsam_chadhuvu(naa: &maare idhi) -> sare_thappu[amsam, ChadhuvuThappu] ante:
+        "amsam" ni naa.text_maarchu()
+        naa.viluva batti:
+            DataChettu.Amsam(x) aithe:
+                sare(x) icchey
+            DataChettu.Ankam(n) aithe:
+                sare(n ni kolpothu_maarchu[amsam]()) icchey
+            DataChettu.Aasajeevi(n) aithe:
+                sare(n ni kolpothu_maarchu[amsam]()) icchey
+            DataChettu.PeddhaAnkam(_) aithe:
+                &naa.viluva ni peddha_amsam() batti:
+                    undhi(x) aithe:
+                        sare(x) icchey
+                    ledhu aithe:
+                        thappu(ChadhuvuThappuVidham.Number ni naa.thappu_ga()) icchey
+            _ aithe:
+                thappu("amsam" ni naa.type_thappu()) icchey
+
+    andhariki padham_chadhuvu(naa: &maare idhi) -> sare_thappu[padham, ChadhuvuThappu] ante:
+        naa.null_aa() aithe:
+            thappu("padham" ni naa.type_thappu()) icchey
+        naa.chettu_theesuko() batti:
+            DataChettu.Padham(s) aithe:
+                sare(s) icchey
+            t aithe:
+                naa.viluva lo t pettu
+                thappu("padham" ni naa.type_thappu()) icchey
+
+    # Bytes, or base64 text (how JSON carries them), or a list of numbers.
+    andhariki baitlu_chadhuvu(naa: &maare idhi) -> sare_thappu[baitlu, ChadhuvuThappu] ante:
+        naa.chettu_theesuko() batti:
+            DataChettu.Baitlu(b) aithe:
+                sare(b) icchey
+            DataChettu.Padham(s) aithe:
+                &s ni encoding.base64_chadhuvu() batti:
+                    sare(b) aithe:
+                        sare(b) icchey
+                    thappu(e) aithe:
+                        naa.viluva lo DataChettu.Padham(s) pettu
+                        thappu(ChadhuvuThappuVidham.Custom(f"baitlu kosam base64 kavali: {e}") ni naa.thappu_ga()) icchey
+            DataChettu.Varusa(xs) aithe:
+                maare out: baitlu ante []
+                maare i ante 0
+                xs.anni_theesuko() lo okko x ki:
+                    maare r ante x ni, f"{naa.daari_}[{i}]" tho naa.pilla()
+                    n ante r.ankam_chadhuvu()?
+                    n ni kudhirithe_maarchu[aasajeevi ankam8]() batti:
+                        undhi(b) aithe:
+                            b ni out.cherchu()
+                        ledhu aithe:
+                            thappu(ChadhuvuThappuVidham.Number ni r.thappu_ga()) icchey
+                    i += 1
+                sare(out) icchey
+            t aithe:
+                naa.viluva lo t pettu
+                thappu("baitlu" ni naa.type_thappu()) icchey
+
+    # A reader for each element of a list. In text mode a single value is a
+    # list of one (a form field given once).
+    andhariki varusa_chadhuvu(
+        naa: &maare idhi,
+    ) -> sare_thappu[varusa[Chadhivevaadu], ChadhuvuThappu] ante:
+        naa.text_ && (&naa.viluva ni padham_unte()).undhaa() aithe:
+            t ante naa.chettu_theesuko()
+            naa.viluva lo DataChettu.Varusa([t]) pettu
+        naa.chettu_theesuko() batti:
+            DataChettu.Varusa(xs) aithe:
+                maare out: varusa[Chadhivevaadu] ante []
+                maare i ante 0
+                xs.anni_theesuko() lo okko x ki:
+                    r ante x ni, f"{naa.daari_}[{i}]" tho naa.pilla()
+                    r ni out.cherchu()
+                    i += 1
+                sare(out) icchey
+            t aithe:
+                naa.viluva lo t pettu
+                thappu("varusa" ni naa.type_thappu()) icchey
+
+    # A reader for the entries of a map.
+    andhariki jodi_chadhuvu(naa: &maare idhi) -> sare_thappu[JodiChadhuvu, ChadhuvuThappu] ante:
+        naa.chettu_theesuko() batti:
+            DataChettu.Jodi(entries) aithe:
+                maare vaadinavi: varusa[ato_ito] ante []
+                0 nunchi entries.enni() lopu okko _ ki:
+                    kaadhu ni vaadinavi.cherchu()
+                sare(JodiChadhuvu{entries: entries, vaadinavi: vaadinavi, daari_: naa.daari_.xerox(), text_: naa.text_, vadhiley_: naa.vadhiley_}) icchey
+            t aithe:
+                naa.viluva lo t pettu
+                thappu("jodi" ni naa.type_thappu()) icchey
+
+    # Any value that can be read.
+    andhariki chadhuvu[T: Chadhavochu](naa: &maare idhi) -> sare_thappu[T, ChadhuvuThappu] ante:
+        (naa ni T.chadhuvu_cheyyi()) icchey
+
+    # An enum value: its variant's name, and a reader for its fields (none
+    # for a variant written as text).
+    andhariki variant_chadhuvu(
+        naa: &maare idhi,
+    ) -> sare_thappu[jatha[padham, JodiChadhuvu], ChadhuvuThappu] ante:
+        naa.chettu_theesuko() batti:
+            DataChettu.Padham(s) aithe:
+                m ante JodiChadhuvu{entries: [], vaadinavi: [], daari_: naa.daari_.xerox(), text_: naa.text_, vadhiley_: naa.vadhiley_}
+                sare((s, m)) icchey
+            DataChettu.Jodi(entries) aithe:
+                naa.viluva lo DataChettu.Jodi(entries) pettu
+                maare m ante naa.jodi_chadhuvu()?
+                peru ante "rakam" ni m.field[padham]()?
+                sare((peru, m)) icchey
+            t aithe:
+                naa.viluva lo t pettu
+                thappu("variant peru (padham) leka jodi" ni naa.type_thappu()) icchey
+
+# The text a tree holds, if it is text.
+padham_unte(t: &DataChettu ni) -> undochu[padham] ante:
+    t batti:
+        DataChettu.Padham(s) aithe:
+            undhi(s.xerox()) icchey
+        _ aithe:
+            ledhu icchey
+
+# A big integer's digits as a float.
+peddha_amsam(t: &DataChettu ni) -> undochu[amsam] ante:
+    t batti:
+        DataChettu.PeddhaAnkam(digits) aithe:
+            digits.amsam_ga() batti:
+                sare(x) aithe:
+                    undhi(x) icchey
+                thappu(_) aithe:
+                    ledhu icchey
+        _ aithe:
+            ledhu icchey
+
+# The path of map key `k` under `daari`.
+key_daari(daari: &padham ni, k: &padham tho) -> padham ante:
+    *daari == "." aithe:
+        f".{k}" icchey
+    f"{daari}.{k}" icchey
+
+# Reads a map's entries by key, remembering which were used.
+andhariki rakam JodiChadhuvu ante:
+    entries: varusa[jatha[padham, DataChettu]]
+    vaadinavi: varusa[ato_ito]
+    daari_: padham
+    text_: ato_ito
+    # Unknown map keys are ignored (`config`, where the environment has
+    # plenty of variables the program doesn't read).
+    vadhiley_: ato_ito
+
+JodiChadhuvu panulu ante:
+    andhariki enni(naa: &idhi) -> ankam ante:
+        naa.entries.enni() icchey
+
+    # Takes the value at key `k` out, as a reader.
+    andhariki key_theesuko(naa: &maare idhi, k: &padham ni) -> undochu[Chadhivevaadu] ante:
+        0 nunchi naa.entries.enni() lopu okko i ki:
+            naa.entries[i].0 == *k && !naa.vaadinavi[i] aithe:
+                naa.vaadinavi[i] lo avunu pettu
+                t ante &maare naa.entries[i].1, DataChettu.Null ni marpidi()
+                d ante &naa.daari_ ni, k tho key_daari()
+                r ante Chadhivevaadu{viluva: t, daari_: d, text_: naa.text_, vadhiley_: naa.vadhiley_}
+                undhi(r) icchey
+        ledhu icchey
+
+    # The value at `k`; a missing key is `Missing`.
+    andhariki field[T: Chadhavochu](
+        naa: &maare idhi,
+        k: &padham ni,
+    ) -> sare_thappu[T, ChadhuvuThappu] ante:
+        k ni naa.key_theesuko() batti:
+            undhi(r) aithe:
+                maare r ante r
+                (&maare r ni T.chadhuvu_cheyyi()) icchey
+            ledhu aithe:
+                d ante &naa.daari_ ni, k tho key_daari()
+                e ante d ni, ChadhuvuThappuVidham.Missing(k.xerox()) tho ChadhuvuThappu.kotthadhi()
+                thappu(e) icchey
+
+    # The value at `k`, or `ledhu` when the key is missing or `null`.
+    andhariki unte[T: Chadhavochu](
+        naa: &maare idhi,
+        k: &padham ni,
+    ) -> sare_thappu[undochu[T], ChadhuvuThappu] ante:
+        k ni naa.key_theesuko() batti:
+            undhi(r) aithe:
+                maare r ante r
+                r.null_aa() aithe:
+                    sare(ledhu) icchey
+                v ante &maare r ni T.chadhuvu_cheyyi()?
+                sare(undhi(v)) icchey
+            ledhu aithe:
+                sare(ledhu) icchey
+
+    # The value at `k`, or `T.kotthadhi()` when the key is missing.
+    andhariki lekapothe[T: Chadhavochu + Kotthadhi](
+        naa: &maare idhi,
+        k: &padham ni,
+    ) -> sare_thappu[T, ChadhuvuThappu] ante:
+        k ni naa.key_theesuko() batti:
+            undhi(r) aithe:
+                maare r ante r
+                (&maare r ni T.chadhuvu_cheyyi()) icchey
+            ledhu aithe:
+                sare(T.kotthadhi()) icchey
+
+    # After the known keys: a key nobody read is `Theliyani`, unless
+    # unknown keys are allowed (`@theliyanivi_vadhiley`).
+    andhariki mugimpu(
+        naa: &idhi,
+        vadhileyochu: ato_ito ni,
+    ) -> sare_thappu[khali, ChadhuvuThappu] ante:
+        vadhileyochu || naa.vadhiley_ aithe:
+            sare(()) icchey
+        0 nunchi naa.entries.enni() lopu okko i ki:
+            !naa.vaadinavi[i] aithe:
+                k ante &naa.entries[i].0
+                d ante &naa.daari_ ni, k tho key_daari()
+                e ante d ni, ChadhuvuThappuVidham.Theliyani(k.xerox()) tho ChadhuvuThappu.kotthadhi()
+                thappu(e) icchey
+        sare(()) icchey
+
+    # Every entry not read yet, as a reader, in order.
+    andhariki anni(naa: &maare idhi) -> varusa[jatha[padham, Chadhivevaadu]] ante:
+        maare out: varusa[jatha[padham, Chadhivevaadu]] ante []
+        0 nunchi naa.entries.enni() lopu okko i ki:
+            !naa.vaadinavi[i] aithe:
+                naa.vaadinavi[i] lo avunu pettu
+                k ante naa.entries[i].0.xerox()
+                t ante &maare naa.entries[i].1, DataChettu.Null ni marpidi()
+                d ante &naa.daari_ ni, &k tho key_daari()
+                r ante Chadhivevaadu{viluva: t, daari_: d, text_: naa.text_, vadhiley_: naa.vadhiley_}
+                (k, r) ni out.cherchu()
+        out icchey
+
+# Duplicate keys can't happen in a tree from `Raasevaadu`, but a format may
+# find them first (`json`); this checks a map's keys for one.
+andhariki duplicate_key(entries: &varusa[jatha[padham, DataChettu]] ni) -> undochu[padham] ante:
+    maare chusinavi: gumpu[padham] ante gumpu.kotthadhi()
+    entries lo okko e ki:
+        !(e.0.xerox() ni chusinavi.cherchu()) aithe:
+            undhi(e.0.xerox()) icchey
+    ledhu icchey
+
+# `T.kotthadhi()` for any type, also one with arguments (`varusa[padham]`),
+# which a path can't name.
+andhariki kotthadhi_ivvu[T: Kotthadhi]() -> T ante:
+    T.kotthadhi() icchey
+
+# ── secrets ─────────────────────────────────────────────────────────────────
+
+# "Secret": a value that must not leak (§27.4). It shows as `***`, can't be
+# written (no `Raayochu`) or copied (no `XeroxTheeyochu`), and its memory is
+# zeroed when it goes.
+andhariki rakam Rahasyam[T] ante:
+    lopala: T
+
+[T] Rahasyam[T] panulu ante:
+    andhariki kotthadhi(x: T ni) -> Rahasyam[T] ante:
+        Rahasyam{lopala: x} icchey
+
+    # "Take it out": the one way to reach the value.
+    andhariki bayatiki_theesuko(naa: &idhi) -> &T ante:
+        &naa.lopala icchey
+
+[T] Rahasyam[T] ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        "***" icchey
+
+[T] Rahasyam[T] ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        naa_risk:
+            &maare naa.lopala ni memory.sunna_cheyyi()
+
+# Secrets can be read (configuration, a login form), never written.
+[T: Chadhavochu] Rahasyam[T] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        x ante r ni T.chadhuvu_cheyyi()?
+        sare(Rahasyam{lopala: x}) icchey
+
+# ── the tree itself ─────────────────────────────────────────────────────────
+
+DataChettu ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        naa.xerox() ni w.chettu_raayi()
+
+DataChettu ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        sare(r.chettu_theesuko()) icchey
+
+DataChettu ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        DataChettu.Null icchey
+
+# ── built-in types (§25.2.2) ───────────────────────────────────────────────
+
+ankam8 ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        (*naa ni maarchu[ankam]()) ni w.ankam_raayi()
+
+ankam8 ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        n ante r.ankam_chadhuvu()?
+        n ni kudhirithe_maarchu[ankam8]() batti:
+            undhi(x) aithe:
+                sare(x) icchey
+            ledhu aithe:
+                thappu(ChadhuvuThappuVidham.Number ni r.thappu_ga()) icchey
+
+ankam8 ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        0 icchey
+
+ankam16 ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        (*naa ni maarchu[ankam]()) ni w.ankam_raayi()
+
+ankam16 ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        n ante r.ankam_chadhuvu()?
+        n ni kudhirithe_maarchu[ankam16]() batti:
+            undhi(x) aithe:
+                sare(x) icchey
+            ledhu aithe:
+                thappu(ChadhuvuThappuVidham.Number ni r.thappu_ga()) icchey
+
+ankam16 ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        0 icchey
+
+ankam32 ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        (*naa ni maarchu[ankam]()) ni w.ankam_raayi()
+
+ankam32 ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        n ante r.ankam_chadhuvu()?
+        n ni kudhirithe_maarchu[ankam32]() batti:
+            undhi(x) aithe:
+                sare(x) icchey
+            ledhu aithe:
+                thappu(ChadhuvuThappuVidham.Number ni r.thappu_ga()) icchey
+
+ankam32 ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        0 icchey
+
+ankam ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        *naa ni w.ankam_raayi()
+
+ankam ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        r.ankam_chadhuvu() icchey
+
+ankam ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        0 icchey
+
+aasajeevi ankam8 ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        (*naa ni maarchu[ankam]()) ni w.ankam_raayi()
+
+aasajeevi ankam8 ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        n ante r.ankam_chadhuvu()?
+        n ni kudhirithe_maarchu[aasajeevi ankam8]() batti:
+            undhi(x) aithe:
+                sare(x) icchey
+            ledhu aithe:
+                thappu(ChadhuvuThappuVidham.Number ni r.thappu_ga()) icchey
+
+aasajeevi ankam8 ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        0 icchey
+
+aasajeevi ankam16 ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        (*naa ni maarchu[ankam]()) ni w.ankam_raayi()
+
+aasajeevi ankam16 ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        n ante r.ankam_chadhuvu()?
+        n ni kudhirithe_maarchu[aasajeevi ankam16]() batti:
+            undhi(x) aithe:
+                sare(x) icchey
+            ledhu aithe:
+                thappu(ChadhuvuThappuVidham.Number ni r.thappu_ga()) icchey
+
+aasajeevi ankam16 ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        0 icchey
+
+aasajeevi ankam32 ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        (*naa ni maarchu[ankam]()) ni w.ankam_raayi()
+
+aasajeevi ankam32 ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        n ante r.ankam_chadhuvu()?
+        n ni kudhirithe_maarchu[aasajeevi ankam32]() batti:
+            undhi(x) aithe:
+                sare(x) icchey
+            ledhu aithe:
+                thappu(ChadhuvuThappuVidham.Number ni r.thappu_ga()) icchey
+
+aasajeevi ankam32 ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        0 icchey
+
+aasajeevi ankam ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        *naa ni w.aasajeevi_raayi()
+
+aasajeevi ankam ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        r.aasajeevi_chadhuvu() icchey
+
+aasajeevi ankam ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        0 icchey
+
+amsam ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        *naa ni w.amsam_raayi()
+
+amsam ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        r.amsam_chadhuvu() icchey
+
+amsam ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        0.0 icchey
+
+amsam32 ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        (*naa ni maarchu[amsam]()) ni w.amsam_raayi()
+
+amsam32 ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        x ante r.amsam_chadhuvu()?
+        sare(x ni kolpothu_maarchu[amsam32]()) icchey
+
+amsam32 ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        0.0 icchey
+
+ato_ito ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        *naa ni w.bool_raayi()
+
+ato_ito ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        r.bool_chadhuvu() icchey
+
+ato_ito ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        kaadhu icchey
+
+# A character is a one-character text.
+aksharam ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        naa.padham_ga() ni w.padham_raayi()
+
+aksharam ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        s ante r.padham_chadhuvu()?
+        s.enni() != 1 aithe:
+            e ante ChadhuvuThappuVidham.TypeMismatch("aksharam", f"{s.enni()} aksharala padham") ni r.thappu_ga()
+            thappu(e) icchey
+        s.aksharaalu() lo okko c ki:
+            sare(c) icchey
+        thappu("aksharam" ni r.type_thappu()) icchey
+
+padham ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        naa ni w.padham_raayi()
+
+padham ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        r.padham_chadhuvu() icchey
+
+padham ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        "" icchey
+
+khali ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        w.null_raayi()
+
+khali ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        r.null_aa() aithe:
+            sare(()) icchey
+        thappu("null" ni r.type_thappu()) icchey
+
+khali ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        () icchey
+
+# A list; `baitlu` (`varusa[aasajeevi ankam8]`) is bytes instead.
+[T: Raayochu] varusa[T] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        naa ni, w ki seq_raayi()
+
+[T: Chadhavochu] varusa[T] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        (r ni seq_chadhuvu()) icchey
+
+[T] varusa[T] ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        [] icchey
+
+# Written only: a slice can't be made from nothing.
+[T: Raayochu] mukka[T] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        naa ni, w ki seq_raayi()
+
+seq_raayi[T: Raayochu](xs: &mukka[T] ni, w: &maare Raasevaadu ki) -> khali ante:
+    rakam_peru[T]() == "aasajeevi ankam8" aithe:
+        maare b: baitlu ante []
+        xs lo okko x ki:
+            x ni DataChettu.raayi() batti:
+                DataChettu.Ankam(n) aithe:
+                    (n ni kolpothu_maarchu[aasajeevi ankam8]()) ni b.cherchu()
+                _ aithe:
+                    vadhiley
+        &b ni w.baitlu_raayi()
+        icchey
+    w.varusa_modhalu()
+    xs lo okko x ki:
+        x ni w.raayi()
+    w.varusa_mugimpu()
+
+seq_chadhuvu[T: Chadhavochu](
+    r: &maare Chadhivevaadu ni,
+) -> sare_thappu[varusa[T], ChadhuvuThappu] ante:
+    maare out: varusa[T] ante []
+    rakam_peru[T]() == "aasajeevi ankam8" aithe:
+        b ante r.baitlu_chadhuvu()?
+        b lo okko x ki:
+            n ante x ni maarchu[ankam]()
+            v ante DataChettu.Ankam(n) ni DataChettu.chadhuvu[T]()?
+            v ni out.cherchu()
+        sare(out) icchey
+    parts ante r.varusa_chadhuvu()?
+    parts.anni_theesuko() lo okko p ki:
+        maare p ante p
+        v ante &maare p ni T.chadhuvu_cheyyi()?
+        v ni out.cherchu()
+    sare(out) icchey
+
+[T: Raayochu + Polchochu + HashCheyochu] gumpu[T] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        w.varusa_modhalu()
+        naa lo okko x ki:
+            x ni w.raayi()
+        w.varusa_mugimpu()
+
+[T: Chadhavochu + Polchochu + HashCheyochu] gumpu[T] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        xs ante r ni seq_chadhuvu[T]()?
+        maare out: gumpu[T] ante gumpu.kotthadhi()
+        xs.anni_theesuko() lo okko x ki:
+            x ni out.cherchu()
+        sare(out) icchey
+
+[T: Polchochu + HashCheyochu] gumpu[T] ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        gumpu.kotthadhi() icchey
+
+# A map with text keys is a map; with other keys, a list of `[key, value]`.
+[K: Raayochu + Polchochu + HashCheyochu, V: Raayochu] jodi[K, V] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        maare entries: varusa[jatha[DataChettu, DataChettu]] ante []
+        naa lo okko (k, v) ki:
+            kt ante k ni DataChettu.raayi()
+            vt ante v ni DataChettu.raayi()
+            (kt, vt) ni entries.cherchu()
+        rakam_peru[K]() ni, entries tho, w ki entries_raayi()
+
+[K: Chadhavochu + Polchochu + HashCheyochu, V: Chadhavochu] jodi[K, V] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        entries ante rakam_peru[K]() ni, r tho entries_chadhuvu[K, V]()?
+        maare out: jodi[K, V] ante jodi.kotthadhi()
+        entries.anni_theesuko() lo okko (k, v) ki:
+            k ni, v tho out.cherchu()
+        sare(out) icchey
+
+[K: Polchochu + HashCheyochu, V] jodi[K, V] ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        jodi.kotthadhi() icchey
+
+# Written sorted by key, so the output doesn't depend on hashing.
+[K: Raayochu + Polchochu + HashCheyochu, V: Raayochu] gajibiji_jodi[K, V] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        maare entries: varusa[jatha[DataChettu, DataChettu]] ante []
+        naa lo okko (k, v) ki:
+            kt ante k ni DataChettu.raayi()
+            vt ante v ni DataChettu.raayi()
+            (kt, vt) ni entries.cherchu()
+        key_polchu ni entries.ila_sort_cheyyi()
+        rakam_peru[K]() ni, entries tho, w ki entries_raayi()
+
+[K: Chadhavochu + Polchochu + HashCheyochu, V: Chadhavochu] gajibiji_jodi[K, V] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        entries ante rakam_peru[K]() ni, r tho entries_chadhuvu[K, V]()?
+        maare out: gajibiji_jodi[K, V] ante gajibiji_jodi.kotthadhi()
+        entries.anni_theesuko() lo okko (k, v) ki:
+            k ni, v tho out.cherchu()
+        sare(out) icchey
+
+[K: Polchochu + HashCheyochu, V] gajibiji_jodi[K, V] ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        gajibiji_jodi.kotthadhi() icchey
+
+# Orders map entries by their keys' text.
+key_polchu(
+    a: &jatha[DataChettu, DataChettu] ni,
+    b: &jatha[DataChettu, DataChettu] tho,
+) -> Kramam ante:
+    x ante a.0.padham_ga()
+    y ante b.0.padham_ga()
+    (&y ni x.polchu()) icchey
+
+# Map entries already written as trees: a map when the key type is text.
+entries_raayi(
+    key_rakam: padham ni,
+    entries: varusa[jatha[DataChettu, DataChettu]] tho,
+    w: &maare Raasevaadu ki,
+) -> khali ante:
+    key_rakam == "padham" aithe:
+        w.jodi_modhalu()
+        entries.anni_theesuko() lo okko (k, v) ki:
+            k batti:
+                DataChettu.Padham(s) aithe:
+                    &s ni w.key()
+                _ aithe:
+                    vadhiley
+            v ni w.chettu_raayi()
+        w.jodi_mugimpu()
+        icchey
+    w.varusa_modhalu()
+    entries.anni_theesuko() lo okko (k, v) ki:
+        w.varusa_modhalu()
+        k ni w.chettu_raayi()
+        v ni w.chettu_raayi()
+        w.varusa_mugimpu()
+    w.varusa_mugimpu()
+
+entries_chadhuvu[K: Chadhavochu, V: Chadhavochu](
+    key_rakam: padham ni,
+    r: &maare Chadhivevaadu tho,
+) -> sare_thappu[varusa[jatha[K, V]], ChadhuvuThappu] ante:
+    maare out: varusa[jatha[K, V]] ante []
+    key_rakam == "padham" aithe:
+        maare m ante r.jodi_chadhuvu()?
+        m.anni().anni_theesuko() lo okko (k, vr) ki:
+            maare kr ante DataChettu.Padham(k) ni, vr.daari() tho vr.pilla()
+            maare vr ante vr
+            key ante &maare kr ni K.chadhuvu_cheyyi()?
+            v ante &maare vr ni V.chadhuvu_cheyyi()?
+            (key, v) ni out.cherchu()
+        sare(out) icchey
+    pairs ante r.varusa_chadhuvu()?
+    pairs.anni_theesuko() lo okko p ki:
+        maare p ante p
+        maare kv ante p.varusa_chadhuvu()?
+        kv.enni() != 2 aithe:
+            e ante ChadhuvuThappuVidham.TypeMismatch("[key, value]", f"{kv.enni()} values unna varusa") ni p.thappu_ga()
+            thappu(e) icchey
+        maare vr ante kv.theesey().kachithanga()
+        maare kr ante kv.theesey().kachithanga()
+        key ante &maare kr ni K.chadhuvu_cheyyi()?
+        v ante &maare vr ni V.chadhuvu_cheyyi()?
+        (key, v) ni out.cherchu()
+    sare(out) icchey
+
+# `ledhu` is null.
+[T: Raayochu] undochu[T] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        naa batti:
+            undhi(x) aithe:
+                x ni w.raayi()
+            ledhu aithe:
+                w.null_raayi()
+
+[T: Chadhavochu] undochu[T] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        r.null_aa() aithe:
+            sare(ledhu) icchey
+        x ante r ni T.chadhuvu_cheyyi()?
+        sare(undhi(x)) icchey
+
+[T] undochu[T] ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        ledhu icchey
+
+[T: Raayochu, E: Raayochu] sare_thappu[T, E] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        w.jodi_modhalu()
+        naa batti:
+            sare(x) aithe:
+                "sare" ni, x tho w.field()
+            thappu(e) aithe:
+                "thappu" ni, e tho w.field()
+        w.jodi_mugimpu()
+
+[T: Chadhavochu, E: Chadhavochu] sare_thappu[T, E] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        maare m ante r.jodi_chadhuvu()?
+        m.enni() != 1 aithe:
+            thappu("`sare` leka `thappu` okate key unna jodi" ni r.type_thappu()) icchey
+        s ante "sare" ni m.key_theesuko()
+        s batti:
+            undhi(vr) aithe:
+                maare vr ante vr
+                x ante &maare vr ni T.chadhuvu_cheyyi()?
+                sare(sare(x)) icchey
+            ledhu aithe:
+                e ante "thappu" ni m.field[E]()?
+                sare(thappu(e)) icchey
+
+[T: Raayochu] pette[T] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        &(*(*naa)) ni w.raayi()
+
+[T: Chadhavochu] pette[T] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        x ante r ni T.chadhuvu_cheyyi()?
+        sare(x ni pette.kotthadhi()) icchey
+
+[T: Raayochu] panchukunna[T] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        &(*(*naa)) ni w.raayi()
+
+[T: Chadhavochu] panchukunna[T] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        x ante r ni T.chadhuvu_cheyyi()?
+        sare(x ni panchukunna.kotthadhi()) icchey
+
+[A: Raayochu, B: Raayochu] jatha[A, B] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        w.varusa_modhalu()
+        &naa.0 ni w.raayi()
+        &naa.1 ni w.raayi()
+        w.varusa_mugimpu()
+
+[A: Chadhavochu, B: Chadhavochu] jatha[A, B] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        maare parts ante r.varusa_chadhuvu()?
+        parts.enni() != 2 aithe:
+            e ante ChadhuvuThappuVidham.TypeMismatch("2 values unna varusa", f"{parts.enni()} values unna varusa") ni r.thappu_ga()
+            thappu(e) icchey
+        maare r1 ante parts.theesey().kachithanga()
+        maare r0 ante parts.theesey().kachithanga()
+        a ante &maare r0 ni A.chadhuvu_cheyyi()?
+        b ante &maare r1 ni B.chadhuvu_cheyyi()?
+        sare((a, b)) icchey
+
+[A: Kotthadhi, B: Kotthadhi] jatha[A, B] ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        (A.kotthadhi(), B.kotthadhi()) icchey
+
+[A: Raayochu, B: Raayochu, C: Raayochu] jatha[A, B, C] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        w.varusa_modhalu()
+        &naa.0 ni w.raayi()
+        &naa.1 ni w.raayi()
+        &naa.2 ni w.raayi()
+        w.varusa_mugimpu()
+
+[A: Chadhavochu, B: Chadhavochu, C: Chadhavochu] jatha[A, B, C] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        maare parts ante r.varusa_chadhuvu()?
+        parts.enni() != 3 aithe:
+            e ante ChadhuvuThappuVidham.TypeMismatch("3 values unna varusa", f"{parts.enni()} values unna varusa") ni r.thappu_ga()
+            thappu(e) icchey
+        maare r2 ante parts.theesey().kachithanga()
+        maare r1 ante parts.theesey().kachithanga()
+        maare r0 ante parts.theesey().kachithanga()
+        a ante &maare r0 ni A.chadhuvu_cheyyi()?
+        b ante &maare r1 ni B.chadhuvu_cheyyi()?
+        c ante &maare r2 ni C.chadhuvu_cheyyi()?
+        sare((a, b, c)) icchey
+
+[A: Kotthadhi, B: Kotthadhi, C: Kotthadhi] jatha[A, B, C] ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        (A.kotthadhi(), B.kotthadhi(), C.kotthadhi()) icchey
+
+[A: Raayochu, B: Raayochu, C: Raayochu, D: Raayochu] jatha[A, B, C, D] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        w.varusa_modhalu()
+        &naa.0 ni w.raayi()
+        &naa.1 ni w.raayi()
+        &naa.2 ni w.raayi()
+        &naa.3 ni w.raayi()
+        w.varusa_mugimpu()
+
+[A: Chadhavochu, B: Chadhavochu, C: Chadhavochu, D: Chadhavochu] jatha[A, B, C, D] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        maare parts ante r.varusa_chadhuvu()?
+        parts.enni() != 4 aithe:
+            e ante ChadhuvuThappuVidham.TypeMismatch("4 values unna varusa", f"{parts.enni()} values unna varusa") ni r.thappu_ga()
+            thappu(e) icchey
+        maare r3 ante parts.theesey().kachithanga()
+        maare r2 ante parts.theesey().kachithanga()
+        maare r1 ante parts.theesey().kachithanga()
+        maare r0 ante parts.theesey().kachithanga()
+        a ante &maare r0 ni A.chadhuvu_cheyyi()?
+        b ante &maare r1 ni B.chadhuvu_cheyyi()?
+        c ante &maare r2 ni C.chadhuvu_cheyyi()?
+        d ante &maare r3 ni D.chadhuvu_cheyyi()?
+        sare((a, b, c, d)) icchey
+
+[A: Kotthadhi, B: Kotthadhi, C: Kotthadhi, D: Kotthadhi] jatha[A, B, C, D] ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        (A.kotthadhi(), B.kotthadhi(), C.kotthadhi(), D.kotthadhi()) icchey
+
+[A: Raayochu, B: Raayochu, C: Raayochu, D: Raayochu, E: Raayochu] jatha[A, B, C, D, E] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        w.varusa_modhalu()
+        &naa.0 ni w.raayi()
+        &naa.1 ni w.raayi()
+        &naa.2 ni w.raayi()
+        &naa.3 ni w.raayi()
+        &naa.4 ni w.raayi()
+        w.varusa_mugimpu()
+
+[A: Chadhavochu, B: Chadhavochu, C: Chadhavochu, D: Chadhavochu, E: Chadhavochu] jatha[A, B, C, D, E] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        maare parts ante r.varusa_chadhuvu()?
+        parts.enni() != 5 aithe:
+            e ante ChadhuvuThappuVidham.TypeMismatch("5 values unna varusa", f"{parts.enni()} values unna varusa") ni r.thappu_ga()
+            thappu(e) icchey
+        maare r4 ante parts.theesey().kachithanga()
+        maare r3 ante parts.theesey().kachithanga()
+        maare r2 ante parts.theesey().kachithanga()
+        maare r1 ante parts.theesey().kachithanga()
+        maare r0 ante parts.theesey().kachithanga()
+        a ante &maare r0 ni A.chadhuvu_cheyyi()?
+        b ante &maare r1 ni B.chadhuvu_cheyyi()?
+        c ante &maare r2 ni C.chadhuvu_cheyyi()?
+        d ante &maare r3 ni D.chadhuvu_cheyyi()?
+        e ante &maare r4 ni E.chadhuvu_cheyyi()?
+        sare((a, b, c, d, e)) icchey
+
+[A: Kotthadhi, B: Kotthadhi, C: Kotthadhi, D: Kotthadhi, E: Kotthadhi] jatha[A, B, C, D, E] ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        (A.kotthadhi(), B.kotthadhi(), C.kotthadhi(), D.kotthadhi(), E.kotthadhi()) icchey
+
+[A: Raayochu, B: Raayochu, C: Raayochu, D: Raayochu, E: Raayochu, F: Raayochu] jatha[A, B, C, D, E, F] ki Raayochu gunam undhi:
+    raayi_cheyyi(naa: &idhi, w: &maare Raasevaadu ni) -> khali ante:
+        w.varusa_modhalu()
+        &naa.0 ni w.raayi()
+        &naa.1 ni w.raayi()
+        &naa.2 ni w.raayi()
+        &naa.3 ni w.raayi()
+        &naa.4 ni w.raayi()
+        &naa.5 ni w.raayi()
+        w.varusa_mugimpu()
+
+[A: Chadhavochu, B: Chadhavochu, C: Chadhavochu, D: Chadhavochu, E: Chadhavochu, F: Chadhavochu] jatha[A, B, C, D, E, F] ki Chadhavochu gunam undhi:
+    chadhuvu_cheyyi(r: &maare Chadhivevaadu ni) -> sare_thappu[idhi, ChadhuvuThappu] ante:
+        maare parts ante r.varusa_chadhuvu()?
+        parts.enni() != 6 aithe:
+            e ante ChadhuvuThappuVidham.TypeMismatch("6 values unna varusa", f"{parts.enni()} values unna varusa") ni r.thappu_ga()
+            thappu(e) icchey
+        maare r5 ante parts.theesey().kachithanga()
+        maare r4 ante parts.theesey().kachithanga()
+        maare r3 ante parts.theesey().kachithanga()
+        maare r2 ante parts.theesey().kachithanga()
+        maare r1 ante parts.theesey().kachithanga()
+        maare r0 ante parts.theesey().kachithanga()
+        a ante &maare r0 ni A.chadhuvu_cheyyi()?
+        b ante &maare r1 ni B.chadhuvu_cheyyi()?
+        c ante &maare r2 ni C.chadhuvu_cheyyi()?
+        d ante &maare r3 ni D.chadhuvu_cheyyi()?
+        e ante &maare r4 ni E.chadhuvu_cheyyi()?
+        f ante &maare r5 ni F.chadhuvu_cheyyi()?
+        sare((a, b, c, d, e, f)) icchey
+
+[A: Kotthadhi, B: Kotthadhi, C: Kotthadhi, D: Kotthadhi, E: Kotthadhi, F: Kotthadhi] jatha[A, B, C, D, E, F] ki Kotthadhi gunam undhi:
+    kotthadhi() -> idhi ante:
+        (A.kotthadhi(), B.kotthadhi(), C.kotthadhi(), D.kotthadhi(), E.kotthadhi(), F.kotthadhi()) icchey

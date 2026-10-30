@@ -81,6 +81,15 @@ fn seq_val(fx: &mut Fx, v: &str, ty: &Ty) -> Option<(String, String, Ty)> {
     }
 }
 
+/// The data pointer and length of a `&mukka` value.
+fn slice_parts(fx: &mut Fx, v: &str) -> (String, String) {
+    let d = fx.r();
+    fx.emit(format!("{d} = extractvalue %slice {v}, 0"));
+    let n = fx.r();
+    fx.emit(format!("{n} = extractvalue %slice {v}, 1"));
+    (d, n)
+}
+
 fn some(fx: &mut Fx, ty: &Ty, v: &str, inner: &Ty) -> String {
     fx.build_enum(ty, 0, &[v.to_string()], std::slice::from_ref(inner))
 }
@@ -1145,6 +1154,10 @@ pub(super) fn std_call(
             fx.emit(format!("store {et} {}, ptr {}", v(1), v(0)));
             (old, ret)
         }
+        "prelude.rakam_peru" => {
+            let name = crate::typeck::items::show(fx.gen.g, &tyarg(0));
+            (fx.gen.str_const(&name), Ty::Str)
+        }
         "prelude.size_of" | "prelude.align_of" => {
             let (s, a) = fx.gen.size_align(&tyarg(0));
             ((if key == "prelude.size_of" { s } else { a }).to_string(), Ty::ANKAM)
@@ -1185,6 +1198,24 @@ pub(super) fn std_call(
             let n = fx.r();
             fx.emit(format!("{n} = extractvalue %slice {}, 1", v(0)));
             (c_result_out(fx, &ret, "ante_str_from_bytes", &format!("ptr {d}, i64 {n}"), "%str"), ret)
+        }
+        "padham.baitlu_ga" => {
+            let dp = fx.gep("%str", &v(0), &["0".into(), "0".into()]);
+            let d = fx.load("ptr", &dp);
+            let lp = fx.gep("%str", &v(0), &["0".into(), "1".into()]);
+            let n = fx.load("i64", &lp);
+            let out = fx.alloca("%vec");
+            fx.emit(format!("call void @ante_bytes_copy(ptr {out}, ptr {d}, i64 {n})"));
+            (fx.load("%vec", &out), ret)
+        }
+        "padham.baitlu_nunchi_lossy" => {
+            let d = fx.r();
+            fx.emit(format!("{d} = extractvalue %slice {}, 0", v(0)));
+            let n = fx.r();
+            fx.emit(format!("{n} = extractvalue %slice {}, 1", v(0)));
+            let out = fx.alloca("%str");
+            fx.emit(format!("call void @ante_str_from_bytes_lossy(ptr {d}, i64 {n}, ptr {out})"));
+            (fx.load("%str", &out), Ty::Str)
         }
         "padham.byte_mukka" => {
             let args = format!("ptr {}, i64 {}, i64 {}", v(0), v(1), v(2));
@@ -1708,7 +1739,80 @@ pub(super) fn std_call(
             fx.emit(format!("{b} = icmp ne i32 {r}, 0"));
             (b, Ty::Bool)
         }
+        // ── bhadram (§27) ──
+        "bhadram.sha256" | "bhadram.sha512" | "bhadram.blake3" => {
+            let (d, n) = slice_parts(fx, &v(0));
+            let out = fx.alloca("%vec");
+            fx.emit(format!("call void @ante_{}(ptr {d}, i64 {n}, ptr {out})", &key["bhadram.".len()..]));
+            (fx.load("%vec", &out), ret)
+        }
+        "bhadram.random_baitlu" => {
+            let out = fx.alloca("%vec");
+            let ok = fx.r();
+            fx.emit(format!("{ok} = call i32 @ante_random_bytes(i64 {}, ptr {out})", v(0)));
+            let bad = fx.r();
+            fx.emit(format!("{bad} = icmp eq i32 {ok}, 0"));
+            let m = fx.gen.str_const("system random baitlu ivvaledhu");
+            let loc = fx.loc(span);
+            fx.guard(&bad, |fx| {
+                let sp = fx.spill("%str", &m);
+                fx.emit(format!("call void @ante_trap(ptr {sp}, ptr {loc})"));
+            });
+            (fx.load("%vec", &out), ret)
+        }
+        "bhadram.okkatenaa" => {
+            let (a, an) = slice_parts(fx, &v(0));
+            let (b, bn) = slice_parts(fx, &v(1));
+            let r = fx.r();
+            fx.emit(format!("{r} = call i32 @ante_ct_eq(ptr {a}, i64 {an}, ptr {b}, i64 {bn})"));
+            let t = fx.r();
+            fx.emit(format!("{t} = icmp ne i32 {r}, 0"));
+            (t, Ty::Bool)
+        }
+        "bhadram._argon2id" => {
+            let mut args = Vec::new();
+            for i in 0..4 {
+                let (d, n) = slice_parts(fx, &v(i));
+                args.push(format!("ptr {d}, i64 {n}"));
+            }
+            for i in 4..8 {
+                args.push(format!("i64 {}", v(i)));
+            }
+            let out = fx.alloca("%vec");
+            fx.emit(format!("call void @ante_argon2id({}, ptr {out})", args.join(", ")));
+            (fx.load("%vec", &out), ret)
+        }
+        "bhadram._aes_gcm_seal" | "bhadram._aes_gcm_open" => {
+            let mut args = Vec::new();
+            for i in 0..4 {
+                let (d, n) = slice_parts(fx, &v(i));
+                args.push(format!("ptr {d}, i64 {n}"));
+            }
+            let out = fx.alloca("%vec");
+            if key == "bhadram._aes_gcm_seal" {
+                fx.emit(format!("call void @ante_aes_gcm_seal_n({}, ptr {out})", args.join(", ")));
+                return (fx.load("%vec", &out), ret);
+            }
+            let ok = fx.r();
+            fx.emit(format!("{ok} = call i32 @ante_aes_gcm_open_n({}, ptr {out})", args.join(", ")));
+            let has = fx.r();
+            fx.emit(format!("{has} = icmp ne i32 {ok}, 0"));
+            let r = opt_select(fx, &ret, &has, &mut |fx| fx.load("%vec", &out));
+            (r, ret)
+        }
         // ── memory (`naa_risk` only) ──
+        "memory.sunna_cheyyi" => {
+            let t = tyarg(0);
+            let bytes =
+                matches!(&t, Ty::App(Con::Varusa, a) if a[0] == Ty::Int(IntTy { signed: false, bits: 8 }));
+            if t == Ty::Str || bytes {
+                fx.emit(format!("call void @ante_zero_buf(ptr {})", v(0)));
+            } else if matches!(t, Ty::Int(_) | Ty::Float(_) | Ty::Bool | Ty::Char) {
+                let (size, _) = fx.gen.size_align(&t);
+                fx.emit(format!("call void @ante_secure_zero(ptr {}, i64 {size})", v(0)));
+            }
+            unit()
+        }
         "memory.allocate" => {
             let r = fx.r();
             fx.emit(format!("{r} = call ptr @ante_mem_alloc(i64 {}, i64 {})", v(0), v(1)));
@@ -1754,6 +1858,16 @@ pub(super) fn std_call(
             fx.emit(format!("call void @ante_args(ptr {out})"));
             (fx.load("%vec", &out), ret)
         }
+        "system._release" => {
+            let r = fx.r();
+            fx.emit(format!("{r} = load i1, ptr @ante_release_build"));
+            (r, Ty::Bool)
+        }
+        "system._env_text" => {
+            let out = fx.alloca("%str");
+            fx.emit(format!("call void @ante_env_text(ptr {out})"));
+            (fx.load("%str", &out), Ty::Str)
+        }
         "system.os" | "system.arch" => {
             let out = fx.alloca("%str");
             fx.emit(format!("call void @ante_{}(ptr {out})", &key["system.".len()..]));
@@ -1797,20 +1911,27 @@ pub(super) fn std_call(
             fx.emit(format!("{r} = insertvalue {lt} undef, i64 {d}, 0"));
             (r, ret)
         }
-        "Kaalam.sec" => {
-            // Whole seconds; negative or past `aasajeevi ankam64` nanoseconds is T01.
+        "samayam._utc_nanosec" => {
+            let n = fx.r();
+            fx.emit(format!("{n} = call i64 @ante_utc_ns()"));
+            (n, Ty::ANKAM)
+        }
+        "Kaalam.nanosec" | "Kaalam.millisec" | "Kaalam.sec" | "Kaalam.nimishalu" | "Kaalam.gantalu"
+        | "Kaalam.rojulu" => {
+            // Whole units; negative or past `aasajeevi ankam64` nanoseconds is T01.
+            let unit = crate::interp::native::kaalam_unit(&key["Kaalam.".len()..]);
             let n = v(0);
             let wide = fx.r();
             fx.emit(format!("{wide} = sext i64 {n} to i128"));
             let ns = fx.r();
-            fx.emit(format!("{ns} = mul i128 {wide}, 1000000000"));
+            fx.emit(format!("{ns} = mul i128 {wide}, {unit}"));
             let neg = fx.r();
             fx.emit(format!("{neg} = icmp slt i128 {ns}, 0"));
             let big = fx.r();
             fx.emit(format!("{big} = icmp ugt i128 {ns}, 18446744073709551615"));
             let bad = fx.r();
             fx.emit(format!("{bad} = or i1 {neg}, {big}"));
-            let m = fx.gen.str_const("`Kaalam` lo ee sec pattadhu");
+            let m = fx.gen.str_const(&format!("`Kaalam` lo ee {} pattadhu", &key["Kaalam.".len()..]));
             let loc = fx.loc(span);
             fx.guard(&bad, |fx| {
                 let sp = fx.spill("%str", &m);
@@ -1823,7 +1944,7 @@ pub(super) fn std_call(
             fx.emit(format!("{r} = insertvalue {kl} undef, i64 {lo}, 0"));
             (r, ret)
         }
-        "Kaalam.millisec" | "Kaalam.nanosec" => {
+        "Kaalam.millisec_lu" | "Kaalam.nanosec_lu" | "Kaalam.sec_lu" => {
             let kt = match &t(0) {
                 Ty::Ref(_, a) => (**a).clone(),
                 other => other.clone(),
@@ -1831,11 +1952,17 @@ pub(super) fn std_call(
             let kl = fx.ll(&kt);
             let p = fx.gep(&kl, &v(0), &["0".into(), "0".into()]);
             let ns = fx.load("i64", &p);
-            if key == "Kaalam.nanosec" {
+            if key == "Kaalam.nanosec_lu" {
                 return (ns, Ty::ANKAM);
             }
             let r = fx.r();
-            fx.emit(format!("{r} = sdiv i64 {ns}, 1000000"));
+            if key == "Kaalam.sec_lu" {
+                let f = fx.r();
+                fx.emit(format!("{f} = uitofp i64 {ns} to double"));
+                fx.emit(format!("{r} = fdiv double {f}, 1.0e9"));
+                return (r, Ty::Float(64));
+            }
+            fx.emit(format!("{r} = udiv i64 {ns}, 1000000"));
             (r, Ty::ANKAM)
         }
         _ => unsupported(fx, &key, dest),

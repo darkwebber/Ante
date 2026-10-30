@@ -1,0 +1,39 @@
+# category: run-pass
+# expect-stdout: 22
+# expect-stdout: 4LCk4LGG4LCy4LGB4LCX4LGBIG9rPw==
+# expect-stdout: sare(తెలుగు ok?)
+# expect-stdout: 4LCk4LGG4LCy4LGB4LCX4LGBIG9rPw
+# expect-stdout: sare([251, 255])
+# expect-stdout: thappu(4 daggara base64 kaani aksharam undhi)
+# expect-stdout: thappu(base64 length 4 tho bhaagincheladhu, padding (`=`) choodandi)
+# expect-stdout: 616e7465
+# expect-stdout: sare([65, 78, 84, 69])
+# expect-stdout: thappu(hex lo digits jathaga raavali (length odd))
+# expect-stdout: a%20b%26c%3Dd%2F%C3%A9~
+# expect-stdout: sare(a b&c=d/é~)
+# expect-stdout: thappu(0 daggara `%` tharvatha hex kaadhu)
+# expect-stdout: hi�
+# level: services
+# `baitlu` and `encoding`: base64 (padded), base64url (unpadded), hex and URL
+# escapes, both ways, with their errors (§25.1).
+encoding thechuko
+
+modhalu() -> khali ante:
+    b ante "తెలుగు ok?".baitlu_ga()
+    b.enni() ni choopinchu()
+    s ante &b ni encoding.base64()
+    s ni choopinchu()
+    (&s ni encoding.base64_chadhuvu()).kachithanga() |> padham.baitlu_nunchi() |> choopinchu()
+    &b ni encoding.base64url() |> choopinchu()
+    "-_8" ni encoding.base64url_chadhuvu() |> choopinchu()
+    "Zm9v!A==" ni encoding.base64_chadhuvu() |> choopinchu()
+    "Zm9vYg" ni encoding.base64_chadhuvu() |> choopinchu()
+    short ante "ante".baitlu_ga()
+    &short ni encoding.hex() |> choopinchu()
+    "414E5445" ni encoding.hex_chadhuvu() |> choopinchu()
+    "abc" ni encoding.hex_chadhuvu() |> choopinchu()
+    "a b&c=d/é~" ni encoding.url_escape() |> choopinchu()
+    "a%20b%26c%3Dd%2F%C3%A9~" ni encoding.url_unescape() |> choopinchu()
+    "%zz" ni encoding.url_unescape() |> choopinchu()
+    bad: baitlu ante [104, 105, 255]
+    &bad ni padham.baitlu_nunchi_lossy() |> choopinchu()

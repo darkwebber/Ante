@@ -1,0 +1,13 @@
+# category: compile-fail
+# expect-error: E1304 @ 7:1
+# level: services
+# `@lekapothe_kotthadhi` needs a field type with a default (`Kotthadhi`,
+# §25.2.5); a `Gadiyaram` has none.
+samayam thechuko
+@automatic Chadhavochu
+rakam Event ante:
+    @lekapothe_kotthadhi
+    eppudu: samayam.Gadiyaram
+
+modhalu() -> khali ante:
+    "x" ni choopinchu()

@@ -9,7 +9,7 @@
 
 Simple ga cheppalante: amma ki explain chesinattu code raayochu, kaani adhi C laaga fast ga run avthundhi. 😎
 
-> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8), generics, traits and closures (M9), standard library (M10), C FFI (M11), tasks and sharing (M12) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi, C libraries tho maatladathayi, anni CPU cores meedha okesaari pani chesthayi! Core 1.0 complete 🎉 DSA nerchukovadaniki [`learn/`](learn) lessons kuda start ayyayi. Next: JSON, crypto, HTTP (M13–M14). 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
+> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8), generics, traits and closures (M9), standard library (M10), C FFI (M11), tasks and sharing (M12), data and security (M13: JSON, form/query, encodings, time zones, crypto, `log`, `config`) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi, C libraries tho maatladathayi, anni CPU cores meedha okesaari pani chesthayi! Core 1.0 complete 🎉 DSA nerchukovadaniki [`learn/`](learn) lessons kuda start ayyayi. Next: network and storage, HTTP, SQL (M14). 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
 
 ## "Ante" Sundharaniki! 🎬
 
@@ -110,7 +110,8 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 | M10 | Standard library: `jodi`, `gumpu`, files, paths, bytes, `system.nadupu`, `lekkalu` (spec §21), anni backends lo okela | ✅ done |
 | M11 | FFI: `naa_risk`, `@C` records, `@bayata` exports, package lo C files, libraries link cheyyadam (spec §22) | ✅ done |
 | M12 | Tasks and sharing: `task.kalisi`, `pampu`, channels, `Thaalam`, `Atomic`, `panchukunna`, cancel (spec §24) | ✅ done |
-| M13–M14 | Services: JSON, crypto, time zones, HTTP, SQL (spec Part IX) | 🔜 |
+| M13 | Data and security: `json`, `form`, `query`, `encoding`, `samayam` zones, `bhadram` (SHA-2, BLAKE3, Argon2id, AES-GCM), `Rahasyam`, `random`, `log`, `config` (spec §25–27, §29) | ✅ done |
+| M14 | Network and storage: TCP, TLS, HTTP, WebSocket, SQL (spec §28, §29.3) | 🔜 |
 | M15–M18 | Web apps "Ante" lone: pages, styles, routes, server functions, `antec web` deploy (spec Annex W) | 🔜 |
 | M19 | Official website, "Ante" lone raasindhi: playground, docs, learn | 🔜 |
 | M20–M22 | `@twaraga` performance, PyTorch binding, Python bridge (numpy, pandas, Hugging Face, OpenAI…) | 🔜 |

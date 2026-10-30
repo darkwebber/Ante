@@ -1,0 +1,234 @@
+# `bhadram` ("protection"): randomness, hashing, passwords and encryption
+# (spec §27). The primitives (SHA-2, BLAKE3, Argon2id, AES-256-GCM, the
+# system's random bytes, constant-time comparison) are intrinsics; this
+# file builds the rest from them.
+
+bhadram thechuko
+encoding thechuko
+lekkalu thechuko
+samayam thechuko
+
+@automatic XeroxTheeyochu, Polchochu
+andhariki rakam BhadramThappu ante:
+    andhariki message: padham
+
+BhadramThappu ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        naa.message.xerox() icchey
+
+bhadram_thappu(m: padham ni) -> BhadramThappu ante:
+    BhadramThappu{message: m} icchey
+
+# ── randomness ──────────────────────────────────────────────────────────────
+
+# Eight random bytes as a number.
+random_aasajeevi() -> aasajeevi ankam ante:
+    b ante 8 ni bhadram.random_baitlu()
+    maare n: aasajeevi ankam ante 0
+    b lo okko x ki:
+        n lo (n << 8 | (x ni maarchu[aasajeevi ankam]())) pettu
+    n icchey
+
+# Uniform in `a nunchi b lopu`, without modulo bias; T05 if `a >= b`.
+andhariki random_ankam(a: ankam ni, b: ankam tho) -> ankam ante:
+    a >= b aithe:
+        f"random_ankam: {a} < {b} kaavali" ni kompa_munigindhi()
+    ua ante a ni kolpothu_maarchu[aasajeevi ankam]()
+    ub ante b ni kolpothu_maarchu[aasajeevi ankam]()
+    span ante ub ni, ua tho lekkalu.chuttu_theesey()
+    # Draws below `threshold` would favour small results.
+    threshold ante (0 ni, span tho lekkalu.chuttu_theesey()) % span
+    avunu unnanthasepu:
+        x ante random_aasajeevi()
+        x >= threshold aithe:
+            r ante ua ni, (x % span) tho lekkalu.chuttu_kalupu()
+            (r ni kolpothu_maarchu[ankam]()) icchey
+    0 icchey
+
+# Text of 16 bytes as a UUID: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`.
+uuid_text(b: &baitlu ni) -> padham ante:
+    h ante b ni encoding.hex()
+    maare out ante ""
+    hb ante h.baitlu_ga()
+    0 nunchi 32 lopu okko i ki:
+        i == 8 || i == 12 || i == 16 || i == 20 aithe:
+            out += "-"
+        part ante (&hb[i nunchi i + 1 lopu] ni padham.baitlu_nunchi()).kachithanga()
+        out += part
+    out icchey
+
+# Sets the version nibble and the RFC 9562 variant bits.
+uuid_bits(b: &maare baitlu ni, version: ankam tho) -> khali ante:
+    b6 ante (b[6] ni maarchu[ankam]()) & 15 | version << 4
+    b8 ante (b[8] ni maarchu[ankam]()) & 63 | 128
+    b[6] lo (b6 ni kolpothu_maarchu[aasajeevi ankam8]()) pettu
+    b[8] lo (b8 ni kolpothu_maarchu[aasajeevi ankam8]()) pettu
+
+# A random UUID (RFC 9562, version 4).
+andhariki uuid_v4() -> padham ante:
+    maare b ante 16 ni bhadram.random_baitlu()
+    &maare b ni, 4 tho uuid_bits()
+    (&b ni uuid_text()) icchey
+
+# A time-ordered UUID (RFC 9562, version 7): milliseconds since 1970 first.
+andhariki uuid_v7() -> padham ante:
+    maare b ante 16 ni bhadram.random_baitlu()
+    ms ante samayam._utc_nanosec() / 1000000
+    0 nunchi 6 lopu okko i ki:
+        byte ante ms >> 40 - 8 * i & 255
+        b[i] lo (byte ni kolpothu_maarchu[aasajeevi ankam8]()) pettu
+    &maare b ni, 7 tho uuid_bits()
+    (&b ni uuid_text()) icchey
+
+# ── hashing ─────────────────────────────────────────────────────────────────
+
+# HMAC-SHA256 (RFC 2104) of `msg` with `key`.
+andhariki hmac_sha256(
+    msg: &mukka[aasajeevi ankam8] ni,
+    key: &mukka[aasajeevi ankam8] tho,
+) -> baitlu ante:
+    maare k: baitlu ante []
+    key.enni() > 64 aithe:
+        k lo (key ni bhadram.sha256()) pettu
+    ledhante:
+        key lo okko x ki:
+            x ni k.cherchu()
+    k.enni() < 64 unnanthasepu:
+        (0 ni kolpothu_maarchu[aasajeevi ankam8]()) ni k.cherchu()
+    maare inner: baitlu ante []
+    maare outer: baitlu ante []
+    k lo okko x ki:
+        (x ^ 54) ni inner.cherchu()
+        (x ^ 92) ni outer.cherchu()
+    msg lo okko x ki:
+        x ni inner.cherchu()
+    ih ante &inner ni bhadram.sha256()
+    ih lo okko x ki:
+        x ni outer.cherchu()
+    (&outer ni bhadram.sha256()) icchey
+
+# ── passwords ───────────────────────────────────────────────────────────────
+
+# "Password result".
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki edho_okati PasswordPhalitham ante:
+    Sare
+    # Correct, but the stored hash used weaker settings: hash it again.
+    SareKaaniMalliHashCheyyi
+    Thappu
+
+# The OWASP minimum (§27.3); later revisions may only raise them.
+ARGON_M: ankam ante 19456
+
+ARGON_T: ankam ante 2
+
+ARGON_P: ankam ante 1
+
+# Base64 without `=` padding, as the PHC string format writes it.
+b64_nopad(b: &baitlu ni) -> padham ante:
+    s ante b ni encoding.base64()
+    parts ante "=" ni s.vidagottu()
+    parts[0].xerox() icchey
+
+b64_nopad_chadhuvu(s: &padham ni) -> undochu[baitlu] ante:
+    maare padded ante s.xerox()
+    padded.byte_len() % 4 != 0 unnanthasepu:
+        padded += "="
+    &padded ni encoding.base64_chadhuvu() batti:
+        sare(b) aithe:
+            undhi(b) icchey
+        thappu(_) aithe:
+            ledhu icchey
+
+# Argon2id of a secret password (§27.3), as a PHC string:
+# `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`.
+andhariki password_hash(p: &Rahasyam[padham] ni) -> padham ante:
+    salt ante 16 ni bhadram.random_baitlu()
+    pw ante p.bayatiki_theesuko().baitlu_ga() ni Rahasyam.kotthadhi()
+    empty: baitlu ante []
+    tag ante pw.bayatiki_theesuko() ni, &salt tho, &empty tho, &empty tho, ARGON_M, ARGON_T, ARGON_P, 32 bhadram._argon2id()
+    f"$argon2id$v=19$m={ARGON_M},t={ARGON_T},p={ARGON_P}${&salt ni b64_nopad()}${&tag ni b64_nopad()}" icchey
+
+# Checks a password against a stored `password_hash`, in constant time.
+andhariki password_check(
+    p: &Rahasyam[padham] ni,
+    h: &padham tho,
+) -> sare_thappu[PasswordPhalitham, BhadramThappu] ante:
+    bad ante "password hash ardham kaaledhu (`$argon2id$v=19$m=…,t=…,p=…$salt$hash` kavali)" ni bhadram_thappu()
+    parts ante "$" ni h.vidagottu()
+    parts.enni() != 6 || parts[0] != "" || parts[1] != "argon2id" || parts[2] != "v=19" aithe:
+        thappu(bad) icchey
+    maare m ante -1
+    maare t ante -1
+    maare lanes ante -1
+    params ante "," ni parts[3].vidagottu()
+    params lo okko kv ki:
+        pair ante "=" ni kv.vidagottu()
+        pair.enni() != 2 aithe:
+            thappu(bad.xerox()) icchey
+        n ante pair[1].ankam_ga()
+        n.sareyaa() == kaadhu aithe:
+            thappu(bad.xerox()) icchey
+        v ante n.kachithanga()
+        pair[0] == "m" aithe:
+            m lo v pettu
+        ledhante pair[0] == "t" aithe:
+            t lo v pettu
+        ledhante pair[0] == "p" aithe:
+            lanes lo v pettu
+    salt_o ante &parts[4] ni b64_nopad_chadhuvu()
+    want_o ante &parts[5] ni b64_nopad_chadhuvu()
+    m < 8 || t < 1 || lanes < 1 || m < 8 * lanes || salt_o.ledhaa() || want_o.ledhaa() aithe:
+        thappu(bad) icchey
+    salt ante salt_o.kachithanga()
+    want ante want_o.kachithanga()
+    want.enni() < 4 || m > 4194304 || t > 64 || lanes > 64 aithe:
+        thappu(bad) icchey
+    pw ante p.bayatiki_theesuko().baitlu_ga() ni Rahasyam.kotthadhi()
+    empty: baitlu ante []
+    got ante pw.bayatiki_theesuko() ni, &salt tho, &empty tho, &empty tho, m, t, lanes, want.enni() bhadram._argon2id()
+    !(&got ni, &want tho bhadram.okkatenaa()) aithe:
+        sare(PasswordPhalitham.Thappu) icchey
+    m < ARGON_M || t < ARGON_T || want.enni() < 32 aithe:
+        sare(PasswordPhalitham.SareKaaniMalliHashCheyyi) icchey
+    sare(PasswordPhalitham.Sare) icchey
+
+# ── encryption ──────────────────────────────────────────────────────────────
+
+# "Make a key": `n` random bytes, kept secret.
+andhariki key_tayaru(n: ankam ni) -> Rahasyam[baitlu] ante:
+    b ante n ni bhadram.random_baitlu()
+    (b ni Rahasyam.kotthadhi()) icchey
+
+key_choodu(key: &Rahasyam[baitlu] ni) -> khali ante:
+    n ante key.bayatiki_theesuko().enni()
+    n != 32 aithe:
+        f"AES-256-GCM key 32 baitlu undaali, {n} unnayi" ni kompa_munigindhi()
+
+# AES-256-GCM with a fresh random 12-byte nonce, written before the
+# ciphertext and its tag. The key must be 32 bytes (T05 otherwise).
+andhariki encrypt(data: &mukka[aasajeevi ankam8] ni, key: &Rahasyam[baitlu] tho) -> baitlu ante:
+    key ni key_choodu()
+    maare out ante 12 ni bhadram.random_baitlu()
+    empty: baitlu ante []
+    sealed ante key.bayatiki_theesuko() ni, &out tho, &empty tho, data ki bhadram._aes_gcm_seal()
+    sealed lo okko x ki:
+        x ni out.cherchu()
+    out icchey
+
+# Undoes `encrypt`; a wrong key or changed data is a `thappu`.
+andhariki decrypt(
+    data: &mukka[aasajeevi ankam8] ni,
+    key: &Rahasyam[baitlu] tho,
+) -> sare_thappu[baitlu, BhadramThappu] ante:
+    key ni key_choodu()
+    data.enni() < 28 aithe:
+        thappu("decrypt cheyyalem: data chaala chinnadhi" ni bhadram_thappu()) icchey
+    nonce ante &data[0 nunchi 12 lopu]
+    rest ante &data[12 nunchi data.enni() lopu]
+    empty: baitlu ante []
+    key.bayatiki_theesuko() ni, nonce tho, &empty tho, rest ki bhadram._aes_gcm_open() batti:
+        undhi(b) aithe:
+            sare(b) icchey
+        ledhu aithe:
+            thappu("decrypt kaaledhu: key thappu, leka data maarindhi" ni bhadram_thappu()) icchey

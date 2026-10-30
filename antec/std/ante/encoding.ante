@@ -1,0 +1,214 @@
+# `encoding`: bytes as text and back (spec §25.1). Base64 (RFC 4648), hex,
+# and URL percent-escapes (RFC 3986).
+
+andhariki rakam EncodingThappu ante:
+    andhariki message: padham
+
+EncodingThappu ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        naa.message.xerox() icchey
+
+EncodingThappu ki XeroxTheeyochu gunam undhi:
+    xerox(naa: &idhi) -> idhi ante:
+        EncodingThappu{message: naa.message.xerox()} icchey
+
+EncodingThappu ki Polchochu gunam undhi:
+    okateyna(naa: &idhi, inkokati: &idhi ni) -> ato_ito ante:
+        (naa.message == inkokati.message) icchey
+
+B64: padham ante "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+B64_URL: padham ante "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+HEX: padham ante "0123456789abcdef"
+
+# Base64 with the standard alphabet and `=` padding.
+andhariki base64(b: &mukka[aasajeevi ankam8] ni) -> padham ante:
+    (b ni, &B64 tho, avunu ki b64_raayi()) icchey
+
+andhariki base64_chadhuvu(s: &padham ni) -> sare_thappu[baitlu, EncodingThappu] ante:
+    (s ni, kaadhu ki b64_chadhuvu()) icchey
+
+# Base64 with the URL-safe alphabet (`-`, `_`) and no padding.
+andhariki base64url(b: &mukka[aasajeevi ankam8] ni) -> padham ante:
+    (b ni, &B64_URL tho, kaadhu ki b64_raayi()) icchey
+
+andhariki base64url_chadhuvu(s: &padham ni) -> sare_thappu[baitlu, EncodingThappu] ante:
+    (s ni, avunu ki b64_chadhuvu()) icchey
+
+# Lowercase hex, two digits per byte.
+andhariki hex(b: &mukka[aasajeevi ankam8] ni) -> padham ante:
+    digits ante HEX.baitlu_ga()
+    maare out: baitlu ante []
+    b lo okko x ki:
+        v ante x ni ank()
+        digits[v >> 4] ni out.cherchu()
+        digits[v & 15] ni out.cherchu()
+    (&out ni ascii_padham()) icchey
+
+# Hex in either case; an odd length or a non-hex character is a `thappu`.
+andhariki hex_chadhuvu(s: &padham ni) -> sare_thappu[baitlu, EncodingThappu] ante:
+    t ante s.baitlu()
+    t.enni() % 2 != 0 aithe:
+        thappu("hex lo digits jathaga raavali (length odd)" ni thappu_ga()) icchey
+    maare out: baitlu ante []
+    maare i ante 0
+    i < t.enni() unnanthasepu:
+        h1 ante t[i] ni hex_viluva()
+        h2 ante t[i + 1] ni hex_viluva()
+        h1 < 0 || h2 < 0 aithe:
+            thappu(f"{i} daggara hex kaani aksharam undhi" ni thappu_ga()) icchey
+        (h1 * 16 + h2) ni byte() |> out.cherchu()
+        i += 2
+    sare(out) icchey
+
+# Percent-escapes every byte except the unreserved `A–Z a–z 0–9 - . _ ~`.
+andhariki url_escape(s: &padham ni) -> padham ante:
+    digits ante "0123456789ABCDEF".baitlu_ga()
+    maare out: baitlu ante []
+    s.baitlu() lo okko x ki:
+        c ante x
+        c ni unreserved() aithe:
+            c ni out.cherchu()
+        ledhante:
+            v ante c ni ank()
+            37 ni byte() |> out.cherchu()
+            digits[v >> 4] ni out.cherchu()
+            digits[v & 15] ni out.cherchu()
+    (&out ni ascii_padham()) icchey
+
+# Undoes `url_escape`: `%XY` becomes the byte XY. The result must be UTF-8.
+andhariki url_unescape(s: &padham ni) -> sare_thappu[padham, EncodingThappu] ante:
+    t ante s.baitlu()
+    maare out: baitlu ante []
+    maare i ante 0
+    i < t.enni() unnanthasepu:
+        c ante t[i]
+        (c ni ank()) == 37 aithe:
+            i + 2 >= t.enni() aithe:
+                thappu(f"{i} daggara `%` tharvatha rendu hex digits levu" ni thappu_ga()) icchey
+            h1 ante t[i + 1] ni hex_viluva()
+            h2 ante t[i + 2] ni hex_viluva()
+            h1 < 0 || h2 < 0 aithe:
+                thappu(f"{i} daggara `%` tharvatha hex kaadhu" ni thappu_ga()) icchey
+            (h1 * 16 + h2) ni byte() |> out.cherchu()
+            i += 3
+        ledhante:
+            c ni out.cherchu()
+            i += 1
+    &out ni padham.baitlu_nunchi() batti:
+        sare(p) aithe:
+            sare(p) icchey
+        thappu(_) aithe:
+            thappu("escape theesesaka UTF-8 kaadhu" ni thappu_ga()) icchey
+
+# ── helpers ────────────────────────────────────────────────────────────────
+
+thappu_ga(m: padham ni) -> EncodingThappu ante:
+    EncodingThappu{message: m} icchey
+
+ank(x: aasajeevi ankam8 ni) -> ankam ante:
+    (x ni maarchu[ankam]()) icchey
+
+byte(x: ankam ni) -> aasajeevi ankam8 ante:
+    (x ni kolpothu_maarchu[aasajeevi ankam8]()) icchey
+
+# Bytes this module wrote, all ASCII, as text.
+ascii_padham(b: &baitlu ni) -> padham ante:
+    (b ni padham.baitlu_nunchi()).kachithanga() icchey
+
+unreserved(c: aasajeevi ankam8 ni) -> ato_ito ante:
+    v ante c ni ank()
+    (v >= 65 && v <= 90 || v >= 97 && v <= 122 || v >= 48 && v <= 57 || v == 45 || v == 46 || v == 95 || v == 126) icchey
+
+# The value of a hex digit, or -1.
+hex_viluva(c: aasajeevi ankam8 ni) -> ankam ante:
+    v ante c ni ank()
+    v >= 48 && v <= 57 aithe:
+        (v - 48) icchey
+    v >= 97 && v <= 102 aithe:
+        (v - 87) icchey
+    v >= 65 && v <= 70 aithe:
+        (v - 55) icchey
+    -1 icchey
+
+b64_raayi(b: &mukka[aasajeevi ankam8] ni, abc: &padham tho, pad: ato_ito ki) -> padham ante:
+    a ante abc.baitlu_ga()
+    maare out: baitlu ante []
+    n ante b.enni()
+    maare i ante 0
+    i + 3 <= n unnanthasepu:
+        x ante (b[i] ni ank()) << 16 | (b[i + 1] ni ank()) << 8 | (b[i + 2] ni ank())
+        a[x >> 18 & 63] ni out.cherchu()
+        a[x >> 12 & 63] ni out.cherchu()
+        a[x >> 6 & 63] ni out.cherchu()
+        a[x & 63] ni out.cherchu()
+        i += 3
+    migilindhi ante n - i
+    migilindhi == 1 aithe:
+        x ante (b[i] ni ank()) << 16
+        a[x >> 18 & 63] ni out.cherchu()
+        a[x >> 12 & 63] ni out.cherchu()
+        pad aithe:
+            61 ni byte() |> out.cherchu()
+            61 ni byte() |> out.cherchu()
+    ledhante migilindhi == 2 aithe:
+        x ante (b[i] ni ank()) << 16 | (b[i + 1] ni ank()) << 8
+        a[x >> 18 & 63] ni out.cherchu()
+        a[x >> 12 & 63] ni out.cherchu()
+        a[x >> 6 & 63] ni out.cherchu()
+        pad aithe:
+            61 ni byte() |> out.cherchu()
+    (&out ni ascii_padham()) icchey
+
+# The 6-bit value of a base64 character, or -1.
+b64_viluva(c: aasajeevi ankam8 ni, url: ato_ito tho) -> ankam ante:
+    v ante c ni ank()
+    v >= 65 && v <= 90 aithe:
+        (v - 65) icchey
+    v >= 97 && v <= 122 aithe:
+        (v - 71) icchey
+    v >= 48 && v <= 57 aithe:
+        (v + 4) icchey
+    url aithe:
+        v == 45 aithe:
+            62 icchey
+        v == 95 aithe:
+            63 icchey
+        -1 icchey
+    v == 43 aithe:
+        62 icchey
+    v == 47 aithe:
+        63 icchey
+    -1 icchey
+
+b64_chadhuvu(s: &padham ni, url: ato_ito ki) -> sare_thappu[baitlu, EncodingThappu] ante:
+    t ante s.baitlu()
+    maare n ante t.enni()
+    url aithe:
+        n % 4 == 1 aithe:
+            thappu("base64 length thappu" ni thappu_ga()) icchey
+    ledhante:
+        n % 4 != 0 aithe:
+            thappu("base64 length 4 tho bhaagincheladhu, padding (`=`) choodandi" ni thappu_ga()) icchey
+        n > 0 && (t[n - 1] ni ank()) == 61 aithe:
+            n -= 1
+            (t[n - 1] ni ank()) == 61 aithe:
+                n -= 1
+    maare out: baitlu ante []
+    maare acc ante 0
+    maare bits ante 0
+    0 nunchi n lopu okko i ki:
+        v ante t[i] ni, url tho b64_viluva()
+        v < 0 aithe:
+            thappu(f"{i} daggara base64 kaani aksharam undhi" ni thappu_ga()) icchey
+        acc lo (acc << 6 | v) pettu
+        bits += 6
+        bits >= 8 aithe:
+            bits -= 8
+            (acc >> bits & 255) ni byte() |> out.cherchu()
+            acc lo (acc & (1 << bits) - 1) pettu
+    # Leftover bits must be zero (RFC 4648 §3.5, canonical encoding).
+    acc != 0 aithe:
+        thappu("base64 chivari bits sunna kaavali" ni thappu_ga()) icchey
+    sare(out) icchey

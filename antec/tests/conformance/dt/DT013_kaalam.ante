@@ -1,0 +1,32 @@
+# category: run-pass
+# expect-stdout: 1m 30s
+# expect-stdout: 1.5s
+# expect-stdout: 250ms
+# expect-stdout: 2µs
+# expect-stdout: 1d 2h
+# expect-stdout: 2h 3m 20s
+# expect-stdout: 7400.0
+# expect-stdout: avunu
+# expect-stdout: 2024-03-15T11:33:20Z
+# expect-stdout: 2h 3m 20s
+# expect-stdout: 2024-03-15T09:29:59.5Z
+# level: services
+# `Kaalam` constructors, arithmetic, comparison and display; moving a
+# `Gadiyaram` by a `Kaalam`, and the `theda` between two (§26).
+samayam thechuko
+
+modhalu() -> khali ante:
+    90 ni samayam.Kaalam.sec() |> choopinchu()
+    1500 ni samayam.Kaalam.millisec() |> choopinchu()
+    250 ni samayam.Kaalam.millisec() |> choopinchu()
+    2000 ni samayam.Kaalam.nanosec() |> choopinchu()
+    (1 ni samayam.Kaalam.rojulu()) + (2 ni samayam.Kaalam.gantalu()) |> choopinchu()
+    k ante (200 ni samayam.Kaalam.sec()) + (2 ni samayam.Kaalam.gantalu())
+    k ni choopinchu()
+    k.sec_lu() ni choopinchu()
+    ((3 ni samayam.Kaalam.nimishalu()) < k) ni choopinchu()
+    g ante ("2024-03-15T09:30:00Z" ni samayam.Gadiyaram.rfc3339_chadhuvu()).kachithanga()
+    later ante k ni g.kalupu()
+    later ni choopinchu()
+    (g ni later.theda()) ni choopinchu()
+    (500 ni samayam.Kaalam.millisec()) ni g.theesey() |> choopinchu()

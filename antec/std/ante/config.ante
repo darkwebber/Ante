@@ -1,0 +1,110 @@
+# `config`: a program's settings from environment variables (spec §29.2).
+#
+#     @automatic Chadhavochu
+#     rakam Settings ante:
+#         database_url: padham
+#         port: undochu[ankam]
+#         smtp: Smtp            # SMTP__HOST, SMTP__PORT
+#
+#     s ante config.chadhuvu[Settings]()?
+#
+# Field `database_url` reads `DATABASE_URL`; a nested record's fields are
+# joined with `__`. Values are text, read as the field's type. In debug
+# builds (and `antec run`) a `.env` file in the working folder is read first;
+# a variable already in the environment wins. Release builds never read it.
+
+file thechuko
+system thechuko
+
+andhariki chadhuvu[T: Chadhavochu]() -> sare_thappu[T, ChadhuvuThappu] ante:
+    maare entries: varusa[jatha[padham, DataChettu]] ante []
+    !system._release() aithe:
+        ".env" ni file.chadhuvu() batti:
+            sare(text) aithe:
+                &text ni, &maare entries tho dotenv()
+            thappu(_) aithe:
+                ()
+    env ante system._env_text()
+    lines ante "\0" ni env.vidagottu()
+    lines lo okko line ki:
+        line ni, &maare entries tho line_pettu()
+    t ante DataChettu.Jodi(entries)
+    maare r ante t ni Chadhivevaadu.config_nunchi()
+    (&maare r ni T.chadhuvu_cheyyi()) icchey
+
+# `NAME=value`: `SMTP__HOST` goes under `smtp`, then `host`.
+line_pettu(line: &padham ni, entries: &maare varusa[jatha[padham, DataChettu]] tho) -> khali ante:
+    parts ante "=" ni line.vidagottu()
+    parts.enni() < 2 || parts[0].byte_len() == 0 aithe:
+        icchey
+    maare value ante parts[1].xerox()
+    2 nunchi parts.enni() lopu okko i ki:
+        value += "="
+        value += parts[i].xerox()
+    peru ante &parts[0] ni chinna_aksharalu()
+    path ante "__" ni peru.vidagottu()
+    entries ni, &path tho, value ki chettu_lo_pettu()
+
+# The lines of a `.env` file: `NAME=value`, `export NAME=value`, `# notes`;
+# a value may be in quotes.
+dotenv(text: &padham ni, entries: &maare varusa[jatha[padham, DataChettu]] tho) -> khali ante:
+    lines ante "\n" ni text.vidagottu()
+    lines lo okko raw ki:
+        maare line ante raw.kathirinchu()
+        line.byte_len() == 0 || ("#" ni line.tho_modhalaindha()) aithe:
+            vadhiley
+        "export " ni line.tho_modhalaindha() aithe:
+            line lo (7 ni, line.byte_len() tho line.byte_mukka()).kachithanga().kathirinchu() pettu
+        parts ante "=" ni line.vidagottu()
+        parts.enni() < 2 aithe:
+            vadhiley
+        maare value ante parts[1].xerox()
+        2 nunchi parts.enni() lopu okko i ki:
+            value += "="
+            value += parts[i].xerox()
+        value lo value.kathirinchu() pettu
+        n ante value.byte_len()
+        quoted ante n >= 2 && (("\"" ni value.tho_modhalaindha()) || ("'" ni value.tho_modhalaindha()))
+        quoted aithe:
+            value lo (1 ni, (n - 1) tho value.byte_mukka()).kachithanga() pettu
+        name ante parts[0].kathirinchu()
+        pair ante f"{name}={value}"
+        &pair ni, entries tho line_pettu()
+
+# ASCII letters made small: `DATABASE_URL` → `database_url`.
+chinna_aksharalu(s: &padham ni) -> padham ante:
+    maare b ante s.baitlu_ga()
+    0 nunchi b.enni() lopu okko i ki:
+        c ante b[i] ni maarchu[ankam]()
+        c >= 65 && c <= 90 aithe:
+            b[i] lo ((c + 32) ni kolpothu_maarchu[aasajeevi ankam8]()) pettu
+    (&b ni padham.baitlu_nunchi()).kachithanga() icchey
+
+# Puts `value` at `path` in a tree of maps.
+chettu_lo_pettu(
+    t: &maare varusa[jatha[padham, DataChettu]] ni,
+    path: &mukka[padham] tho,
+    value: padham ki,
+) -> khali ante:
+    path.enni() == 0 aithe:
+        icchey
+    key ante &path[0]
+    0 nunchi t.enni() lopu okko i ki:
+        t[i].0 == *key aithe:
+            path.enni() == 1 aithe:
+                t[i].1 lo DataChettu.Padham(value) pettu
+                icchey
+            &maare t[i].1 batti:
+                DataChettu.Jodi(xs) aithe:
+                    xs ni, &path[1 nunchi path.enni() lopu] tho, value ki chettu_lo_pettu()
+                    icchey
+                _ aithe:
+                    ()
+            t[i].1 lo DataChettu.Jodi([]) pettu
+            t ni, path tho, value ki chettu_lo_pettu()
+            icchey
+    path.enni() == 1 aithe:
+        (key.xerox(), DataChettu.Padham(value)) ni t.cherchu()
+        icchey
+    (key.xerox(), DataChettu.Jodi([])) ni t.cherchu()
+    t ni, path tho, value ki chettu_lo_pettu()

@@ -47,6 +47,13 @@ antec pariksha learn heap
 | [09 Stack and queue](L1/09_stack_queue.ante) | Brackets check, `line` tho Josephus game |
 | [10 Heap](L1/10_heap.ante) | `kuppa`, k chinnavi, running median |
 
+## Data: JSON, secrets
+
+| Lesson | Em nerchukuntam |
+|---|---|
+| [01 JSON](data/01_json.ante) | `@automatic Raayochu, Chadhavochu`, `json.raayi`/`json.chadhuvu`, thappu `daari`, extra keys enduku thappu |
+| [02 Passwords](data/02_passwords.ante) | Argon2id `password_hash`/`password_check`, salt, `Rahasyam` (`***`) |
+
 ## Kotha lesson raayalante
 
 - Okka file, okka idea. Paina explanation colloquial Tinglish lo: friend ki explain chesinattu.

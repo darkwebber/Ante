@@ -1,0 +1,21 @@
+# category: run-pass
+# expect-stdout: sare(Settings{ante_dt019_ledhu: ledhu, ante_dt019_retries: 0})
+# expect-stdout: thappu(.ante_dt019_kavali: `ante_dt019_kavali` key ledhu)
+# level: services
+# `config` reads a record from environment variables; `undochu` fields are
+# optional, and other variables are ignored (§29.2).
+config thechuko
+
+@automatic Chadhavochu, Choopinchochu
+rakam Settings ante:
+    ante_dt019_ledhu: undochu[padham]
+    @lekapothe_kotthadhi
+    ante_dt019_retries: ankam
+
+@automatic Chadhavochu, Choopinchochu
+rakam Strict ante:
+    ante_dt019_kavali: padham
+
+modhalu() -> khali ante:
+    config.chadhuvu[Settings]() |> choopinchu()
+    config.chadhuvu[Strict]() |> choopinchu()

@@ -11,7 +11,7 @@
 
 mod body;
 mod call;
-mod items;
+pub mod items;
 mod lower;
 mod pattern;
 pub mod results;
@@ -276,6 +276,13 @@ pub struct Typeck<'a> {
 pub fn check<'a>(modules: &[SourceModule], res: &'a Resolution) -> Typeck<'a> {
     let mut c = Collector::new(res);
     c.load_std();
+    // Every module's generic counts first: a field may name a type from a
+    // module checked later (the standard library written in "Ante").
+    for m in modules {
+        if let Some(ast) = m.ast {
+            c.collect_type_shells(m.file, ast);
+        }
+    }
     for m in modules {
         if let Some(ast) = m.ast {
             c.collect_types(m.file, ast);
@@ -489,10 +496,9 @@ impl<'a> Collector<'a> {
 
     // ── pass: types ────────────────────────────────────────────────────────
 
-    /// Records and enums first, so signatures can name them in any order.
-    fn collect_types(&mut self, file: FileId, ast: &Module) {
+    /// Generic counts first, so field types can check arity.
+    fn collect_type_shells(&mut self, file: FileId, ast: &Module) {
         let module = self.module_of_file(file);
-        // Generic counts first, so field types can check arity.
         for item in &ast.items {
             let (name, generics) = match &item.kind {
                 ItemKind::Record(r) => (&r.name, &r.generics),
@@ -526,6 +532,11 @@ impl<'a> Collector<'a> {
                 },
             );
         }
+    }
+
+    /// Records and enums first, so signatures can name them in any order.
+    fn collect_types(&mut self, file: FileId, ast: &Module) {
+        let module = self.module_of_file(file);
         for item in &ast.items {
             let (name, generics) = match &item.kind {
                 ItemKind::Record(r) => (&r.name, &r.generics),
@@ -585,7 +596,11 @@ impl<'a> Collector<'a> {
                 continue;
             }
             if let AnnotationArg::Names(names) = &a.arg {
-                for n in names {
+                // Traits written in "Ante" get written implementations instead
+                // (`crate::derive`), checked in `items`.
+                for n in
+                    names.iter().filter(|n| !crate::stdlib::SOURCE_DERIVED_TRAITS.contains(&n.name.as_str()))
+                {
                     if let Some(Res::Def(d)) = self.res().resolutions.get(&(file, n.span.start)) {
                         out.push(*d);
                     }
