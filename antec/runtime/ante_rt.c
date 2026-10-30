@@ -11,6 +11,9 @@
 #include <errno.h>
 #include <math.h>
 #include <setjmp.h>
+#ifndef _WIN32
+#include <unwind.h>
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -342,6 +345,11 @@ typedef struct ante_task {
     struct lock_block **held;
     int32_t nheld, capheld;
     struct ante_team *teams; /* teams this task opened, innermost first */
+    int32_t unwinding;       /* a trap is unwinding this task's frames */
+    uintptr_t stack_mark;    /* `run_task`'s frame: unwinding stops above it */
+#ifndef _WIN32
+    struct _Unwind_Exception exc;
+#endif
 } ante_task;
 
 typedef struct ante_team {
@@ -549,6 +557,7 @@ static void finish_task(ante_task *t, int32_t state) {
 
 static void run_task(ante_task *t) {
     cur = t;
+    t->stack_mark = (uintptr_t)__builtin_frame_address(0);
     m_lock(&tk);
     int start = !t->cancel;
     t->state = start ? 1 : 4;
@@ -977,10 +986,36 @@ void ante_rc_free(void *h) { free(h); }
 
 /* ── a trap in a task (§24.5) ── */
 
-/* Ends only the current task: its locks are poisoned, teams it opened are
-   waited for (structured concurrency holds even here), and its token gets
-   the details. Values the task held aren't dropped yet; their memory is
-   lost (an `antec` 0.x limitation). */
+/* With `tk` held: locks the trapped task still holds are let go. Their
+   keys didn't get dropped (or unwinding wasn't possible). */
+static void release_held(ante_task *t) {
+    for (int32_t i = 0; i < t->nheld; i++) t->held[i]->holder = 0;
+    t->nheld = 0;
+    c_wake_all(&tk_changed);
+}
+
+#ifndef _WIN32
+/* Forced unwinding stops once it reaches `run_task`'s own frame. */
+static _Unwind_Reason_Code unwind_stop(int version, _Unwind_Action actions, _Unwind_Exception_Class cls,
+                                       struct _Unwind_Exception *exc, struct _Unwind_Context *ctx, void *arg) {
+    (void)version;
+    (void)cls;
+    (void)exc;
+    ante_task *t = (ante_task *)arg;
+    if ((actions & _UA_END_OF_STACK) || _Unwind_GetCFA(ctx) >= t->stack_mark) {
+        m_lock(&tk);
+        release_held(t);
+        m_unlock(&tk);
+        longjmp(t->jb, 1);
+    }
+    return _URC_NO_REASON;
+}
+#endif
+
+/* Ends only the current task (§24.5). Its locks are poisoned at once. Then
+   its frames are unwound, innermost first: each waits for the teams it
+   started and drops what it owns, so keys are given back as their frames
+   go. Its token gets the details. */
 static NORETURN void task_trapped(const char *code, const char *msg, const char *where) {
     ante_task *t = cur;
     snprintf(t->code, sizeof t->code, "%s", code);
@@ -991,12 +1026,17 @@ static NORETURN void task_trapped(const char *code, const char *msg, const char 
         if (t->where) strcpy(t->where, where);
     }
     m_lock(&tk);
-    for (int32_t i = 0; i < t->nheld; i++) {
-        t->held[i]->poisoned = 1;
-        t->held[i]->holder = 0;
-    }
-    t->nheld = 0;
-    c_wake_all(&tk_changed);
+    for (int32_t i = 0; i < t->nheld; i++) t->held[i]->poisoned = 1;
+    t->unwinding = 1;
+    m_unlock(&tk);
+#ifndef _WIN32
+    memset(&t->exc, 0, sizeof t->exc);
+    t->exc.exception_class = 0x414e544555574e44ULL; /* "ANTEUWND" */
+    _Unwind_ForcedUnwind(&t->exc, unwind_stop, t);
+    /* No unwind information: fall back to leaving the frames as they are. */
+#endif
+    m_lock(&tk);
+    release_held(t);
     while (t->teams) {
         ante_team *team = t->teams;
         m_unlock(&tk);
@@ -1035,7 +1075,8 @@ static NORETURN void trap_at(const char *code, const char *msg, const ante_loc *
         fprintf(stderr, "kompa munigindhi! %s\n", msg);
     fflush(stderr);
     m_unlock(&out_lock);
-    if (cur) task_trapped(code, msg, loc ? where : NULL);
+    /* A trap while unwinding (in a destructor) ends the program (§24.5.3). */
+    if (cur && !cur->unwinding) task_trapped(code, msg, loc ? where : NULL);
     report_trap(code, loc);
     end_now(101);
 }
@@ -1354,12 +1395,21 @@ static void merge_sort(uint8_t *a, uint8_t *tmp, int64_t n, int64_t size, ante_c
     memcpy(a, tmp, (size_t)(n * size));
 }
 
-/* Stable sort (§21.2: all sorts are stable). */
+static void free_buffer(uint8_t **p) { free(*p); }
+
+/* Stable sort (§21.2: all sorts are stable). `cmp` is "Ante" code, so a
+   trapped task may unwind through here (§24.5.2): the buffer is freed on
+   the way, and `base` always holds every element exactly once. */
 void ante_sort(void *base, int64_t n, int64_t size, ante_cmp_fn cmp, void *ctx) {
     if (n < 2) return;
+#if defined(__GNUC__) || defined(__clang__)
+    uint8_t *tmp __attribute__((cleanup(free_buffer))) = (uint8_t *)ante_alloc(size_mul(n, size));
+    merge_sort((uint8_t *)base, tmp, n, size, cmp, ctx);
+#else
     uint8_t *tmp = (uint8_t *)ante_alloc(size_mul(n, size));
     merge_sort((uint8_t *)base, tmp, n, size, cmp, ctx);
-    free(tmp);
+    free_buffer(&tmp);
+#endif
 }
 
 /* ── formatting ───────────────────────────────────────────────────────── */

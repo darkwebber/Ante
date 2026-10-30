@@ -144,6 +144,8 @@ pub(super) fn call(
             };
             let team = fx.r();
             fx.emit(format!("{team} = call ptr @ante_team_new()"));
+            // If a trap unwinds through `f`, this team is waited for first.
+
             let rec = record(fx, &jattu, &team);
             let jl = fx.ll(&jattu);
             let jp = fx.spill(&jl, &rec);
@@ -152,9 +154,19 @@ pub(super) fn call(
             fx.emit(format!("{fp} = extractvalue %pani {f}, 0"));
             let env = fx.r();
             fx.emit(format!("{env} = extractvalue %pani {f}, 1"));
+            // If a trap unwinds through `f`, the landing pad waits for this
+            // team, then lets go of `f`.
+            let slot = fx.team_slot();
+            if let Some((ts, es)) = &slot {
+                fx.emit(format!("store ptr {env}, ptr {es}"));
+                fx.emit(format!("store ptr {team}, ptr {ts}"));
+            }
             let rt = fx.ll(ret);
             let r = fx.r();
             fx.emit(format!("{r} = call {rt} {fp}(ptr {env}, ptr {jp})"));
+            if let Some((ts, _)) = &slot {
+                fx.emit(format!("store ptr null, ptr {ts}"));
+            }
             fx.emit(format!("call void @ante_team_end(ptr {team})"));
             fx.emit(format!("call void @ante_pani_dec(ptr {env})"));
             (r, ret.clone())

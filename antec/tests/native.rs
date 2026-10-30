@@ -112,6 +112,9 @@ fn check_native(path: &Path, out_dir: &Path) -> (usize, Vec<String>) {
         if !matches!(category.trim(), "run-pass" | "runtime-trap") {
             return (0, failures);
         }
+        if header(&text, "skip-on:").iter().any(|os| os.trim() == std::env::consts::OS) {
+            return (0, failures);
+        }
         let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
         // Every program is built twice: optimized (`--release`) and not.
         for release in [true, false] {

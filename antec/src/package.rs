@@ -82,6 +82,18 @@ pub struct BuildSettings {
     pub lib_dirs: Vec<PathBuf>,
 }
 
+impl BuildSettings {
+    /// Whether the target unwinds a trapped task with the C unwinder
+    /// (§24.5.2). Windows uses its own exception model; there a trapped
+    /// task's values aren't dropped yet.
+    pub fn unwinds(&self) -> bool {
+        match &self.target {
+            Some(t) => !t.contains("windows"),
+            None => !cfg!(windows),
+        }
+    }
+}
+
 /// The smallest (and default) `[build] stack`: 8 MB.
 pub const MIN_STACK: u64 = 8 << 20;
 
@@ -332,7 +344,15 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
         Action::EmitLlvm | Action::Build { .. } => match entry_fn() {
             None => backend_errors.push("`modhalu()` function ledhu, native program build cheyyalem".into()),
             Some(fid) => {
-                match crate::codegen::emit_llvm(&program, &tc, &sources, fid, build.stack, build.task_stack) {
+                match crate::codegen::emit_llvm(
+                    &program,
+                    &tc,
+                    &sources,
+                    fid,
+                    build.stack,
+                    build.task_stack,
+                    build.unwinds(),
+                ) {
                     Err(errs) => backend_errors = errs,
                     Ok(emitted) => match &action {
                         Action::Build { output, release } => {
@@ -367,7 +387,15 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
         Action::Run { stream, args } if needs_native(&program, &tc.globals, &build) => match entry_fn() {
             None => backend_errors.push("`modhalu()` function ledhu, program run cheyyalem".into()),
             Some(fid) => {
-                match crate::codegen::emit_llvm(&program, &tc, &sources, fid, build.stack, build.task_stack) {
+                match crate::codegen::emit_llvm(
+                    &program,
+                    &tc,
+                    &sources,
+                    fid,
+                    build.stack,
+                    build.task_stack,
+                    build.unwinds(),
+                ) {
                     Err(errs) => backend_errors = errs,
                     Ok(emitted) => match run_native(&emitted, &sources, &build, stream, &args) {
                         Ok(out) => run = Some(out),
@@ -624,6 +652,11 @@ fn runtime_object(cc: &str, target: Option<&str>, scratch: &Path) -> Result<Path
         fs::write(&src, crate::codegen::RUNTIME_C).map_err(|e| e.to_string())?;
         let mut cmd = std::process::Command::new(cc);
         cmd.arg("-O2").arg("-w").arg("-c");
+        // Cleanups in the runtime run when a trapped task unwinds through
+        // it (§24.5.2); Windows doesn't unwind that way.
+        if !target.map_or(cfg!(windows), |t| t.contains("windows")) {
+            cmd.arg("-fexceptions");
+        }
         if let Some(t) = target {
             cmd.arg(format!("--target={t}"));
         }

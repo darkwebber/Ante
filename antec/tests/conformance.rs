@@ -44,6 +44,20 @@ struct Expectations {
     exit: Option<i32>,
 }
 
+/// `# skip-on: windows`: behavior this platform doesn't have yet (a trapped
+/// task's values are dropped by the C unwinder, which Windows doesn't use).
+fn skipped_here(path: &Path) -> bool {
+    let text = if path.is_dir() {
+        fs::read_to_string(path.join("ante.toml")).unwrap_or_default()
+    } else {
+        fs::read_to_string(path).unwrap_or_default()
+    };
+    text.lines()
+        .take_while(|l| l.starts_with('#'))
+        .filter_map(|l| l.strip_prefix('#').map(str::trim).and_then(|l| l.strip_prefix("skip-on:")))
+        .any(|os| os.trim() == std::env::consts::OS)
+}
+
 fn parse_header(text: &str) -> Expectations {
     let mut e = Expectations {
         category: String::new(),
@@ -123,6 +137,9 @@ fn conformance_suite() {
 
     let mut failures = Vec::new();
     for path in &files {
+        if skipped_here(path) {
+            continue;
+        }
         let out = run_test(path);
         let expect = parse_header(&out.header);
         let errors = &out.errors;

@@ -104,6 +104,9 @@ pub struct Gen<'a> {
     c_structs: HashMap<Ty, String>,
     /// The glue function of each `bayata "C"` function called.
     ffi: HashMap<FnId, String>,
+    /// Whether a trapped task unwinds its frames, dropping their values
+    /// (§24.5.2); off where the C unwinder isn't used (Windows).
+    unwind: bool,
 }
 
 /// A program ready for the C toolchain.
@@ -120,6 +123,7 @@ pub fn emit_llvm(
     entry: FnId,
     stack: u64,
     task_stack: u64,
+    unwind: bool,
 ) -> Result<Emitted, Vec<String>> {
     let mut gen = Gen {
         prog,
@@ -140,6 +144,7 @@ pub fn emit_llvm(
         c_glue: String::new(),
         c_structs: HashMap::new(),
         ffi: HashMap::new(),
+        unwind,
     };
     let Some(&body) = prog.fn_bodies.get(&entry) else {
         return Err(vec!["`modhalu` ki body ledhu".into()]);
@@ -178,6 +183,10 @@ pub fn emit_llvm(
     }
     out.push('\n');
     out.push_str(&gen.funcs);
+    if gen.unwind {
+        // Every frame needs unwind tables, so an unwinding trap can pass through it.
+        out.push_str("\n!llvm.module.flags = !{!0}\n!0 = !{i32 7, !\"uwtable\", i32 2}\n");
+    }
     let glue = (!gen.c_glue.is_empty()).then(|| format!("#include <stdint.h>\n\n{}", gen.c_glue));
     Ok(Emitted { ir: out, glue })
 }
@@ -219,6 +228,7 @@ declare void @ante_str_append(ptr, ptr)
 declare void @free(ptr)
 declare void @ante_pani_inc(ptr)
 declare void @ante_pani_dec(ptr)
+declare i32 @__gcc_personality_v0(...)
 declare ptr @ante_team_new()
 declare void @ante_team_end(ptr)
 declare void @ante_team_cancel(ptr)

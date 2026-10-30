@@ -1,0 +1,49 @@
+# category: run-pass
+# expect-stdout: teesukunna pampesina
+# expect-stdout: drop pampesina
+# expect-stdout: drop lothu 0
+# expect-stdout: drop lothu 1
+# expect-stdout: drop lothu 2
+# expect-stdout: drop varusa lo
+# expect-stdout: drop bayati
+# expect-stdout: task padipoyindhi
+# skip-on: windows
+# level: services
+# A trap unwinds its task: every frame drops what it owns, innermost
+# first and in reverse order, and a value moved away is dropped only once
+# (§24.5.2).
+task thechuko
+
+rakam Gurthu ante:
+    peru: padham
+
+Gurthu ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        f"drop {naa.peru}" ni choopinchu()
+
+lothu(n: ankam ni) -> ankam ante:
+    g ante Gurthu{peru: f"lothu {n}"}
+    n == 0 aithe:
+        "ippudu padipotha" ni kompa_munigindhi()
+    ((n - 1) ni lothu()) icchey
+
+tharuvatha(g: Gurthu ni) -> khali ante:
+    f"teesukunna {g.peru}" ni choopinchu()
+
+panulu_cheyyi() -> ankam ante:
+    a ante Gurthu{peru: "bayati"}
+    xs ante [Gurthu{peru: "varusa lo"}]
+    moved ante Gurthu{peru: "pampesina"}
+    moved ni tharuvatha()
+    (2 ni lothu()) icchey
+
+jattu_pani(j: &task.Jattu ni) -> khali ante:
+    t ante (() => panulu_cheyyi()) ni j.pampu()
+    t.aagu() batti:
+        sare(x) aithe:
+            x ni choopinchu()
+        thappu(_) aithe:
+            "task padipoyindhi" ni choopinchu()
+
+modhalu() -> khali ante:
+    jattu_pani ni task.kalisi()

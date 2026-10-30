@@ -1329,7 +1329,7 @@ An expectation keeps what it watches alive, so dropping the channel end or the t
 24.5.1 A trap in the task running `modhalu` ends the process exactly as in §20.3.
 
 24.5.2 A trap in any other task ends **only that task**:
-- its stack is unwound: locals are dropped in the usual order (§19.3), so keys, files and sockets are released. `vellagane` blocks don't run (§19.4);
+- its stack is unwound: locals are dropped in the usual order (§19.3), so keys, files and sockets are released. `vellagane` blocks don't run (§19.4). A frame that started a team waits for it before dropping anything its tasks may borrow;
 - every lock it held a key to becomes poisoned;
 - its token's `aagu` returns `thappu(TaskThappu.Kompa(t))`, where `t: TrapVivaram` ("trap details") has `code: padham` (`"T01"`…), `message: padham` and `ekkada: undochu[padham]` ("where": the `file:line:col`);
 - the trap message is still written to stderr, prefixed with the task's name if it has one (`j.peruto_pampu(peru, f)` starts a named task).
@@ -3216,6 +3216,8 @@ Python-level seeds name the packages they need; the suite pins them in its own `
 | KK012 | `pampu` given a `pani` held in a variable | E1302 (services level) |
 | KK013 | `Pampochu` written by hand outside `naa_risk:` | E1301 (services level) |
 | KK014 | A task closure borrowing a local of the function that started it | E1302 (services level) |
+| KK015 | A trap three calls deep in a task: every frame's values are dropped, innermost first; a moved value once | stdout matches (services level) |
+| KK016 | A destructor traps while its task unwinds | T05 at the destructor; exit 101 (services level) |
 | DT001 | JSON round trip of a record with `undochu`, enum and `jodi` fields | stdout matches (services level) |
 | DT002 | Reading JSON with an unknown key | `thappu`, path `.x` (services level) |
 | DT003 | JSON with a duplicate key, a NaN, deep nesting | three `thappu`s (services level) |
@@ -3510,7 +3512,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
-| r14 | `antec` 0.1.1 | M12, tasks and sharing: `panchukunna` is implemented; the `task` module's types are listed (§24.2); task closures are written at `pampu` and copy, move or re-borrow their captures (§24.3.3); `Key` and `Virigindhi` stay with their task (§24.3.2); `Moosesaaru{viluva}`; expectations keep what they watch alive (§24.4); noticing cancellation means `aagu` returns `Cancel` (§24.6); `Kaalam.sec` and `samayam.timer` (§21.3); `antec run` builds task programs natively (§22.6); seed cases KK011–KK014. |
+| r14 | `antec` 0.1.1 | M12, tasks and sharing: `panchukunna` is implemented; the `task` module's types are listed (§24.2); task closures are written at `pampu` and copy, move or re-borrow their captures (§24.3.3); `Key` and `Virigindhi` stay with their task (§24.3.2); `Moosesaaru{viluva}`; expectations keep what they watch alive (§24.4); noticing cancellation means `aagu` returns `Cancel` (§24.6); `Kaalam.sec` and `samayam.timer` (§21.3); `antec run` builds task programs natively (§22.6); seed cases KK011–KK016. |
 | r13 | `antec` 0.1.1 | M11, the C boundary: `bayata "C"` calls bind unmarked arguments in order, aren't variadic, and `"C"` is the only ABI (§22.1); `jarugu` steps by elements and keeps `maare`, and a module-level `naa_risk:` block holds `CopyKottochu` implementations for types with raw pointers (§22.2); `@C` record fields must be FFI-safe (§22.3); export rules and E1003 (§22.4); `[build] c_sources`, `libs` and `lib_dirs`, and `antec run` builds C-using programs natively (§22.6); seed cases X006–X013. |
 | r12 | `antec` 0.1.1 | M10, the standard library in every backend: `jodi`, `gajibiji_jodi` and `gumpu` find keys with the key type's own `Polchochu` and `HashCheyochu`, `@automatic` ones hashing by structure (§21.2); `file.path_kalupu` joins with `/` on every system (§21.3); `*maare T` → `*T` (§9.4.2f), so `memory.copy` can read what `memory.allocate` gave; seed cases D008–D016. |
 | r11 | `antec` 0.1.1 | Audit after M9: a callee may be a reference to a `pani` (§11.1); a condition is its own temporary scope (§15.5); seed cases O032–O034, G026–G028. |

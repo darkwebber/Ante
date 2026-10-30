@@ -1,0 +1,23 @@
+# category: runtime-trap
+# expect-trap: T05 @ 12:9
+# level: services
+# A destructor that traps while its task unwinds ends the program (§24.5.3).
+task thechuko
+
+rakam Chedda ante:
+    x: ankam
+
+Chedda ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        "sardhu lo kuda padipotha" ni kompa_munigindhi()
+
+padu() -> ankam ante:
+    c ante Chedda{x: 1}
+    "modhati trap" ni kompa_munigindhi()
+
+jattu_pani(j: &task.Jattu ni) -> khali ante:
+    t ante (() => padu()) ni j.pampu()
+    r ante t.aagu()
+
+modhalu() -> khali ante:
+    jattu_pani ni task.kalisi()
