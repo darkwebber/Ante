@@ -97,7 +97,12 @@ fn opt_inner(ty: &Ty) -> Ty {
 }
 
 /// `cond ? some(v) : none` for an `undochu`, through memory.
-fn opt_select(fx: &mut Fx, ty: &Ty, cond: &str, make: &mut dyn FnMut(&mut Fx) -> String) -> String {
+pub(super) fn opt_select(
+    fx: &mut Fx,
+    ty: &Ty,
+    cond: &str,
+    make: &mut dyn FnMut(&mut Fx) -> String,
+) -> String {
     let lt = fx.ll(ty);
     let slot = fx.alloca(&lt);
     let yes = fx.label();
@@ -987,6 +992,9 @@ pub(super) fn std_call(
     let t = |i: usize| ftys.get(i).cloned().unwrap_or(Ty::Unit);
     let tyarg = |i: usize| tys.get(i).cloned().unwrap_or(Ty::Unit);
     let unit = || ("zeroinitializer".to_string(), Ty::Unit);
+    if let Some(r) = super::task::call(fx, &key, &vals, &ftys, tys, &ret, span) {
+        return r;
+    }
     match key.as_str() {
         // ── prelude ──
         "prelude.choopinchu" | "prelude.cheppu" | "prelude.gola_pettu" => {
@@ -1761,6 +1769,32 @@ pub(super) fn std_call(
             let lt = fx.ll(&ret);
             let r = fx.r();
             fx.emit(format!("{r} = insertvalue {lt} undef, i64 {d}, 0"));
+            (r, ret)
+        }
+        "Kaalam.sec" => {
+            // Whole seconds; negative or past `aasajeevi ankam64` nanoseconds is T01.
+            let n = v(0);
+            let wide = fx.r();
+            fx.emit(format!("{wide} = sext i64 {n} to i128"));
+            let ns = fx.r();
+            fx.emit(format!("{ns} = mul i128 {wide}, 1000000000"));
+            let neg = fx.r();
+            fx.emit(format!("{neg} = icmp slt i128 {ns}, 0"));
+            let big = fx.r();
+            fx.emit(format!("{big} = icmp ugt i128 {ns}, 18446744073709551615"));
+            let bad = fx.r();
+            fx.emit(format!("{bad} = or i1 {neg}, {big}"));
+            let m = fx.gen.str_const("`Kaalam` lo ee sec pattadhu");
+            let loc = fx.loc(span);
+            fx.guard(&bad, |fx| {
+                let sp = fx.spill("%str", &m);
+                fx.emit(format!("call void @ante_trap(ptr {sp}, ptr {loc})"));
+            });
+            let lo = fx.r();
+            fx.emit(format!("{lo} = trunc i128 {ns} to i64"));
+            let kl = fx.ll(&ret);
+            let r = fx.r();
+            fx.emit(format!("{r} = insertvalue {kl} undef, i64 {lo}, 0"));
             (r, ret)
         }
         "Kaalam.millisec" | "Kaalam.nanosec" => {

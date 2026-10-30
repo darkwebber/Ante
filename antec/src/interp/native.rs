@@ -1582,6 +1582,13 @@ impl Machine<'_> {
                 let now = self.started.elapsed().as_nanos() as i128;
                 Ok(Value::Adt(0, vec![Value::Int(now - then)]))
             }
+            "Kaalam.sec" => {
+                let n = arg(0).int();
+                match n.checked_mul(1_000_000_000).filter(|ns| (0..=u64::MAX as i128).contains(ns)) {
+                    Some(ns) => Ok(Value::Adt(0, vec![Value::Int(ns)])),
+                    None => Err(self.trap("T01", format!("`Kaalam` lo {n} sec pattadhu"), span)),
+                }
+            }
             "Kaalam.millisec" | "Kaalam.nanosec" => {
                 let ns = match self.target(&arg(0)) {
                     Value::Adt(_, fs) => fs.first().map_or(0, Value::int),

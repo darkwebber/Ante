@@ -405,8 +405,7 @@ pub fn place_ty(g: &crate::typeck::Globals, body: &Body, p: &Place) -> Ty {
             }
             Proj::Deref => match ty {
                 Ty::Ref(_, inner) | Ty::Ptr(_, inner) => *inner,
-                Ty::App(Con::Pette, a) => a[0].clone(),
-                _ => Ty::Error,
+                other => g.smart_deref(&other).map_or(Ty::Error, |(inner, _)| inner),
             },
             Proj::Index(..) => match ty {
                 Ty::Array(e, _) => *e,

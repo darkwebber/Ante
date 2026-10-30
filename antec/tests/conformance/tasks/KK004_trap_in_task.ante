@@ -1,0 +1,23 @@
+# category: run-pass
+# expect-stdout: T02 sunna (0) tho bhaagham cheyyalem
+# expect-stdout: inka nadusthundhi
+# level: services
+# A trap ends only its task; the parent's `aagu` gets the details (§24.5).
+task thechuko
+
+bhaagham(a: ankam ni, b: ankam tho) -> ankam ante:
+    (a / b) icchey
+
+jattu_pani(j: &task.Jattu ni) -> sare_thappu[ankam, task.TaskThappu] ante:
+    t ante (() => 10 ni, 0 tho bhaagham()) ni j.pampu()
+    t.aagu() icchey
+
+modhalu() -> khali ante:
+    jattu_pani ni task.kalisi() batti:
+        sare(x) aithe:
+            x ni choopinchu()
+        thappu(task.TaskThappu.Kompa(t)) aithe:
+            f"{t.code} {t.message}" ni choopinchu()
+        thappu(task.TaskThappu.Cancel) aithe:
+            "cancel" ni choopinchu()
+    "inka nadusthundhi" ni choopinchu()

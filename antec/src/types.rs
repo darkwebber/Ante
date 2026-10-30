@@ -36,6 +36,8 @@ pub enum Con {
     Undochu,
     SareThappu,
     Pette,
+    /// `panchukunna[T]`: a shared, counted handle (§24.4).
+    Panchukunna,
     /// `Paridhi[I]`, an integer range (§21.4).
     Paridhi,
     /// A lazy iterator yielding `I` (the adapters of §21.4.2). As a formal
@@ -185,6 +187,7 @@ impl fmt::Display for Display<'_> {
                     Con::Undochu => "undochu".to_string(),
                     Con::SareThappu => "sare_thappu".to_string(),
                     Con::Pette => "pette".to_string(),
+                    Con::Panchukunna => "panchukunna".to_string(),
                     Con::Paridhi => "Paridhi".to_string(),
                     Con::Pravaham => "Pravaham".to_string(),
                     Con::Adt(d) => (self.adt_name)(*d),

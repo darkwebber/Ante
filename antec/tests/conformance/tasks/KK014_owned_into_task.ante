@@ -1,0 +1,13 @@
+# category: compile-fail
+# expect-error: E1302 @ 10:5
+# level: services
+# A task can't borrow its creator's own locals: they end before the team
+# does. Owned values move in with `theesuko` (§24.3.3).
+task thechuko
+
+jattu_pani(j: &task.Jattu ni) -> khali ante:
+    xs ante [1, 2, 3]
+    (() => xs.enni()) ni j.pampu()
+
+modhalu() -> khali ante:
+    jattu_pani ni task.kalisi()

@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r13. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r14. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -1025,7 +1025,7 @@ Signatures are normative; the descriptions are summaries. Functions marked †in
 | `file` | `p ni file.chadhuvu() -> sare_thappu[padham, FileThappu]` ("read"); `p ki, text ni file.raayi() -> sare_thappu[khali, FileThappu]` ("write"); `p ni file.baitlu_chadhuvu()`, `p ki, b ni file.baitlu_raayi()`; `p ni file.undhaa() -> ato_ito`; `p ni file.folderaa() -> ato_ito`; `p ni file.list_cheyyi() -> sare_thappu[varusa[padham], FileThappu]` (sorted names); `p ni file.folder_cheyyi()` (create, including parents); `p ni file.theesey()` (delete a file); `a ni, b tho file.path_kalupu() -> padham` (joins with `/` on every system; `b` alone when it starts with `/`); `p ni file.path_peru()`, `p ni file.path_folder()`, `p ni file.path_extension() -> undochu[padham]` |
 | `system` | `system.args() -> varusa[padham]`; `k ni system.env() -> undochu[padham]`; `system.line_chadhuvu() -> undochu[padham]` (stdin); `system.flush()`; `n ni system.vellipo() -> raadhu` (exit); `prog ni, args tho system.nadupu() -> sare_thappu[Phalitham, SystemThappu]` ("run": waits for the program, where `Phalitham{status: ankam32, stdout: padham, stderr: padham}`); `system.os() -> padham`, `system.arch() -> padham` |
 | `memory` | †intrinsic, **`naa_risk` only**: `n ni, a tho memory.allocate() -> *maare khali`, `p ni, n tho, a tho memory.release()`, `p ni, n tho, a tho, m ki memory.reallocate()`, `src ni, dst ki, n tho memory.copy()`. Used to write runtime and collection code in "Ante" itself |
-| `samayam` (time) | `samayam.ippudu() -> Kshanam` (monotonic "now"); `k.gadichindhi() -> Kaalam` ("elapsed"); `Kaalam.millisec()`, `.nanosec()` |
+| `samayam` (time) | `samayam.ippudu() -> Kshanam` (monotonic "now"); `k.gadichindhi() -> Kaalam` ("elapsed"); `Kaalam.millisec()`, `.nanosec()`; `n ni Kaalam.sec() -> Kaalam` (whole seconds; negative or too large is T01); `d ni samayam.timer() -> task.Edhuruchoopu` (§24.4) |
 
 `FileThappu` and `ParseThappu` are enums that implement `Choopinchochu`. Every standard library record and enum implements `Choopinchochu`, `XeroxTheeyochu` and `Polchochu`; `Kramam` also implements `VarusaPettochu`, `HashCheyochu` and `CopyKottochu`.
 
@@ -1114,7 +1114,7 @@ libs = ["sqlite3"]              # linked like `-lsqlite3`
 lib_dirs = ["/opt/homebrew/lib"]  # where to find them (absolute, or inside the package)
 ```
 
-The C standard library (and `libm`) is always linked. Bad entries are E0905. The MIR interpreter can't call C or address raw memory, so `antec run` compiles a program natively when it calls a `bayata` function, uses `memory`, `mukka.pointer`, `jarugu` or a pointer conversion, exports a function, or has `c_sources`. The program behaves the same either way (§23.1).
+The C standard library (and `libm`) is always linked. Bad entries are E0905. The MIR interpreter can't call C, address raw memory or run tasks in parallel, so `antec run` compiles a program natively when it calls a `bayata` function, uses `memory`, `mukka.pointer`, `jarugu` or a pointer conversion, exports a function, has `c_sources`, or uses the `task` module or `panchukunna`. The program behaves the same either way (§23.1).
 
 ---
 
@@ -1242,6 +1242,8 @@ Every name in Part IX lives in a standard module that a program imports with `th
 
 `Token[T]` does not implement `CopyKottochu` or `XeroxTheeyochu`; each result is collected at most once. Dropping a token without calling `aagu` is allowed: the task still runs to completion before the team's scope ends, and its result is dropped then.
 
+The `task` module's types are `Jattu`, `Token[T]`, `TaskThappu` (`Kompa(TrapVivaram)` or `Cancel`), `TrapVivaram`, `Thaalam[T]`, `Key[T]`, `Virigindhi[T]`, `Atomic[T]`, `Pampey[T]`, `Andhuko[T]`, `Moosesaaru[T]` and `Edhuruchoopu`, named through the module (`task.Thaalam`) or imported by name.
+
 ```ante
 task thechuko
 
@@ -1272,9 +1274,17 @@ Both halves run at the same time; `kalisi` returns only after both tasks are don
 - Every `pani` is `Pampochu` and `Panchukovochu` (§10.7.4).
 - `panchukunna[T]` is `Pampochu` and `Panchukovochu` when `T` is `Pampochu` and `Panchukovochu`.
 - `Thaalam[T]`, `Kaluva` ends, `Atomic[T]` and `Token[T]` are `Pampochu` and `Panchukovochu` when `T` is `Pampochu`.
+- `Key[T]` and `Virigindhi[T]` are neither: a lock is held by the task that opened it, and poisoning (§24.4) is tracked per task.
 - Raw pointers are neither.
 
 24.3.3 `pampu` requires its closure to be `Pampochu` and its result `T` to be `Pampochu` (E1302, naming the capture that isn't). A closure passed to `pampu` may capture borrows from the scope that called `kalisi`: the borrow checker (§15.4) treats every borrow captured by a task closure as live until `kalisi` returns. Two tasks may hold shared borrows of the same place; a task holding `&maare p` excludes every other use of `p` while it runs, exactly as for a single task.
+
+The function given to `kalisi` returns before its team is waited for, so a task can't borrow that function's own locals (or those of anything it calls). Therefore:
+- The closure must be written at the `pampu` call, or be a function's name, so its captures can be checked; any other `pani` value is E1302.
+- A task closure copies every capture whose type is `CopyKottochu`, which includes shared references to places outside the team.
+- A `theesuko` task closure moves its captures in.
+- A capture that the enclosing closure itself holds by reference is borrowed again, since it points outside.
+- Any other capture is E1302, with a hint to move it in with `theesuko`.
 
 24.3.4 There are no data races in a program without `naa_risk`: every concurrent access goes through `&T` of a `Panchukovochu` type, `Thaalam`, `Atomic` or a channel.
 
@@ -1300,7 +1310,7 @@ Both halves run at the same time; `kalisi` returns only after both tasks are don
 
 **`Kaluva[T]`** ("canal"): a channel. Values put in at one end come out at the other, in order.
 - `n ni task.kaluva[T]() -> jatha[Pampey[T], Andhuko[T]]` with capacity `n ≥ 0` (0 is a rendezvous channel; a negative `n` is T05). `Pampey[T]` ("sender") implements `XeroxTheeyochu`; `Andhuko[T]` ("receiver") does not.
-- `x ni p.pampu() -> sare_thappu[khali, Moosesaaru[T]]`: waits while the channel is full. `thappu(Moosesaaru(x))` ("they've closed it") returns the value if every receiver has been dropped.
+- `x ni p.pampu() -> sare_thappu[khali, Moosesaaru[T]]`: waits while the channel is full. `thappu(Moosesaaru{viluva: x})` ("they've closed it") returns the value if every receiver has been dropped.
 - `a.andhuko() -> undochu[T]`: waits for a value; `ledhu` once every sender is dropped and the channel is empty.
 - `a.ippude_andhuko() -> undochu[T]`: "receive right now", without waiting.
 - An `Andhuko[T]` is iterable (`a lo okko x ki:`), ending when the channel is closed and empty.
@@ -1311,6 +1321,8 @@ Both halves run at the same time; `kalisi` returns only after both tasks are don
 - `d ni samayam.timer() -> Edhuruchoopu` (ready after `Kaalam` `d`);
 - `r.ready() -> Edhuruchoopu` on a `Token`;
 - `task.cancel_ready() -> Edhuruchoopu` (ready when the current task is cancelled).
+
+An expectation keeps what it watches alive, so dropping the channel end or the token first is safe. An empty list is T05.
 
 ### 24.5 Traps in tasks
 
@@ -1328,7 +1340,7 @@ Both halves run at the same time; `kalisi` returns only after both tasks are don
 
 ### 24.6 Cancellation
 
-Cancellation is cooperative. `cancel_cheyyi` marks a task. The task's next **cancellation point**, or the one it is waiting in, returns early: `nidrapo` returns at once, `andhuko` returns `ledhu`, `pampu` on a channel returns `thappu`, and I/O operations return `thappu` with kind `Cancel`. `edhi_mundhu` is a cancellation point only when one of its expectations is `task.cancel_ready()`, and then returns that expectation's index; without one, it keeps waiting for its other expectations. A task that ignores cancellation runs to completion; `aagu` then returns its value. Cancelling a team member never cancels the team's other tasks.
+Cancellation is cooperative. `cancel_cheyyi` marks a task. The task's next **cancellation point**, or the one it is waiting in, returns early: `nidrapo` returns at once, `andhuko` returns `ledhu`, `pampu` on a channel returns `thappu`, and I/O operations return `thappu` with kind `Cancel`. A task that meets its cancellation at a cancellation point has been cancelled: whatever it returns afterwards is dropped, and `aagu` returns `thappu(TaskThappu.Cancel)`. `edhi_mundhu` is a cancellation point only when one of its expectations is `task.cancel_ready()`, and then returns that expectation's index; without one, it keeps waiting for its other expectations. A task that ignores cancellation runs to completion; `aagu` then returns its value. Cancelling a team member never cancels the team's other tasks.
 
 ### 24.7 Targets without threads
 
@@ -3200,6 +3212,10 @@ Python-level seeds name the packages they need; the suite pins them in its own `
 | KK008 | `edhi_mundhu` with a timer and an empty channel | timer index (services level) |
 | KK009 | Cancelling a task in `nidrapo` | `aagu` returns `Cancel` (services level) |
 | KK010 | 10 000 tasks incrementing an `Atomic` | 10000 (services level) |
+| KK011 | Eight tasks adding under `panchukunna[Thaalam[ankam]]`; `okkatenaa` | stdout matches (services level) |
+| KK012 | `pampu` given a `pani` held in a variable | E1302 (services level) |
+| KK013 | `Pampochu` written by hand outside `naa_risk:` | E1301 (services level) |
+| KK014 | A task closure borrowing a local of the function that started it | E1302 (services level) |
 | DT001 | JSON round trip of a record with `undochu`, enum and `jodi` fields | stdout matches (services level) |
 | DT002 | Reading JSON with an unknown key | `thappu`, path `.x` (services level) |
 | DT003 | JSON with a duplicate key, a NaN, deep nesting | three `thappu`s (services level) |
@@ -3494,6 +3510,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r14 | `antec` 0.1.1 | M12, tasks and sharing: `panchukunna` is implemented; the `task` module's types are listed (§24.2); task closures are written at `pampu` and copy, move or re-borrow their captures (§24.3.3); `Key` and `Virigindhi` stay with their task (§24.3.2); `Moosesaaru{viluva}`; expectations keep what they watch alive (§24.4); noticing cancellation means `aagu` returns `Cancel` (§24.6); `Kaalam.sec` and `samayam.timer` (§21.3); `antec run` builds task programs natively (§22.6); seed cases KK011–KK014. |
 | r13 | `antec` 0.1.1 | M11, the C boundary: `bayata "C"` calls bind unmarked arguments in order, aren't variadic, and `"C"` is the only ABI (§22.1); `jarugu` steps by elements and keeps `maare`, and a module-level `naa_risk:` block holds `CopyKottochu` implementations for types with raw pointers (§22.2); `@C` record fields must be FFI-safe (§22.3); export rules and E1003 (§22.4); `[build] c_sources`, `libs` and `lib_dirs`, and `antec run` builds C-using programs natively (§22.6); seed cases X006–X013. |
 | r12 | `antec` 0.1.1 | M10, the standard library in every backend: `jodi`, `gajibiji_jodi` and `gumpu` find keys with the key type's own `Polchochu` and `HashCheyochu`, `@automatic` ones hashing by structure (§21.2); `file.path_kalupu` joins with `/` on every system (§21.3); `*maare T` → `*T` (§9.4.2f), so `memory.copy` can read what `memory.allocate` gave; seed cases D008–D016. |
 | r11 | `antec` 0.1.1 | Audit after M9: a callee may be a reference to a `pani` (§11.1); a condition is its own temporary scope (§15.5); seed cases O032–O034, G026–G028. |

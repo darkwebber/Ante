@@ -71,6 +71,8 @@ struct Loaded {
 pub struct BuildSettings {
     /// Stack size of the thread that runs `modhalu`, in bytes.
     pub stack: u64,
+    /// Stack size of every other task (§24.5.4), in bytes.
+    pub task_stack: u64,
     /// LLVM target triple; `None` builds for this machine.
     pub target: Option<String>,
     /// C files compiled into the program (§22.6), resolved against the package.
@@ -83,10 +85,15 @@ pub struct BuildSettings {
 /// The smallest (and default) `[build] stack`: 8 MB.
 pub const MIN_STACK: u64 = 8 << 20;
 
+/// `[build] task_stack`: 1 MB unless set; at least 256 KB (§24.5.4).
+pub const DEFAULT_TASK_STACK: u64 = 1 << 20;
+const MIN_TASK_STACK: u64 = 256 << 10;
+
 impl Default for BuildSettings {
     fn default() -> Self {
         BuildSettings {
             stack: MIN_STACK,
+            task_stack: DEFAULT_TASK_STACK,
             target: None,
             c_sources: Vec::new(),
             libs: Vec::new(),
@@ -129,6 +136,16 @@ fn build_settings(text: &str, root: &Path) -> (BuildSettings, Vec<Diagnostic>) {
                 "E0905",
                 at("stack"),
                 format!("`stack = \"{v}\"` ardham kaaledhu. `\"64MB\"` laaga raayandi"),
+            )),
+        }
+    }
+    if let Some(v) = manifest_value(text, "build", "task_stack") {
+        match parse_size(&v) {
+            Some(n) if (MIN_TASK_STACK..=(1 << 30)).contains(&n) => settings.task_stack = n,
+            _ => diags.push(Diagnostic::error(
+                "E0905",
+                at("task_stack"),
+                format!("`task_stack = \"{v}\"`: 256KB nunchi 1GB madhyalo undali, `\"1MB\"` laaga"),
             )),
         }
     }
@@ -314,29 +331,31 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
     match action {
         Action::EmitLlvm | Action::Build { .. } => match entry_fn() {
             None => backend_errors.push("`modhalu()` function ledhu, native program build cheyyalem".into()),
-            Some(fid) => match crate::codegen::emit_llvm(&program, &tc, &sources, fid, build.stack) {
-                Err(errs) => backend_errors = errs,
-                Ok(emitted) => match &action {
-                    Action::Build { output, release } => {
-                        match link_native(&emitted, output, &build, *release) {
-                            Ok(()) => built = Some(output.clone()),
-                            Err(e) => backend_errors.push(e),
-                        }
-                    }
-                    _ => {
-                        let mut text = emitted.ir;
-                        if let Some(glue) = emitted.glue {
-                            text.push_str("\n; ── FFI glue (C) ──\n");
-                            for line in glue.lines() {
-                                text.push_str("; ");
-                                text.push_str(line);
-                                text.push('\n');
+            Some(fid) => {
+                match crate::codegen::emit_llvm(&program, &tc, &sources, fid, build.stack, build.task_stack) {
+                    Err(errs) => backend_errors = errs,
+                    Ok(emitted) => match &action {
+                        Action::Build { output, release } => {
+                            match link_native(&emitted, output, &build, *release) {
+                                Ok(()) => built = Some(output.clone()),
+                                Err(e) => backend_errors.push(e),
                             }
                         }
-                        mir = Some(text)
-                    }
-                },
-            },
+                        _ => {
+                            let mut text = emitted.ir;
+                            if let Some(glue) = emitted.glue {
+                                text.push_str("\n; ── FFI glue (C) ──\n");
+                                for line in glue.lines() {
+                                    text.push_str("; ");
+                                    text.push_str(line);
+                                    text.push('\n');
+                                }
+                            }
+                            mir = Some(text)
+                        }
+                    },
+                }
+            }
         },
         Action::Check => {}
         Action::EmitMir => {
@@ -347,13 +366,15 @@ fn compile(loaded: Loaded, action: Action) -> Checked {
         }
         Action::Run { stream, args } if needs_native(&program, &tc.globals, &build) => match entry_fn() {
             None => backend_errors.push("`modhalu()` function ledhu, program run cheyyalem".into()),
-            Some(fid) => match crate::codegen::emit_llvm(&program, &tc, &sources, fid, build.stack) {
-                Err(errs) => backend_errors = errs,
-                Ok(emitted) => match run_native(&emitted, &build, stream, &args) {
-                    Ok(out) => run = Some(out),
-                    Err(e) => backend_errors.push(e),
-                },
-            },
+            Some(fid) => {
+                match crate::codegen::emit_llvm(&program, &tc, &sources, fid, build.stack, build.task_stack) {
+                    Err(errs) => backend_errors = errs,
+                    Ok(emitted) => match run_native(&emitted, &sources, &build, stream, &args) {
+                        Ok(out) => run = Some(out),
+                        Err(e) => backend_errors.push(e),
+                    },
+                }
+            }
         },
         Action::Run { stream, args } => {
             let module = match &entry {
@@ -394,9 +415,32 @@ fn needs_native(program: &crate::mir::Program, g: &crate::typeck::Globals, build
     if !build.c_sources.is_empty() || g.fns.iter().any(|f| f.export.is_some()) {
         return true;
     }
+    // Tasks and sharing (§24) run on threads, which the interpreter doesn't model.
+    let shared = |t: &crate::types::Ty| {
+        let mut found = false;
+        t.walk(&mut |x| {
+            if let crate::types::Ty::App(c, _) = x {
+                found |= match c {
+                    crate::types::Con::Panchukunna => true,
+                    crate::types::Con::Adt(d) => g.task_type(*d).is_some(),
+                    _ => false,
+                };
+            }
+        });
+        found
+    };
+    if program.bodies.iter().flat_map(|b| &b.locals).any(|l| shared(&l.ty)) {
+        return true;
+    }
     program.bodies.iter().flat_map(|b| &b.blocks).any(|block| match &block.term {
         Term::Call { callee: Callee::Fn(fid, tys), .. } => {
             let sig = &g.fns[*fid];
+            if g.res.modules[sig.module].name == "task"
+                || sig.owner.as_deref() == Some("panchukunna")
+                || (g.res.modules[sig.module].name == "samayam" && sig.name == "timer")
+            {
+                return true;
+            }
             match sig.origin {
                 FnOrigin::Foreign | FnOrigin::StdUnsafe => true,
                 FnOrigin::Std => match (sig.owner.as_deref(), sig.name.as_str()) {
@@ -414,6 +458,7 @@ fn needs_native(program: &crate::mir::Program, g: &crate::typeck::Globals, build
 /// Builds the program in a private folder and runs it there.
 fn run_native(
     emitted: &crate::codegen::Emitted,
+    sources: &[SourceFile],
     build: &BuildSettings,
     stream: bool,
     args: &[String],
@@ -422,8 +467,9 @@ fn run_native(
     let result = (|| {
         let exe = dir.join(if cfg!(windows) { "program.exe" } else { "program" });
         link_native(emitted, &exe, build, false)?;
+        let report = dir.join("trap.txt");
         let mut cmd = std::process::Command::new(&exe);
-        cmd.args(args);
+        cmd.args(args).env("ANTE_TRAP_REPORT", &report);
         let (stdout, stderr, status) = if stream {
             let status = cmd.status().map_err(|e| format!("program start avvaledhu: {e}"))?;
             (String::new(), String::new(), status)
@@ -437,7 +483,16 @@ fn run_native(
         };
         // A signal (a crash in C code) has no exit code; report it like a trap.
         let exit_code = status.code().unwrap_or(101);
-        Ok(RunOutput { stdout, stderr, exit_code, trap: None })
+        // `CODE line col file`, written by the runtime when the program trapped.
+        let trap = fs::read_to_string(&report).ok().and_then(|text| {
+            let mut parts = text.trim_end().splitn(4, ' ');
+            let code = parts.next()?.to_string();
+            let line = parts.next()?.parse().ok()?;
+            let col = parts.next()?.parse().ok()?;
+            let file = parts.next().and_then(|f| sources.iter().position(|s| s.name == f));
+            Some((code, file, line, col))
+        });
+        Ok(RunOutput { stdout, stderr, exit_code, trap })
     })();
     let _ = fs::remove_dir_all(&dir);
     result

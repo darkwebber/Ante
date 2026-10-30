@@ -1,0 +1,25 @@
+# category: run-pass
+# expect-stdout: 800
+# expect-stdout: avunu
+# level: services
+# Eight tasks add to a number behind `panchukunna[Thaalam[ankam]]` (§24.4).
+task thechuko
+
+penchu(l: panchukunna[task.Thaalam[ankam]] ni) -> khali ante:
+    1 nunchi 100 varaku okko i ki:
+        k ante l.theruvu()
+        *k lo (*k + 1) pettu
+
+jattu_pani(l: &panchukunna[task.Thaalam[ankam]] ni, j: &task.Jattu tho) -> khali ante:
+    1 nunchi 8 varaku okko i ki:
+        mana ante l.xerox()
+        (theesuko () => mana.xerox() ni penchu()) ni j.pampu()
+
+modhalu() -> khali ante:
+    l ante 0 ni task.Thaalam.kotthadhi() |> panchukunna.kotthadhi()
+    ((j: &task.Jattu) => &l ni, j tho jattu_pani()) ni task.kalisi()
+    k ante l.theruvu()
+    *k ni choopinchu()
+    m ante l.xerox()
+    same ante &l ni, &m tho panchukunna.okkatenaa()
+    same ni choopinchu()

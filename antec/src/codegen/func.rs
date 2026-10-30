@@ -308,11 +308,19 @@ impl<'g, 'a> Fx<'g, 'a> {
                 }
             }
             Proj::Deref => {
-                let inner = match &cur.ty {
-                    Ty::Ref(_, inner) | Ty::Ptr(_, inner) => (**inner).clone(),
-                    Ty::App(Con::Pette, a) => a[0].clone(),
-                    _ => return cur,
+                let (inner, smart) = match &cur.ty {
+                    Ty::Ref(_, inner) | Ty::Ptr(_, inner) => ((**inner).clone(), None),
+                    other => match self.gen.g.smart_deref(other) {
+                        Some((inner, s)) => (inner, Some(s)),
+                        None => return cur,
+                    },
                 };
+                // A `panchukunna` or `Key` points at a runtime block (§24.4).
+                if matches!(smart, Some(crate::typeck::Smart::Shared | crate::typeck::Smart::Unique)) {
+                    let block = self.load("ptr", &cur.ptr);
+                    let ptr = super::task::smart_value_ptr(self, &block);
+                    return PRef { ptr, ty: inner, len: None, variant: None };
+                }
                 {
                     if let Ty::App(Con::Mukka, _) = inner {
                         let s = self.load("%slice", &cur.ptr);
@@ -417,8 +425,7 @@ impl<'g, 'a> Fx<'g, 'a> {
                 Proj::Deref => {
                     ty = match ty {
                         Ty::Ref(_, inner) | Ty::Ptr(_, inner) => *inner,
-                        Ty::App(Con::Pette, a) => a[0].clone(),
-                        other => other,
+                        other => self.gen.g.smart_deref(&other).map_or(other, |(inner, _)| inner),
                     }
                 }
                 Proj::Index(..) => {

@@ -96,6 +96,17 @@ pub fn check_items(g: &Globals, modules: &[SourceModule]) -> Vec<(FileId, Diagno
                 break;
             }
         }
+        // `Pampochu` and `Panchukovochu` are the programmer's promise (§24.3.1).
+        let marker = [g.std_trait("Pampochu"), g.std_trait("Panchukovochu")];
+        if marker.contains(&Some(imp.trait_ref.def)) && !imp.naa_risk {
+            let tr = &g.res.defs[imp.trait_ref.def].name;
+            err(
+                imp.file,
+                "E1301",
+                imp.span,
+                format!("`{tr}` ni chethitho `naa_risk:` block lopala matrame raayochu"),
+            );
+        }
         // `CopyKottochu` needs copyable fields and no destructor (E0806).
         if g.std_trait("CopyKottochu") == Some(imp.trait_ref.def) {
             if let Some(msg) = copy_problem(g, &imp.self_ty, &imp.generics) {
@@ -350,6 +361,7 @@ fn has_raw_pointer(g: &Globals, ty: &Ty) -> bool {
             Ty::Ptr(..) => true,
             Ty::Tuple(items) => items.iter().any(|t| walk(g, t, seen)),
             Ty::Array(e, _) => walk(g, e, seen),
+            Ty::App(Con::Adt(d), args) if g.task_type(*d).is_some() => args.iter().any(|t| walk(g, t, seen)),
             Ty::App(Con::Adt(d), args) if seen.insert(ty.clone()) => {
                 solve::adt_field_types(g, *d, args).iter().any(|t| walk(g, t, seen))
             }

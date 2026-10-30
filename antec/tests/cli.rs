@@ -84,6 +84,8 @@ fn build_settings_are_checked() {
         "c_sources = \"glue.c\"",
         "libs = [\"-fplugin=evil\"]",
         "libs = [\"m; rm\"]",
+        "task_stack = \"4KB\"",
+        "task_stack = \"many\"",
     ] {
         fs::write(dir.join("ante.toml"), manifest(bad)).unwrap();
         let out = antec(&["check", dir.to_str().unwrap()]);

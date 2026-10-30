@@ -22,6 +22,7 @@ pub const BUILTIN_TYPES: &[&str] = &[
     "mukka",
     "sare_thappu",
     "pette",
+    "panchukunna",
     "khali",
     "raadhu",
 ];
@@ -64,6 +65,8 @@ pub const KRAMAM_VARIANTS: &[&str] = &["Thakkuva", "Samaanam", "Ekkuva"];
 /// The standard traits of §13.5.
 pub const PRELUDE_TRAITS: &[&str] = &[
     "CopyKottochu",
+    "Pampochu",
+    "Panchukovochu",
     "XeroxTheeyochu",
     "Sardhukochu",
     "Polchochu",
@@ -114,8 +117,7 @@ pub const PLANNED_MEMBER_ANNOTATIONS: &[&str] =
     &["peru", "lekapothe_kotthadhi", "dhaachu", "daari", "dorakaledhu"];
 
 /// Standard traits of Part IX and Annex W that `@automatic` will derive.
-pub const PLANNED_TRAITS: &[&str] =
-    &["Raayochu", "Chadhavochu", "Kotthadhi", "Pampochu", "Panchukovochu", "web.Daari"];
+pub const PLANNED_TRAITS: &[&str] = &["Raayochu", "Chadhavochu", "Kotthadhi", "web.Daari"];
 
 pub struct StdModule {
     pub name: &'static str,
@@ -189,11 +191,30 @@ pub const STD_MODULES: &[StdModule] = &[
         types: &["Phalitham", "SystemThappu"],
         open: false,
     },
-    StdModule { name: "samayam", values: &["ippudu"], types: &["Kshanam", "Kaalam"], open: false },
+    StdModule { name: "samayam", values: &["ippudu", "timer"], types: &["Kshanam", "Kaalam"], open: false },
     StdModule {
         name: "memory",
         values: &["allocate", "release", "reallocate", "copy"],
         types: &[],
+        open: false,
+    },
+    StdModule {
+        name: "task",
+        values: &["kalisi", "nidrapo", "cancel_ayyindhaa", "cpu_lu", "kaluva", "edhi_mundhu", "cancel_ready"],
+        types: &[
+            "Jattu",
+            "Token",
+            "TrapVivaram",
+            "TaskThappu",
+            "Thaalam",
+            "Key",
+            "Virigindhi",
+            "Atomic",
+            "Pampey",
+            "Andhuko",
+            "Moosesaaru",
+            "Edhuruchoopu",
+        ],
         open: false,
     },
     StdModule { name: "torch", values: &[], types: &[], open: true },

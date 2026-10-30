@@ -1,0 +1,10 @@
+# category: runtime-trap
+# expect-trap: T12 @ 10:12
+# level: services
+# Opening a lock this task already holds (§24.4).
+task thechuko
+
+modhalu() -> khali ante:
+    l ante 1 ni task.Thaalam.kotthadhi()
+    a ante l.theruvu()
+    b ante l.theruvu()

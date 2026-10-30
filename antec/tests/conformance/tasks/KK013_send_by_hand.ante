@@ -1,0 +1,11 @@
+# category: compile-fail
+# expect-error: E1301 @ 8:1
+# level: services
+# `Pampochu` is derived; writing it by hand needs `naa_risk:` (§24.3.1).
+rakam Mine ante:
+    x: ankam
+
+Mine ki Pampochu gunam undhi
+
+modhalu() -> khali ante:
+    icchey

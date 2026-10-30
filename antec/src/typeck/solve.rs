@@ -116,6 +116,10 @@ impl Solver<'_, '_> {
             }
             _ => {}
         }
+        if std && matches!(name.as_str(), "Pampochu" | "Panchukovochu") {
+            return self.find_impl(t, &ty, tr, depth).is_some()
+                || self.auto_send(t, &ty, name == "Panchukovochu", &mut Vec::new());
+        }
         if std {
             if let Some(answer) = self.builtin_impl(t, &ty, &name, tr, depth) {
                 return answer;
@@ -167,6 +171,59 @@ impl Solver<'_, '_> {
         None
     }
 
+    /// `Pampochu` (or, with `shared`, `Panchukovochu`) by structure (§24.3.2).
+    /// A type met again while checking itself is assumed to qualify.
+    fn auto_send(&self, t: &mut InferTable, ty: &Ty, shared: bool, seen: &mut Vec<Ty>) -> bool {
+        let ty = t.shallow(ty);
+        let (send, share) = (self.g.std_traits.get("Pampochu"), self.g.std_traits.get("Panchukovochu"));
+        let all = |t: &mut InferTable, items: &[Ty], shared: bool, seen: &mut Vec<Ty>| {
+            items.iter().all(|x| self.auto_send(t, x, shared, seen))
+        };
+        match &ty {
+            Ty::Error | Ty::Var(_) | Ty::Never => true,
+            Ty::Int(_) | Ty::Float(_) | Ty::Bool | Ty::Char | Ty::Unit | Ty::Str | Ty::Fn(..) => true,
+            Ty::Ptr(..) => false,
+            Ty::Param(i) => {
+                let want = if shared { share } else { send };
+                self.generics.get(*i as usize).is_some_and(|g| g.bounds.iter().any(|b| Some(&b.def) == want))
+            }
+            // `&T` travels when `T` can be shared; `&maare T` when `T` can travel.
+            Ty::Ref(false, inner) => self.auto_send(t, inner, true, seen),
+            Ty::Ref(true, inner) => self.auto_send(t, inner, shared, seen),
+            Ty::Tuple(items) => all(t, items, shared, seen),
+            Ty::Array(e, _) => self.auto_send(t, e, shared, seen),
+            Ty::App(Con::Adt(d), args) => {
+                if seen.contains(&ty) {
+                    return true;
+                }
+                if let Some(adt) = self.g.adts.get(d) {
+                    if adt.file.is_none() && self.g.res.modules[adt.module].name == "task" {
+                        return match adt.name.as_str() {
+                            "Jattu" | "TrapVivaram" | "TaskThappu" => true,
+                            // A key belongs to the task that opened the lock (§24.4).
+                            "Key" | "Virigindhi" => false,
+                            "Moosesaaru" => all(t, args, shared, seen),
+                            _ => all(t, args, false, seen),
+                        };
+                    }
+                }
+                // A hand-written implementation (inside `naa_risk`) settles it.
+                let want = if shared { share } else { send };
+                if let Some(&def) = want {
+                    if self.find_impl(t, &ty, &TraitRef { def, args: Vec::new() }, 0).is_some() {
+                        return true;
+                    }
+                }
+                seen.push(ty.clone());
+                let fields = adt_field_types(self.g, *d, args);
+                let ok = all(t, &fields, shared, seen);
+                seen.pop();
+                ok
+            }
+            Ty::App(_, args) => all(t, args, shared, seen),
+        }
+    }
+
     fn builtin_impl(
         &self,
         t: &mut InferTable,
@@ -178,6 +235,14 @@ impl Solver<'_, '_> {
         // Standard library types (§21.3): every one can be shown, copied
         // with `xerox` and compared; `Kramam` is also ordered, hashable and `CopyKottochu`.
         if let Ty::App(Con::Adt(d), _) = ty {
+            // Runtime handles (§24): only a sender can be copied, and none is shown or compared.
+            if let Some(adt) = self.g.adts.get(d).filter(|a| a.file.is_none()) {
+                if self.g.res.modules[adt.module].name == "task"
+                    && !matches!(adt.name.as_str(), "TrapVivaram" | "TaskThappu" | "Moosesaaru")
+                {
+                    return Some(name == "XeroxTheeyochu" && adt.name == "Pampey");
+                }
+            }
             if self.g.adts.get(d).is_some_and(|a| a.file.is_none()) {
                 let kramam = self.g.kramam == Some(*d);
                 return Some(match name {
@@ -213,6 +278,9 @@ impl Solver<'_, '_> {
                     Ty::Tuple(items) => all(t, items),
                     Ty::Array(e, _) => all(t, std::slice::from_ref(e)),
                     Ty::App(Con::Jodi | Con::GajibijiJodi, _) if ordered => false,
+                    // Another handle to the same value, whatever it holds (§24.4).
+                    Ty::App(Con::Panchukunna, _) if name == "XeroxTheeyochu" => true,
+                    Ty::App(Con::Panchukunna, args) if !ordered => all(t, args),
                     Ty::App(
                         Con::Varusa
                         | Con::Undochu

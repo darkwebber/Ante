@@ -8,10 +8,12 @@ rakam Kaalam ante:
 
 bayata "ante" ante:
     ippudu() -> Kshanam
+    timer(d: Kaalam ni) -> task.Edhuruchoopu
 
 gunam Kshanam_panulu ante:
     gadichindhi(naa: &Kshanam) -> Kaalam
 
 gunam Kaalam_panulu ante:
+    sec(n: ankam64 ni) -> Kaalam
     millisec(naa: &Kaalam) -> ankam64
     nanosec(naa: &Kaalam) -> ankam64
