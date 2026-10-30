@@ -1293,6 +1293,10 @@ void ante_drop_push(void *p, void (*f)(void *)) {
     dlen++;
 }
 
+/* `ante_buf_free` with the drop stack's signature: calling it through a
+   `void (*)(void *)` directly is undefined behavior. */
+void ante_drop_buf(void *v) { ante_buf_free((ante_str *)v); }
+
 /* Drops `p` with step `f` and everything the steps push, then returns.
    Nested calls (a `sardhu` that drops a list) work on their own part. */
 void ante_drop_deep(void *p, void (*f)(void *)) {

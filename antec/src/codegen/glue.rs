@@ -801,7 +801,7 @@ pub(super) fn drop_step(gen: &mut Gen, name: &str, ty: &Ty) -> String {
         }
         Ty::Array(..) | Ty::App(Con::Varusa, _) => {
             if matches!(ty, Ty::App(..)) {
-                fx.emit("call void @ante_drop_push(ptr %v, ptr @ante_buf_free)");
+                fx.emit("call void @ante_drop_push(ptr %v, ptr @ante_drop_buf)");
             }
             if let Some((data, len, elem)) = seq_at(&mut fx, ty, "%v") {
                 // Elements go first to last, so they're pushed last first.
