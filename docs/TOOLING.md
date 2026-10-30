@@ -22,6 +22,62 @@ Grammar TextMate format lo undhi ([`ante.tmLanguage.json`](../editors/vscode/syn
 
 > **Grammar, compiler sync lo untayi:** `npm test` compiler keyword table (`antec/src/token.rs`) chadivi, prathi keyword highlight avthondho check chesthundhi. Kottha keyword add chesi grammar update marchipothe, CI fail avthundhi.
 
+### Language server: `antec lsp`
+
+`antec lsp` editor tho [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) lo maatladuthundhi (stdin/stdout). VS Code extension dheenni thane start chesthundhi; LSP vachina e editor aina vaadochu.
+
+**Em pani chesthundhi:**
+
+- **Type chesthunnappude errors:** type cheyyadam aapina ~0.2 second lo file ni malli check chesthundhi (open, save appudu ventane). File `ante.toml` unna package `src/` lo unte, package motham check avthundhi, save cheyyani files tho sahaa. Oka file lo maarpu vere file lo error teesthe, adhi kuda kanipisthundhi. Warnings (W0001…) kuda vasthayi.
+- **Hover:** variable meedha mouse pedithe dhaani type (`maare h: kuppa[ankam64]`), function meedha pedithe signature, inka paina raasina `#` comments. Fields, variants, records, constants anniki. Vere chota pedithe aa expression type.
+- **Go to definition** (`F12`): function, local, field (`naa.x` kuda), record, enum variant, imported name: package lo vere file lo unna kuda.
+- **Find references** (`Shift+F12`) inka **rename** (`F2`): locals, functions, methods, records, fields, variants, constants; package lo anni files lo okesaari. Keyword peru ivvalem, standard library peru maarchalem.
+- **Completion:** `p.` tharvatha fields, methods; `naa.` tharvatha mee type vi; `lekkalu.` / `Rangu.` tharvatha module items, variants; lekapothe scope lo unna locals, file items, prelude (`choopinchu`, `kuppa`, `line`, `sardina_jodi`…), keywords. Inka type chesthu file half ga unna (parse avvakapoyina) pani chesthundhi.
+- **Format document** (`Shift+Alt+F`): `antec fmt` laane. File lo errors unte emi maarchadhu.
+- Telugu text, emoji unna lines lo kuda positions correct (LSP UTF-16 lekka, compiler bytes lekka; madhyalo convert chesthundhi).
+
+**Setup (VS Code):**
+
+1. `antec` install cheyyandi (repo root nunchi):
+
+   ```bash
+   cargo install --path antec
+   ```
+
+2. Extension install cheyyandi (paina choodandi). Antha ayipoyindhi! `.ante` file open chesthe server start avthundhi.
+3. `antec` `PATH` lo leka `~/.cargo/bin` lo lekapothe, Settings lo **`ante.antecPath`** ki full path ivvandi (leka workspace nunchi relative, ex: `target/release/antec`).
+
+`antec` lekapothe extension highlighting, snippets tho pani chesthune untundhi, okka saari chinna message isthundhi. `ante.lsp.enabled: false` tho server off cheyyochu. Problem unte **"Ante": Language server restart cheyyi** command, inka `ante.trace.server: "verbose"` tho Output panel lo messages choodochu.
+
+**Vere editors:** command `antec lsp`, language id `ante`, files `*.ante`. Neovim (0.11+) lo:
+
+```lua
+vim.filetype.add({ extension = { ante = "ante" } })
+vim.lsp.config("antec", { cmd = { "antec", "lsp" }, filetypes = { "ante" }, root_markers = { "ante.toml" } })
+vim.lsp.enable("antec")
+```
+
+Helix `languages.toml` lo:
+
+```toml
+[language-server.antec]
+command = "antec"
+args = ["lsp"]
+
+[[language]]
+name = "ante"
+scope = "source.ante"
+file-types = ["ante"]
+roots = ["ante.toml"]
+language-servers = ["antec"]
+```
+
+**Inka raanivi (ippatiki):**
+
+- Standard library ki go to definition (prelude signatures `antec` lopale untayi, file ga kaadhu); hover lo maatram vaati signature vasthundhi.
+- Trait methods, modules rename; file lo parse error unnappudu hover, definition, rename (aa time lo completion matrame, chivari manchi check nunchi).
+- Signature help, quick fixes (code actions), semantic highlighting, workspace symbol search, inlay type hints.
+
 ### Linter (`antec check` lo built-in)
 
 `antec check` errors tho paatu **warnings** kuda chupisthundhi. Warnings build ni aapavu, kaani code ni clean ga unchuthayi:
@@ -98,7 +154,7 @@ cargo run -p antec -- fmt --check examples
 |---|---|---|---|
 | **Type-aware lints** | Vaadani results, naming style, `xerox()` avasaram lenichota | Next | Type checker ✅ |
 | **`antec new`** | Kotha package (`ante.toml`, `src/modhalu.ante`, oka test) okka command tho | Next | `antec pariksha` ✅ |
-| **Language server (`antec lsp`)** | Type chesthunnappude errors, go to definition, find references, rename, hover lo types, completion | Next | Resolver ✅, type checker ✅ (prathi expression type record chesthundhi) |
+| **LSP extras** | Signature help, quick fixes, semantic highlighting, inlay type hints, stdlib ki go to definition | `antec lsp` tharvatha | `antec lsp` ✅ |
 | **tree-sitter grammar** | Neovim, Helix, Zed, Emacs lo fast incremental highlighting; GitHub code navigation | Fmt tharvatha | Parser grammar (spec §5) |
 | **GitHub highlighting** | github.com lo `.ante` files ki colors | Language popular ayyaaka | [Linguist](https://github.com/github-linguist/linguist) ki PR; daaniki kanisam 200 public repos `.ante` vaadali |
 | **VS Code Marketplace** | `ext install` tho direct install | Publisher account set ayyaaka | Extension ✅ |

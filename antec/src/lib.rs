@@ -9,6 +9,7 @@ pub mod fmt;
 pub mod interp;
 pub mod lexer;
 pub mod lint;
+pub mod lsp;
 pub mod mir;
 pub mod package;
 pub mod parser;

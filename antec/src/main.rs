@@ -23,6 +23,8 @@ usage:
                                   path lekapothe current folder
   antec fmt [path] [--check]      code ni official style lo format cheyyi (folder ayithe anni
                                   .ante files); `--check` emi maarchadhu, format avvakapothe fail
+  antec lsp                       editor kosam language server (LSP, stdin/stdout lo);
+                                  VS Code extension dheenni thane start chesthundhi
   antec emit tokens <file.ante>   token stream choopinchu
   antec emit ast <file.ante>      syntax tree (AST) choopinchu
   antec emit mir [path]           MIR (control-flow graph) choopinchu
@@ -132,6 +134,7 @@ fn dispatch(args: &[String]) -> ExitCode {
         ["pariksha" | "test", one] if Path::new(one).exists() => pariksha(one, None),
         ["pariksha" | "test", filter] => pariksha(".", Some(filter)),
         ["pariksha" | "test", path, filter] => pariksha(path, Some(filter)),
+        ["lsp"] => ExitCode::from(antec::lsp::run(std::io::stdin(), std::io::stdout()) as u8),
         ["check"] => check("."),
         ["check", path] => check(path),
         ["run"] => run(".", rest, interp),
@@ -147,7 +150,7 @@ fn dispatch(args: &[String]) -> ExitCode {
         ["emit", what, ..] => {
             usage_error(&format!("`emit {what}` theliyadhu: tokens, ast, mir, llvm lo okati"))
         }
-        [cmd, ..] if !["check", "run", "build", "emit", "fmt", "pariksha", "test"].contains(cmd) => {
+        [cmd, ..] if !["check", "run", "build", "emit", "fmt", "pariksha", "test", "lsp"].contains(cmd) => {
             usage_error(&format!("`{cmd}` ane command ledhu"))
         }
         [cmd, ..] => usage_error(&format!("`antec {cmd}` ki arguments ekkuva ayyayi")),

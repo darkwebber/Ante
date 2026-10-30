@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r16. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r18. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -1157,6 +1157,7 @@ The C standard library (and `libm`) is always linked. Bad entries are E0905. The
 | `antec pariksha [path] [peru]` | build and run the tests ("exam", §23.3); `peru` keeps the tests whose name contains it; a folder without `ante.toml` has each of its files tested on its own |
 | `antec fmt [path] [--check]` | canonical formatting; must preserve the AST and evaluation order. `--check` changes nothing and fails if a file isn't formatted |
 | `antec check [path]` | check a file, or a package folder (default: the current folder), without generating code |
+| `antec lsp` | a language server for editors (the Language Server Protocol over standard input and output): the diagnostics of `antec check` as files change, types on hover, definitions, references, rename, completion and formatting |
 | `antec migrate` | rewrite code for renamed words and new editions (§23.5) |
 | `antec emit (tokens\|ast\|mir\|llvm)` | debugging output |
 | `antec web (new\|dev\|build\|check)` | web applications (Annex W.22) |
@@ -3554,6 +3555,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r18 | `antec` 0.1.1 | `antec lsp`, a language server for editors (§23.1). |
 | r16 | `antec` 0.1.1 | Beginner readiness: `kuppa`, `line` and `sardina_jodi`, written in "Ante" (§21.2); `marpidi` and `varusa.marpidi` (§21.1, §21.2); a callee's receiver may be indexed (D7); a returned reference may come from any reference parameter (§9.3.2c); `antec run` builds natively when it can, and `antec pariksha` takes a name filter and folders (§23.1); a bad `@pariksha` signature is E1307 (§23.3); seed cases S020, S021, D017–D021, O037, O038, and O008 now tests a reference with no source. |
 | r15 | `antec` 0.1.1 | Hardening: deadlock is trap T15 (§20.3, §24.4); a recursive type may derive what its components need (§13.6); seed cases KK017, KK018, G029, O035, O036. |
 | r14 | `antec` 0.1.1 | M12, tasks and sharing: `panchukunna` is implemented; the `task` module's types are listed (§24.2); task closures are written at `pampu` and copy, move or re-borrow their captures (§24.3.3); `Key` and `Virigindhi` stay with their task (§24.3.2); `Moosesaaru{viluva}`; expectations keep what they watch alive (§24.4); noticing cancellation means `aagu` returns `Cancel` (§24.6); `Kaalam.sec` and `samayam.timer` (§21.3); `antec run` builds task programs natively (§22.6); seed cases KK011–KK016. |

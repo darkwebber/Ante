@@ -181,7 +181,7 @@ cargo run -p antec -- emit tokens antec/tests/conformance/lex/L003_line_joining.
 
 ## Editor support 🎨
 
-VS Code extension (syntax highlighting, snippets, smart indentation) [`editors/vscode/`](editors/vscode) lo undhi. Prathi release tho `.vsix` file vasthundhi. `antec check` built-in linter laaga kuda pani chesthundhi: vaadani variables, avasaram leni `maare`, run avvani code, vaadani imports gurinchi warnings isthundhi. `antec fmt` code ni official style lo pedathundhi. Full details, roadmap (language server, tree-sitter) [docs/TOOLING.md](docs/TOOLING.md) lo.
+VS Code extension (syntax highlighting, snippets, smart indentation) [`editors/vscode/`](editors/vscode) lo undhi. Prathi release tho `.vsix` file vasthundhi. `antec` install chesi unte, extension `antec lsp` language server ni start chesthundhi: type chesthunnappude errors, hover lo types, go to definition, references, rename, completion, format. Neovim, Helix laanti vere LSP editors lo kuda pani chesthundhi. `antec check` built-in linter laaga kuda pani chesthundhi: vaadani variables, avasaram leni `maare`, run avvani code, vaadani imports gurinchi warnings isthundhi. `antec fmt` code ni official style lo pedathundhi. Setup, full details, roadmap (tree-sitter) [docs/TOOLING.md](docs/TOOLING.md) lo.
 
 ## Repo lo em undhi
 

@@ -17,6 +17,7 @@
 | M11 C FFI (§22) | ✅ done |
 | M12 Tasks and sharing (§24) | ✅ done |
 | Beginner pass: `kuppa`/`line`/`sardina_jodi`, `antec pariksha`, native `run`, [`learn/`](../learn) | ✅ done |
+| Language server `antec lsp` ([docs/TOOLING.md](../docs/TOOLING.md#language-server-antec-lsp)) | ✅ done |
 | M13–M24 | inka start avvaledhu (spec Appendix E) |
 
 ## Build and test
@@ -137,6 +138,11 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 | `src/lint.rs` | Warnings (W0001 unused binding, W0002 unnecessary `maare`, W0003 unreachable code, W0005 unused import); errors lenappudu matrame |
 | `src/package.rs` | `ante.toml` + `src/` packages, module discovery, entry point (`modhalu`) check |
 | `src/main.rs` | `antec` CLI |
+| `src/lsp/mod.rs` | `antec lsp`: LSP server (stdin/stdout, `Content-Length` frames), open files, debounce tho re-check, diagnostics, hover / definition / references / rename / completion / formatting |
+| `src/lsp/index.rs` | Prathi check tharvatha resolver, type checker tables nunchi editor kosam index: prathi peru ae definition ki, prathi expression type, scope lo locals, prathi type members |
+| `src/lsp/pos.rs` | Byte offsets ↔ LSP positions (line + UTF-16 column; Telugu letter 1 unit, emoji 2) |
+| `src/lsp/json.rs` | Chinna JSON parser/writer (dependencies lekunda) |
+| `tests/lsp.rs` | `antec lsp` ni stdio lo nadipisthundhi: diagnostics (UTF-16 tho), hover, definition, references, rename, completion, formatting, package lo files madhya, broken input |
 | `tests/lexer.rs` | Lexer unit tests |
 | `tests/parser.rs` | Parser golden tests: prathi D-rule, prathi parser error code |
 | `tests/resolve.rs` | Resolver tests: scopes, imports, variants, receivers, privacy |

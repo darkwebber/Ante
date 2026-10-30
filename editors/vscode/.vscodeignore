@@ -1,6 +1,5 @@
 **/._*
 **/.DS_Store
 test/**
-node_modules/**
 *.vsix
 .gitignore
