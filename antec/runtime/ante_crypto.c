@@ -21,6 +21,13 @@ static void store_le64(uint8_t *p, uint64_t x) {
     for (int i = 0; i < 8; i++) p[i] = (uint8_t)(x >> (8 * i));
 }
 
+/* An empty `baitlu` may come with a null pointer; even `p + 0` on one is
+   undefined, so the entry points swap it for a real (empty) address. */
+static const uint8_t *some(const uint8_t *p) {
+    static const uint8_t none[1];
+    return p ? p : none;
+}
+
 static void vec_bytes(ante_vec *out, const uint8_t *p, int64_t n) {
     ante_vec r = {0, 0, 0};
     ante_buf_push(&r, p, n);
@@ -48,7 +55,7 @@ static uint8_t *md_pad(const uint8_t *p, int64_t n, int64_t block, int64_t lenb,
     while (len % block != block - lenb) len++;
     len += lenb;
     uint8_t *m = (uint8_t *)ante_alloc(len);
-    memcpy(m, p, (size_t)n);
+    if (n > 0) memcpy(m, p, (size_t)n);
     memset(m + n, 0, (size_t)(len - n));
     m[n] = 0x80;
     uint64_t bits = (uint64_t)n * 8;
@@ -58,6 +65,7 @@ static uint8_t *md_pad(const uint8_t *p, int64_t n, int64_t block, int64_t lenb,
 }
 
 void ante_sha256(const uint8_t *p, int64_t n, ante_vec *out) {
+    p = some(p);
     int64_t len;
     uint8_t *m = md_pad(p, n, 64, 8, &len);
     uint32_t h[8];
@@ -115,6 +123,7 @@ static const uint64_t IV512[8] = {0x6a09e667f3bcc908ULL, 0xbb67ae8584caa73bULL, 
                                   0x1f83d9abfb41bd6bULL, 0x5be0cd19137e2179ULL};
 
 void ante_sha512(const uint8_t *p, int64_t n, ante_vec *out) {
+    p = some(p);
     int64_t len;
     uint8_t *m = md_pad(p, n, 128, 16, &len);
     uint64_t h[8];
@@ -225,6 +234,7 @@ static void b3_tree(const uint8_t *p, int64_t n, uint64_t first, uint64_t count,
 }
 
 void ante_blake3(const uint8_t *p, int64_t n, ante_vec *out) {
+    p = some(p);
     uint64_t chunks = n == 0 ? 1 : (uint64_t)(n + 1023) / 1024;
     uint32_t cv[8];
     uint8_t r[32];
@@ -294,7 +304,7 @@ static void blake2b(int out_len, const uint8_t *p, int64_t n, uint8_t *out) {
 static void h_prime(int64_t out_len, const uint8_t *p, int64_t n, uint8_t *out) {
     uint8_t *in = (uint8_t *)ante_alloc(n + 4);
     store_le32(in, (uint32_t)out_len);
-    memcpy(in + 4, p, (size_t)n);
+    if (n > 0) memcpy(in + 4, p, (size_t)n);
     if (out_len <= 64) {
         blake2b((int)out_len, in, n + 4, out);
         free(in);
@@ -368,6 +378,10 @@ static void a2compress(const a2block *x, const a2block *y, a2block *out) {
 void ante_argon2id(const uint8_t *pw, int64_t pwn, const uint8_t *salt, int64_t saltn, const uint8_t *secret,
                    int64_t secretn, const uint8_t *ad, int64_t adn, int64_t m, int64_t t, int64_t p, int64_t taglen,
                    ante_vec *out) {
+    pw = some(pw);
+    salt = some(salt);
+    secret = some(secret);
+    ad = some(ad);
     /* Parameters out of range give nothing (`bhadram` checks them first). */
     if (p < 1 || t < 1 || m < 8 * p || taglen < 4 || m > 0xffffffffLL || t > 0xffffffffLL || p > 0xffffffffLL ||
         taglen > 0xffffffffLL) {
@@ -602,6 +616,8 @@ int32_t ante_ct_eq(const uint8_t *a, int64_t an, const uint8_t *b, int64_t bn) {
 
 void ante_aes_gcm_seal(const uint8_t *key, const uint8_t *nonce, const uint8_t *aad, int64_t aadn,
                        const uint8_t *p, int64_t n, ante_vec *out) {
+    aad = some(aad);
+    p = some(p);
     uint8_t rk[15][16];
     aes_expand(key, rk);
     uint8_t *c = (uint8_t *)ante_alloc(n + 16);
@@ -614,6 +630,8 @@ void ante_aes_gcm_seal(const uint8_t *key, const uint8_t *nonce, const uint8_t *
 
 int32_t ante_aes_gcm_open(const uint8_t *key, const uint8_t *nonce, const uint8_t *aad, int64_t aadn,
                           const uint8_t *s, int64_t n, ante_vec *out) {
+    aad = some(aad);
+    s = some(s);
     if (n < 16) return 0;
     uint8_t rk[15][16], tag[16];
     aes_expand(key, rk);

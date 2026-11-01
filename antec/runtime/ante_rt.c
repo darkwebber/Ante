@@ -1764,11 +1764,11 @@ static char *cstr(const ante_str *s);
 
 int32_t ante_str_parse_float(const ante_str *s, double *out) {
     /* Long texts (a float written out in full has hundreds of digits) go on
-       the heap. */
-    char small[128];
-    char *t = small;
+       the heap. (Not `small`: Windows headers define that as `char`.) */
+    char stack[128];
+    char *t = stack;
     if (s->len == 0) return 0;
-    if (s->len >= (int64_t)sizeof small) {
+    if (s->len >= (int64_t)sizeof stack) {
         t = cstr(s);
     } else {
         memcpy(t, s->ptr, (size_t)s->len);
@@ -1779,7 +1779,7 @@ int32_t ante_str_parse_float(const ante_str *s, double *out) {
     double v = strtod(t, &end);
     while (*end && is_space((uint8_t)*end)) end++;
     int ok = !*end && end != t;
-    if (t != small) free(t);
+    if (t != stack) free(t);
     if (!ok) return 0;
     *out = v;
     return 1;
