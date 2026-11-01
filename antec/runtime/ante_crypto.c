@@ -48,7 +48,7 @@ static uint8_t *md_pad(const uint8_t *p, int64_t n, int64_t block, int64_t lenb,
     while (len % block != block - lenb) len++;
     len += lenb;
     uint8_t *m = (uint8_t *)ante_alloc(len);
-    memcpy(m, p, (size_t)n);
+    if (n > 0) memcpy(m, p, (size_t)n);
     memset(m + n, 0, (size_t)(len - n));
     m[n] = 0x80;
     uint64_t bits = (uint64_t)n * 8;
@@ -294,7 +294,7 @@ static void blake2b(int out_len, const uint8_t *p, int64_t n, uint8_t *out) {
 static void h_prime(int64_t out_len, const uint8_t *p, int64_t n, uint8_t *out) {
     uint8_t *in = (uint8_t *)ante_alloc(n + 4);
     store_le32(in, (uint32_t)out_len);
-    memcpy(in + 4, p, (size_t)n);
+    if (n > 0) memcpy(in + 4, p, (size_t)n);
     if (out_len <= 64) {
         blake2b((int)out_len, in, n + 4, out);
         free(in);
