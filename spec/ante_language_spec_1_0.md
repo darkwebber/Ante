@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r19. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r20. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -3557,6 +3557,28 @@ The recommended architecture: Rust, a hand-written lexer and recursive-descent p
 
 Core 1.0 is complete at M11, Services 1.0 at M14, Web 1.0 at M18. M20–M22 are independent of the web track and can proceed in parallel with it. M22 needs M12 (tasks, for P.16–P.17) and M13 (the data tree, for P.10.3). M24 needs only M10, and gains inline Python display after M22.
 
+**Order of work** (r20). The milestone numbers above are names, not an order. After M14's first part the work follows the phases below, chosen by one question: what does a Telugu-speaking beginner meet first? A phase starts only when the gate of the phase before it has passed.
+
+| Phase | Work | Gate |
+|---|---|---|
+| P0 Tidy | M14's first part merged. The rest of M14 (TLS, HTTP/2, WebSocket, SSE, SMTP, PostgreSQL) is parked until P6. The READMEs say what works today. | CI passes on Linux, macOS and Windows |
+| P1 Five-minute start | Prebuilt `antec` binaries and an install script for the three systems; `antec new`; `antec repl` (the terminal half of M24, on the interpreter); hints on the diagnostics for the twenty commonest beginner mistakes (`x = 6`, `if`, `print(…)`, adding text to a number, a moved value that should have been borrowed, …), each with a conformance case. | On a machine with no Rust toolchain: install, run a first program and fix a first error in under five minutes, checked with real beginners |
+| P2 Everyday language | The gaps that lesson code keeps meeting: indexing a `jodi` (`j[k]`), closures with a block body, `batti` as an expression, match guards, labelled `aapey`/`vadhiley`, string literals inside f-strings, and one prelude function that asks a question and reads the answer. Each goes through the vocabulary or RFC process and lands in the parser, the formatter, the language server and both backends together. | The existing lessons are rewritten with them, get shorter, and carry no workaround notes |
+| P3 Lessons L0–L3 | The learning track's first four stages, about 60 lessons. What a lesson finds awkward goes back to P2's list. A benchmark suite of ten programs runs in CI against C (`-O2`) and Python references. | Every lesson passes `antec pariksha` in CI; each benchmark is within 2× of C |
+| P4 Playground | The reference compiler's checker and interpreter built for `wasm32` (it is written in Rust, so this needs none of M15–M18), on a static website with the lessons. The website is rewritten in "Ante" later, as M19. | A lesson runs and can be edited in a phone's browser, with no server |
+| P5 Python and notebooks | M22 in slices: the environment and imports, calls and conversions, then numpy, pandas, matplotlib and one model API; then the Jupyter kernel (the rest of M24). | Five L6 lessons run in a notebook |
+| P6 Web applications | What the web needs from the rest of M14 (TLS, WebSocket, SSE), then M15–M18, server-rendered pages first. | One real application, deployed and used |
+
+After P6, in no fixed order: M19 (the website in "Ante"), M20, M21, M23, HTTP/2, SMTP, PostgreSQL and self-hosting (Appendix I).
+
+**Rules for the work.**
+
+1. One phase is open at a time.
+2. A feature is finished when a lesson or an example uses it, in the same change that adds it.
+3. This spec changes only together with the implementation it describes. Annexes T, P and W are drafts until their phase starts: their design may change when it meets the implementation, and they aren't revised before then.
+4. The interpreter implements Core 1.0 and is the engine of `antec repl` and the playground. The Services level (Part IX) may be native only.
+5. Work that serves no lesson, example or gate (a benchmark contest, a speed record) is time-boxed and stays off `main`.
+
 **Learning track** ("Ante" lo DSA). The algorithms of [cp-algorithms](https://cp-algorithms.com) — about 160 articles in algebra, data structures, dynamic programming, graphs, strings, geometry, combinatorics, game theory, linear algebra, numerical methods and sequences — are implemented in "Ante" in a `learn/` folder of the repository, each with tests and an explanation in colloquial Tinglish, and published on the website. cp-algorithms' articles are licensed CC BY-SA 4.0: explanations adapted from them are published under CC BY-SA 4.0 with attribution, in a folder with its own license file, separate from the MIT/Apache-2.0 compiler code. Implementations are written independently from the algorithm descriptions.
 
 | Stage | Needs | Content |
@@ -3605,6 +3627,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r20 | `antec` 0.1.1 | No change to programs. Appendix E gains an order of work: phases P0–P6, each with a gate, put what a beginner meets first (installing, `antec repl`, diagnostics with hints, everyday language gaps, lessons, a playground) ahead of the rest of M14 and the web track; Annexes T, P and W are drafts until their phase starts; the interpreter's scope is Core 1.0. |
 | r19 | `antec` 0.1.1 | M14, first part (TCP, the HTTP/1.1 server and client, SQLite), settled while implementing it: addresses are passed by value and a listener tells its port (§28.2); header names are passed by value, `anni` gives copies, `maarchu` and `theesey`, `Request.param`, the fields of `http.Limits` (§28.4); handlers run one at a time on the server's loop (§28.5); the client speaks `http` only until TLS lands (§28.6); `SqlPettochu`, `sql.Viluva`, `db.script`, `sqlite::memory:` (§29.3.2); migrations are read in name order and hidden files are skipped (§29.3.3); `memory.baitlu_nunchi` (§21.3); seed cases NW006–NW008. TLS, HTTP/2, WebSocket, SSE, SMTP and PostgreSQL are still to come. |
 | r18 | `antec` 0.1.1 | `antec lsp`, a language server for editors (§23.1). |
 | r17 | `antec` 0.1.1 | M13, data and security, settled while implementing it: `Raasevaadu`/`Chadhivevaadu` are concrete types over `DataChettu`, the data tree, which keeps integers beyond 64 bits as digits; text mode for text-only formats; paths, `Duplicate`, `ChaalaLothu` and `line:column` positions in `ChadhuvuThappu` (§25.2); `T.f()` for a trait's associated functions, also on type parameters (§25.2.1b); `Raayochu`/`Chadhavochu`/`Kotthadhi` derived as written "Ante" source (§13.6); `Rahasyam` is `Chadhavochu` (§25.2.2, §27.4); JSON writes NaN as `null` and floats JavaScript's way (§25.3.1); `form`/`query` spaces (§25.3.1); `Kaalam` getters are `millisec_lu`/`nanosec_lu`, `g + k` is `k ni g.kalupu()` and `a - b` is `b ni a.theda()`, `Date`/`Time` fields, the zone database may be the system's (§26); `random`'s `number`/`decimal` and its PCG-64 constants (§27.1); password rehash rules (§27.3); a `migatha_perlu` collector of `DataChettu` takes any `Raayochu` values (§11.4, §29.1); `config` names, `.env` and precedence (§29.2); `rakam_peru`, `kotthadhi_ivvu`, `baitlu_ga`, `baitlu_nunchi_lossy` (§21); seed cases DT008–DT020. |

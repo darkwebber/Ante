@@ -9,7 +9,7 @@
 
 Simple ga cheppalante: amma ki explain chesinattu code raayochu, kaani adhi C laaga fast ga run avthundhi. 😎
 
-> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8), generics, traits and closures (M9), standard library (M10), C FFI (M11), tasks and sharing (M12), data and security (M13: JSON, form/query, encodings, time zones, crypto, `log`, `config`) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi, C libraries tho maatladathayi, anni CPU cores meedha okesaari pani chesthayi! Core 1.0 complete 🎉 DSA nerchukovadaniki [`learn/`](learn) lessons kuda start ayyayi. Next: network and storage, HTTP, SQL (M14). 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
+> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8), generics, traits and closures (M9), standard library (M10), C FFI (M11), tasks and sharing (M12), data and security (M13: JSON, form/query, encodings, time zones, crypto, `log`, `config`) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi, C libraries tho maatladathayi, anni CPU cores meedha okesaari pani chesthayi! Core 1.0 complete 🎉 DSA nerchukovadaniki [`learn/`](learn) lessons kuda start ayyayi. HTTP server, SQLite kuda vachesayi (M14 first part). Next: beginners ki easy start, install, `antec repl`, inka lessons ([roadmap](#roadmap) choodandi). 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
 
 ## "Ante" Sundharaniki! 🎬
 
@@ -120,6 +120,27 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 | Learn | Computer fundamentals, cp-algorithms lo unna algorithms anni, inka ML/DL/GenAI track: anni "Ante" lo, Tinglish explanations tho ([`learn/`](learn)) | 🚧 L1 lo 10 lessons ready |
 | Later | Self-hosting ("Ante" lo raasina `antec`) | 🔭 |
 
+### Ippudu ee order lo 🧭
+
+Paina unna M numbers perlu matrame, order kaadhu. Mana goal okkate: **programming modhati saari nerchukune Telugu vaallaki best language.** Kaabatti beginner ki mundhu em kavalo adhe mundhu build chestham. Oka phase gate pass ayithe ne next phase start.
+
+| Phase | Em chestham | Gate (idhi pass avvali) |
+|---|---|---|
+| P0 Sardhudham | M14 first part merge. TLS, HTTP/2, WebSocket, SMTP, PostgreSQL ni pakkana pedatham (P6 varaku). READMEs lo nijam matrame | CI Linux, macOS, Windows lo green |
+| P1 Five minutes lo start | Ready-made `antec` binaries + install script, `antec new`, `antec repl`, top 20 beginner mistakes ki hints (`x = 6`, `if`, `print(…)`…) | Rust leni kottha machine lo: install, first program, first error fix, anni 5 minutes lopu. Nijamaina beginners tho test |
+| P2 Roju vaade language | `j[k]` tho `jodi` index, multi-line closures, `batti` expression ga, guards, labelled `aapey`, okka function tho prashna adigi answer chadavadam | Unna lessons chinnaga avvali, workaround notes undakoodadhu |
+| P3 Lessons L0–L3 | Sumaru 60 lessons. Lesson lo ibbandi anipinchindhi P2 list ki velthundhi. 10 benchmark programs CI lo, C and Python tho compare | Anni lessons CI lo pass; prathi benchmark C ki 2× lopu |
+| P4 Playground | Compiler ni browser lo (wasm) run chesi, lessons tho oka simple website | Phone browser lo lesson run avvali, edit cheyyagalagali, server lekunda |
+| P5 Python and notebooks | numpy, pandas, matplotlib, oka model API; tharvatha Jupyter | 5 L6 lessons notebook lo run avvali |
+| P6 Web apps | Web ki kavalsina TLS, WebSocket, SSE; tharvatha M15–M18 | Oka nijamaina app deploy ayyi, evaro vaadali |
+
+Mana rules (diversion avvakunda 😅):
+
+1. Oke saari oka phase matrame.
+2. Feature "done" ante oka lesson or example dhaanni vaadali, adhe PR lo.
+3. Spec code tho paatu matrame maaruthundhi. Inka build cheyyani annexes (Python, Web, Torch) drafts.
+4. Speed records, contests laanti side quests ki time limit, `main` lo kaadhu.
+
 Full details kosam spec lo [Appendix E](spec/ante_language_spec_1_0.md#appendix-e--implementation-roadmap-for-antec) inka [Appendix I](spec/ante_language_spec_1_0.md#appendix-i--self-hosting-readiness) choodandi.
 
 ## Build cheyyadam
@@ -206,7 +227,7 @@ Cheyyochu! Keywords chinna, repeat ayye words. Oka week lo `aithe`, `ledhante` m
 Avunu. Program crash ayye time lo idhi kanna correct word inkokati ledhu.
 
 **Ippude production lo vaadochaa?**
-Inka ledhu boss. Ippatiki compiler code ni chadavagaladhu (lexer), run cheyyaledhu. Star ⭐ kotti watch cheyyandi, or inka better, contribute cheyyandi!
+Inka ledhu boss. Programs run avthayi, native binaries kuda vasthayi, kaani words inka maarochu, bugs untayi, install cheyyadaniki ippatiki Rust kavali. Nerchukovadaniki, try cheyyadaniki super; company server ki inka kaadhu. Star ⭐ kotti watch cheyyandi, or inka better, contribute cheyyandi!
 
 **Maa ooru lo ee word vere laaga antaaru. Em cheyyali?**
 Super! [Vocabulary proposal](https://github.com/darkwebber/Ante/issues/new?template=vocabulary_proposal.yml) open cheyyandi. "Ante" words community kalisi decide chesthundhi.
