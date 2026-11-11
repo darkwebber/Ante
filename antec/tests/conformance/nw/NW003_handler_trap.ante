@@ -1,0 +1,58 @@
+# category: run-pass
+# expect-stdout: HTTP/1.1 200 OK | GET /okati
+# expect-stdout: HTTP/1.1 500 Internal Server Error | internal server error
+# expect-stdout: HTTP/1.1 200 OK | GET /rendu
+# level: services
+# A handler that traps answers 500 and the server keeps serving (§28.5).
+http thechuko
+net thechuko
+samayam thechuko
+task thechuko
+
+nadupu(r: http.Request ni) -> http.Response ante:
+    r.url.path == "/boom" aithe:
+        xs: varusa[ankam] ante []
+        f"{xs[1]}" ni http.Response.text() icchey
+    f"{r.method.peru()} {r.url.path}" ni http.Response.text() icchey
+
+# A port nobody is using: the system picks one, and the listener closes when
+# this function returns.
+khaali_port() -> ankam ante:
+    l ante (net.Address{host: "127.0.0.1", port: 0} ni net.vinu()).kachithanga()
+    l.port() icchey
+
+# Waits until the server takes connections ("until ready").
+siddham_varaku(port: ankam ni) -> khali ante:
+    0 nunchi 500 lopu okko _ ki:
+        (net.Address{host: "127.0.0.1", port: port} ni net.connect()) batti:
+            sare(_) aithe:
+                icchey
+            thappu(_) aithe:
+                (10 ni samayam.Kaalam.millisec()) ni task.nidrapo()
+
+# Sends `text` on a new connection; the status line and the last line.
+adugu(port: ankam ni, text: &padham tho) -> padham ante:
+    maare c ante (net.Address{host: "127.0.0.1", port: port} ni net.connect()).kachithanga()
+    (text.baitlu() ni c.raayi()).kachithanga()
+    maare anni: baitlu ante []
+    avunu unnanthasepu:
+        b ante (4096 ni c.chadhuvu()).kachithanga()
+        b.enni() == 0 aithe:
+            aapey
+        b lo okko x ki:
+            x ni anni.cherchu()
+    s ante &anni ni padham.baitlu_nunchi_lossy()
+    lines ante "\r\n" ni s.vidagottu()
+    f"{lines[0]} | {lines[lines.enni() - 1]}" icchey
+
+pani_(j: &task.Jattu ni, port: ankam tho) -> khali ante:
+    server ante (() => nadupu ni, net.Address{host: "127.0.0.1", port: port} tho http.serve()) ni j.pampu()
+    port ni siddham_varaku()
+    (port ni, &"GET /okati HTTP/1.1\r\nConnection: close\r\n\r\n" tho adugu()) ni choopinchu()
+    (port ni, &"GET /boom HTTP/1.1\r\nConnection: close\r\n\r\n" tho adugu()) ni choopinchu()
+    (port ni, &"GET /rendu HTTP/1.1\r\nConnection: close\r\n\r\n" tho adugu()) ni choopinchu()
+    server.cancel_cheyyi()
+
+modhalu() -> khali ante:
+    port ante khaali_port()
+    ((j: &task.Jattu) => j ni, port tho pani_()) ni task.kalisi()

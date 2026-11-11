@@ -1013,13 +1013,14 @@ impl Resolver {
             | ExprKind::BareSare
             | ExprKind::Unit
             | ExprKind::Hole => {}
-            ExprKind::FStr(parts) | ExprKind::Sql(parts) => {
+            ExprKind::FStr(parts) => {
                 for part in parts {
                     if let FStrPart::Expr(e) = part {
                         self.resolve_expr(e);
                     }
                 }
             }
+            ExprKind::Sql { call, .. } => self.resolve_expr(call),
             ExprKind::Path(path) => self.resolve_value_path(path),
             ExprKind::Call { callee, type_args, phrases } => {
                 self.resolve_expr(callee);

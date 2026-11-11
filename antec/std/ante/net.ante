@@ -1,0 +1,197 @@
+# `net`: TCP connections (spec §28.1–28.2).
+#
+#     l ante net.Address{host: "127.0.0.1", port: 8080} ni net.vinu()?
+#     c ante l.andhuko()?
+#     4096 ni c.chadhuvu()? |> c.raayi()?
+#
+# Sockets live in the runtime (`runtime/ante_net.c`). A wait never holds up
+# other tasks, and every wait is a cancellation point.
+
+memory thechuko
+samayam thechuko
+
+bayata "C" ante:
+    ante_net_error(out: *maare aasajeevi ankam8, cap: ankam64) -> ankam64
+    ante_net_listen(host: *aasajeevi ankam8, hlen: ankam64, port: ankam64) -> ankam64
+    ante_net_local_port(fd: ankam64) -> ankam64
+    ante_net_accept(fd: ankam64, ms: ankam64) -> ankam64
+    ante_net_connect(host: *aasajeevi ankam8, hlen: ankam64, port: ankam64, ms: ankam64) -> ankam64
+    ante_net_read(fd: ankam64, buf: *maare aasajeevi ankam8, cap: ankam64, ms: ankam64) -> ankam64
+    ante_net_write(fd: ankam64, buf: *aasajeevi ankam8, len: ankam64, ms: ankam64) -> ankam64
+    ante_net_close(fd: ankam64) -> khali
+
+# A host name or IP address with a port.
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki rakam Address ante:
+    andhariki host: padham
+    andhariki port: ankam
+
+# What went wrong with a network operation.
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki edho_okati NetThappu ante:
+    # The host name wasn't found.
+    PeruDorakaledhu
+    Refused
+    Reset
+    Timeout
+    Cancel
+    # The other side closed the connection.
+    Moosesaaru
+    Tls(padham)
+    Limit(padham)
+    Os(padham)
+
+# The runtime's error kind (a negative number) as a `NetThappu`.
+andhariki _thappu(kind: ankam64 ni) -> NetThappu ante:
+    kind == -1 aithe:
+        NetThappu.PeruDorakaledhu icchey
+    kind == -2 aithe:
+        NetThappu.Refused icchey
+    kind == -3 aithe:
+        NetThappu.Reset icchey
+    kind == -4 aithe:
+        NetThappu.Timeout icchey
+    kind == -5 aithe:
+        NetThappu.Cancel icchey
+    kind == -6 aithe:
+        NetThappu.Moosesaaru icchey
+    message ante _error_message()
+    kind == -8 aithe:
+        NetThappu.Limit(message) icchey
+    NetThappu.Os(message) icchey
+
+andhariki _error_message() -> padham ante:
+    maare b: baitlu ante []
+    naa_risk:
+        buf ante 256 ni, 1 tho memory.allocate()
+        out ante buf ni kolpothu_maarchu[*maare aasajeevi ankam8]()
+        n ante out, 256 ante_net_error()
+        len ante n ni kolpothu_maarchu[aasajeevi ankam]()
+        b lo (buf ni, len tho memory.baitlu_nunchi()) pettu
+        buf ni, 256 tho, 1 tho memory.release()
+    (&b ni padham.baitlu_nunchi_lossy()) icchey
+
+# The bytes of `b` and their count, for C. An empty `mukka` may have no
+# address, which the runtime accepts with a count of 0.
+andhariki _ptr(b: &mukka[aasajeevi ankam8] ni) -> *aasajeevi ankam8 ante:
+    b.pointer() icchey
+
+# Milliseconds of a time limit, -1 for none.
+andhariki _ms(d: &undochu[samayam.Kaalam] ni) -> ankam64 ante:
+    d batti:
+        undhi(k) aithe:
+            k.millisec_lu() icchey
+        ledhu aithe:
+            -1 icchey
+
+# A socket that waits for connections.
+andhariki rakam Listener ante:
+    fd: ankam64
+    port_: ankam
+
+Listener panulu ante:
+    # Waits for the next connection.
+    andhariki andhuko(naa: &idhi) -> sare_thappu[Connection, NetThappu] ante:
+        maare fd: ankam64 ante -1
+        naa_risk:
+            fd lo (naa.fd, -1 ante_net_accept()) pettu
+        fd < 0 aithe:
+            thappu(fd ni _thappu()) icchey
+        sare(Connection{fd: fd, read_ms: -1, write_ms: -1}) icchey
+
+    # The port it listens on (the one the system chose, for port 0).
+    andhariki port(naa: &idhi) -> ankam ante:
+        naa.port_ icchey
+
+Listener ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        naa_risk:
+            naa.fd ante_net_close()
+
+# Starts listening on `addr` ("listen").
+andhariki vinu(addr: Address ni) -> sare_thappu[Listener, NetThappu] ante:
+    h ante addr.host.baitlu()
+    p ante h ni _ptr()
+    n ante h.enni()
+    maare fd: ankam64 ante -1
+    maare port: ankam64 ante 0
+    naa_risk:
+        fd lo (p, n, addr.port ante_net_listen()) pettu
+    fd < 0 aithe:
+        thappu(fd ni _thappu()) icchey
+    naa_risk:
+        port lo (fd ante_net_local_port()) pettu
+    sare(Listener{fd: fd, port_: port}) icchey
+
+# An open TCP connection.
+andhariki rakam Connection ante:
+    fd: ankam64
+    read_ms: ankam64
+    write_ms: ankam64
+
+Connection panulu ante:
+    # Up to `n` bytes; empty at the end of the stream.
+    andhariki chadhuvu(naa: &idhi, n: ankam ni) -> sare_thappu[baitlu, NetThappu] ante:
+        n <= 0 aithe:
+            sare([]) icchey
+        maare got: ankam64 ante 0
+        maare b: baitlu ante []
+        naa_risk:
+            size ante n ni kolpothu_maarchu[aasajeevi ankam]()
+            buf ante size ni, 1 tho memory.allocate()
+            out ante buf ni kolpothu_maarchu[*maare aasajeevi ankam8]()
+            got lo (naa.fd, out, n, naa.read_ms ante_net_read()) pettu
+            got > 0 aithe:
+                len ante got ni kolpothu_maarchu[aasajeevi ankam]()
+                b lo (buf ni, len tho memory.baitlu_nunchi()) pettu
+            buf ni, size tho, 1 tho memory.release()
+        got < 0 aithe:
+            thappu(got ni _thappu()) icchey
+        sare(b) icchey
+
+    # Writes all of `b`.
+    andhariki raayi(
+        naa: &idhi,
+        b: &mukka[aasajeevi ankam8] ni,
+    ) -> sare_thappu[khali, NetThappu] ante:
+        b.enni() == 0 aithe:
+            sare(()) icchey
+        p ante b ni _ptr()
+        n ante b.enni()
+        maare r: ankam64 ante 0
+        naa_risk:
+            r lo (naa.fd, p, n, naa.write_ms ante_net_write()) pettu
+        r < 0 aithe:
+            thappu(r ni _thappu()) icchey
+        sare(()) icchey
+
+    # Closes the connection now (dropping it closes it too).
+    andhariki close(naa: &maare idhi) -> khali ante:
+        naa_risk:
+            naa.fd ante_net_close()
+        naa.fd lo -1 pettu
+
+    # A time limit for each read (`ledhu`: wait as long as it takes).
+    andhariki read_timeout(naa: &maare idhi, d: undochu[samayam.Kaalam] ni) -> khali ante:
+        naa.read_ms lo (&d ni _ms()) pettu
+
+    # A time limit for each write.
+    andhariki write_timeout(naa: &maare idhi, d: undochu[samayam.Kaalam] ni) -> khali ante:
+        naa.write_ms lo (&d ni _ms()) pettu
+
+Connection ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        naa_risk:
+            naa.fd ante_net_close()
+
+# Connects to `addr` (10 s limit).
+andhariki connect(addr: Address ni) -> sare_thappu[Connection, NetThappu] ante:
+    h ante addr.host.baitlu()
+    p ante h ni _ptr()
+    n ante h.enni()
+    maare fd: ankam64 ante -1
+    naa_risk:
+        fd lo (p, n, addr.port, 10000 ante_net_connect()) pettu
+    fd < 0 aithe:
+        thappu(fd ni _thappu()) icchey
+    sare(Connection{fd: fd, read_ms: -1, write_ms: -1}) icchey

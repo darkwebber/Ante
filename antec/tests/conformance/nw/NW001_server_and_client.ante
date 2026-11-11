@@ -1,0 +1,65 @@
+# category: run-pass
+# expect-stdout: 200 namaste
+# expect-stdout: 201 hi 42 undhi(application/json)
+# expect-stdout: 404 dorakaledhu
+# expect-stdout: sare(sare(()))
+# level: services
+# An HTTP server and client in one program: GET, POST with JSON, 404, and
+# stopping the server by cancelling its task (§28.5, §28.6).
+http thechuko
+net thechuko
+samayam thechuko
+task thechuko
+
+@automatic Raayochu, Chadhavochu
+rakam Note ante:
+    text: padham
+    n: ankam
+
+nadupu(r: http.Request ni) -> http.Response ante:
+    (r.method == http.Method.GET && r.url.path == "/hello") aithe:
+        "namaste" ni http.Response.text() icchey
+    (r.method == http.Method.POST && r.url.path == "/notes") aithe:
+        r.json_chadhuvu[Note]() batti:
+            sare(n) aithe:
+                res ante &Note{text: n.text, n: n.n + 1} ni http.Response.json()
+                (http.CREATED ni res.status_tho()) icchey
+            thappu(_) aithe:
+                bad ante "bad" ni http.Response.text()
+                (http.BAD_REQUEST ni bad.status_tho()) icchey
+    nf ante "dorakaledhu" ni http.Response.text()
+    (http.NOT_FOUND ni nf.status_tho()) icchey
+
+# A port nobody is using: the system picks one, and the listener closes when
+# this function returns.
+khaali_port() -> ankam ante:
+    l ante (net.Address{host: "127.0.0.1", port: 0} ni net.vinu()).kachithanga()
+    l.port() icchey
+
+# Waits until the server takes connections ("until ready").
+siddham_varaku(port: ankam ni) -> khali ante:
+    0 nunchi 500 lopu okko _ ki:
+        (net.Address{host: "127.0.0.1", port: port} ni net.connect()) batti:
+            sare(_) aithe:
+                icchey
+            thappu(_) aithe:
+                (10 ni samayam.Kaalam.millisec()) ni task.nidrapo()
+
+pani_(j: &task.Jattu ni, port: ankam tho) -> khali ante:
+    server ante (() => nadupu ni, net.Address{host: "127.0.0.1", port: port} tho http.serve()) ni j.pampu()
+    port ni siddham_varaku()
+    base ante f"http://127.0.0.1:{port}"
+    a ante (f"{base}/hello" ni http.get()).kachithanga()
+    f"{a.status.code} {a.text_chadhuvu().kachithanga()}" ni choopinchu()
+    b ante (&Note{text: "hi", n: 41} ni, f"{base}/notes" ki http.post_json()).kachithanga()
+    note ante b.json_chadhuvu[Note]().kachithanga()
+    type ante "content-type" ni b.headers.thechu()
+    f"{b.status.code} {note.text} {note.n} {type}" ni choopinchu()
+    c ante (f"{base}/nope" ni http.get()).kachithanga()
+    f"{c.status.code} {c.text_chadhuvu().kachithanga()}" ni choopinchu()
+    server.cancel_cheyyi()
+    server.aagu() ni choopinchu()
+
+modhalu() -> khali ante:
+    port ante khaali_port()
+    ((j: &task.Jattu) => j ni, port tho pani_()) ni task.kalisi()

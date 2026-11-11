@@ -111,7 +111,7 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 | M11 | FFI: `naa_risk`, `@C` records, `@bayata` exports, package lo C files, libraries link cheyyadam (spec §22) | ✅ done |
 | M12 | Tasks and sharing: `task.kalisi`, `pampu`, channels, `Thaalam`, `Atomic`, `panchukunna`, cancel (spec §24) | ✅ done |
 | M13 | Data and security: `json`, `form`, `query`, `encoding`, `samayam` zones, `bhadram` (SHA-2, BLAKE3, Argon2id, AES-GCM), `Rahasyam`, `random`, `log`, `config` (spec §25–27, §29) | ✅ done |
-| M14 | Network and storage: TCP, TLS, HTTP, WebSocket, SQL (spec §28, §29.3) | 🔜 |
+| M14 | Network and storage (spec §28, §29.3). Vachesindhi: TCP (`net`), HTTP/1.1 server, router, client (`http`), SQLite + `sql"…"` + migrations (`sql`). Inka raavali: TLS, HTTP/2, WebSocket, SSE, SMTP, PostgreSQL | 🚧 sagam |
 | M15–M18 | Web apps "Ante" lone: pages, styles, routes, server functions, `antec web` deploy (spec Annex W) | 🔜 |
 | M19 | Official website, "Ante" lone raasindhi: playground, docs, learn | 🔜 |
 | M20–M22 | `@twaraga` performance, PyTorch binding, Python bridge (numpy, pandas, Hugging Face, OpenAI…) | 🔜 |

@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E1306 @ 9:24
+# level: services
+# Only values with a SQL mapping go into `sql"…"` (§29.3.2); a `pani` has none.
+sql thechuko
+
+modhalu() -> khali ante:
+    f ante (x: ankam) => x + 1
+    q ante sql"SELECT {f}"
+    q ni choopinchu()

@@ -26,11 +26,23 @@
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
+#include <winsock2.h> /* before windows.h, which would bring the old winsock.h */
+#include <ws2tcpip.h>
 #include <windows.h>
 #else
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <pthread.h>
 #include <signal.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
+#include <sys/socket.h>
+#ifdef __linux__
+#include <sys/epoll.h>
+#endif
 #include <dirent.h>
 #include <poll.h>
 #include <spawn.h>

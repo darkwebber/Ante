@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r18. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r19. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -1054,7 +1054,7 @@ The next three are written in "Ante" itself and compiled with every program (§2
 | `lekkalu` (math) | the §18.2 families; `sqrt sin cos tan exp log abs min max pow floor ceil round`; `PI E INF NAN`; `lekkalu.motham(xs)` (sum) and `a ni, b tho lekkalu.dot()` over `&mukka[amsam32/64]` using a documented blocked order (vectorizable without `@twaraga`); `lekkalu.polchu_amsam(a, b) -> Kramam` (IEEE totalOrder) |
 | `file` | `p ni file.chadhuvu() -> sare_thappu[padham, FileThappu]` ("read"); `p ki, text ni file.raayi() -> sare_thappu[khali, FileThappu]` ("write"); `p ni file.baitlu_chadhuvu()`, `p ki, b ni file.baitlu_raayi()`; `p ni file.undhaa() -> ato_ito`; `p ni file.folderaa() -> ato_ito`; `p ni file.list_cheyyi() -> sare_thappu[varusa[padham], FileThappu]` (sorted names); `p ni file.folder_cheyyi()` (create, including parents); `p ni file.theesey()` (delete a file); `a ni, b tho file.path_kalupu() -> padham` (joins with `/` on every system; `b` alone when it starts with `/`); `p ni file.path_peru()`, `p ni file.path_folder()`, `p ni file.path_extension() -> undochu[padham]` |
 | `system` | `system.args() -> varusa[padham]`; `k ni system.env() -> undochu[padham]`; `system.line_chadhuvu() -> undochu[padham]` (stdin); `system.flush()`; `n ni system.vellipo() -> raadhu` (exit); `prog ni, args tho system.nadupu() -> sare_thappu[Phalitham, SystemThappu]` ("run": waits for the program, where `Phalitham{status: ankam32, stdout: padham, stderr: padham}`); `system.os() -> padham`, `system.arch() -> padham` |
-| `memory` | †intrinsic, **`naa_risk` only**: `n ni, a tho memory.allocate() -> *maare khali`, `p ni, n tho, a tho memory.release()`, `p ni, n tho, a tho, m ki memory.reallocate()`, `src ni, dst ki, n tho memory.copy()`. Used to write runtime and collection code in "Ante" itself |
+| `memory` | †intrinsic, **`naa_risk` only**: `n ni, a tho memory.allocate() -> *maare khali`, `p ni, n tho, a tho memory.release()`, `p ni, n tho, a tho, m ki memory.reallocate()`, `p ni, n tho memory.baitlu_nunchi() -> baitlu` (a copy of the `n` bytes at `p`, r19), `src ni, dst ki, n tho memory.copy()`. Used to write runtime and collection code in "Ante" itself |
 | `samayam` (time) | `samayam.ippudu() -> Kshanam` (monotonic "now"); `k.gadichindhi() -> Kaalam` ("elapsed"); `k.millisec_lu()`, `k.nanosec_lu()`; `n ni Kaalam.sec() -> Kaalam` (whole seconds; negative or too large is T01) and the other constructors of §26; `d ni samayam.timer() -> task.Edhuruchoopu` (§24.4) |
 
 `FileThappu` and `ParseThappu` are enums that implement `Choopinchochu`. Every standard library record and enum implements `Choopinchochu`, `XeroxTheeyochu` and `Polchochu`; `Kramam` also implements `VarusaPettochu`, `HashCheyochu` and `CopyKottochu`.
@@ -1506,6 +1506,7 @@ Custom cipher modes, RSA, raw elliptic-curve operations and certificate handling
 
 - `addr ni net.vinu() -> sare_thappu[Listener, NetThappu]` ("listen"); `l.andhuko() -> sare_thappu[Connection, NetThappu]` waits for the next connection.
 - `addr ni net.connect() -> sare_thappu[Connection, NetThappu]` (default timeout 10 s).
+- (r19: `addr` is a `net.Address{host, port}` passed by value. Port 0 asks the system for a free port, and `l.port()` tells which one it gave. A `Listener` and a `Connection` close when dropped. `read_timeout` and `write_timeout` take an `undochu[Kaalam]`, `ledhu` meaning no limit.)
 - `Connection`: `n ni c.chadhuvu() -> sare_thappu[baitlu, NetThappu]` (up to `n` bytes; empty at end of stream), `b ni c.raayi()` (all of `b`), `c.close()`; read and write timeouts via `d ni c.read_timeout()` / `write_timeout` (default: none for raw TCP).
 
 ### 28.3 TLS
@@ -1522,6 +1523,7 @@ Custom cipher modes, RSA, raw elliptic-curve operations and certificate handling
 - `Body` is streamed. Reading it all enforces a size limit (default 1 MiB; `http.Limits`) and returns `NetThappu.Limit` past it.
 - `Url` (WHATWG URL parsing): `s ni Url.chadhuvu() -> sare_thappu[Url, UrlThappu]`, fields `scheme`, `host`, `port`, `path`, `query`, `fragment`; building with `p ni u.path_kalupu()`, `k ni, v tho u.query_cherchu()` always escapes. `Url.web_aa()` ("is it web?") is true only for `http` and `https`.
 - `Cookie` (RFC 6265bis): `peru`, `viluva`, `max_age`, `path`, `domain`, `secure` (default `avunu`), `http_only` (default `avunu`), `same_site` (default `Lax`). Writing a cookie whose name starts with `__Host-` forces `secure`, `path = "/"` and no `domain`.
+- (r19: a header's name is passed by value, as in `"content-type" ni hs.thechu()`. `anni` returns `varusa[padham]`, copies, since a collection can't hold references (§9.3.2b). `n ni, v tho hs.maarchu()` ("change") replaces every header of that name and `n ni hs.theesey()` removes them; `cherchu` and `maarchu` return `sare_thappu[khali, HeaderThappu]`. `"id" ni r.param() -> undochu[&padham]` gives a `{id}` part of the path a `Router` matched, with percent escapes undone, and `r.id` is the request's number in logs. `http.Limits` has the fields `header_bytes`, `body_bytes`, `header_read_ms`, `idle_ms` and `connections`; `http.LIMITS` holds the defaults. A `Response` also has `text_chadhuvu`, `json_chadhuvu[T]` and `s ni res.status_tho()`. The status constants are `OK`, `CREATED`, `NO_CONTENT`, `MOVED_PERMANENTLY`, `FOUND`, `SEE_OTHER`, `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `CONFLICT`, `UNPROCESSABLE`, `TOO_MANY_REQUESTS`, `INTERNAL_SERVER_ERROR` and `SERVICE_UNAVAILABLE`.)
 
 ### 28.5 HTTP server
 
@@ -1531,12 +1533,15 @@ Custom cipher modes, RSA, raw elliptic-curve operations and certificate handling
 - default limits (`http.Limits`, all overridable): header block 16 KiB, body 1 MiB, 100 headers, header read timeout 10 s, request timeout 30 s, idle keep-alive 60 s, concurrent connections 10 000. Exceeding them returns 413, 431 or 408 without calling the handler;
 - `HEAD` is answered by running `GET` and dropping the body; `Date` and `Content-Length` are set automatically;
 - shutdown is graceful: stop accepting, let running requests finish for up to 30 s (`http.Limits.shutdown`), then cancel them.
+- (r19: `serve` takes `app ni, addr tho, limits ki`, the last one optional. An implementation may run handlers one at a time on the server's own task instead of one task per request, as long as a trap in a handler still answers 500 and the server keeps serving; `antec` does this, so a handler that waits holds up the requests behind it. Requests on one connection are answered in order. A request with both `Content-Length` and `Transfer-Encoding`, or with two different `Content-Length` values, is answered 400. A router answers 404 when no path matches and 405 with an `allow` header when only the method differs.)
 
 Handlers compose as ordinary functions. `http.Router` matches method and path patterns (`"/users/{id}"`, `"/files/{*rest}"`) and is built with `pattern ni, method tho, handler kosam r.cherchu()`; a path with two matching patterns is decided by the most specific pattern (more literal segments first), and two patterns equally specific for one method are rejected when the router is built (T05 with both patterns).
 
 ### 28.6 HTTP client
 
 `req ni http.pampu() -> sare_thappu[Response, NetThappu]` ("send") with redirects followed up to 10 times (never from `https` to `http`), a 30 s total timeout, TLS verification on, decompression of `gzip`/`br`, and connection reuse. Convenience: `url ni http.get()`, `x ni, url ki http.post_json()`.
+
+(r19: `http.get` and `http.post_json` take the URL as a `padham` by value. Until TLS is implemented (§28.3), an `https` URL returns `NetThappu.Tls`; decompression and connection reuse aren't implemented yet either.)
 
 ### 28.7 WebSocket and server-sent events
 
@@ -1577,8 +1582,11 @@ user ante sql"SELECT id, peru, email FROM users WHERE id = {id}" ni db.okati[Use
 - `q ni db.run() -> sare_thappu[ankam, SqlThappu]` (rows changed), `q ni db.okati[T]() -> sare_thappu[undochu[T], SqlThappu]` ("one"), `q ni db.anni[T]() -> sare_thappu[varusa[T], SqlThappu]` ("all"), where `T: Chadhavochu` reads each row as a map from column names to values (so a record's field names must match the columns; `@peru` renames).
 - `f ni db.transaction() -> sare_thappu[R, SqlThappu]` runs `f(&maare Transaction)` and commits if it returns `sare`, rolls back on `thappu` or a trap.
 - Value mapping: integers ↔ INTEGER/BIGINT, `amsam64` ↔ REAL/DOUBLE, `padham` ↔ TEXT, `baitlu` ↔ BLOB/BYTEA, `ato_ito` ↔ INTEGER 0/1 or BOOLEAN, `Gadiyaram` ↔ TEXT (RFC 3339) or TIMESTAMPTZ, `undochu[T]` ↔ NULL.
+- (r19: a type goes into a `sql"…"` literal when it implements `sql.SqlPettochu` ("can put in SQL"), whose one method gives a `sql.Viluva`: `Null`, `Ankam`, `Amsam`, `Padham` or `Baitlu`. The types above implement it, and a reference to one of them may be used too; anything else is E1306. `q.text()` is the query's text with `?1`, `?2`, … where the values go. `text ni db.script()` runs a batch of statements without parameters. `sqlite::memory:` opens a database that lives in memory. A `Database` is one connection behind a lock, which a transaction holds until it ends. `SqlThappu` has `code` (the engine's result code, 0 when the error isn't the engine's) and `message`. An INTEGER reads as `ato_ito` when its column is declared `BOOL` or `BOOLEAN`.)
 
 29.3.3 **Migrations.** `migrations/NNNN_name.sql` files in the package are embedded at build time. `db.migrate()` applies the ones not yet recorded in the table `ante_migrations`, in order, each in its own transaction, and fails if an applied file has changed (its SHA-256 differs).
+
+(r19: files are applied in the order of their names; files whose names start with `.` are ignored. `db.migrate()` returns how many it applied. A single-file program has no migrations.)
 
 ### 29.4 Files and processes
 
@@ -3312,6 +3320,9 @@ Python-level seeds name the packages they need; the suite pins them in its own `
 | NW003 | Handler trap | 500, server keeps serving (services level) |
 | NW004 | Header value with a newline | `thappu` (services level) |
 | NW005 | WebSocket echo | stdout matches (services level) |
+| NW006 | TCP: listener and client in two tasks, end of stream, unknown host, read timeout | stdout matches (services level) |
+| NW007 | `http.Router`: `{name}` and `{*rest}`, most specific route first, 404, 405 with `allow`, cookies | stdout matches (services level) |
+| NW008 | `http.Url`: reading parts, building with escaping, bad URLs | stdout matches (services level) |
 | DB001 | SQLite: migrate, insert, `okati`, `anni`, transaction rollback | stdout matches (services level) |
 | DB002 | `sql"…"` with an injected-looking string | stored verbatim (services level) |
 | DB003 | `sql"…"` interpolating a `pani` | E1306 (services level) |
@@ -3594,6 +3605,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r19 | `antec` 0.1.1 | M14, first part (TCP, the HTTP/1.1 server and client, SQLite), settled while implementing it: addresses are passed by value and a listener tells its port (§28.2); header names are passed by value, `anni` gives copies, `maarchu` and `theesey`, `Request.param`, the fields of `http.Limits` (§28.4); handlers run one at a time on the server's loop (§28.5); the client speaks `http` only until TLS lands (§28.6); `SqlPettochu`, `sql.Viluva`, `db.script`, `sqlite::memory:` (§29.3.2); migrations are read in name order and hidden files are skipped (§29.3.3); `memory.baitlu_nunchi` (§21.3); seed cases NW006–NW008. TLS, HTTP/2, WebSocket, SSE, SMTP and PostgreSQL are still to come. |
 | r18 | `antec` 0.1.1 | `antec lsp`, a language server for editors (§23.1). |
 | r17 | `antec` 0.1.1 | M13, data and security, settled while implementing it: `Raasevaadu`/`Chadhivevaadu` are concrete types over `DataChettu`, the data tree, which keeps integers beyond 64 bits as digits; text mode for text-only formats; paths, `Duplicate`, `ChaalaLothu` and `line:column` positions in `ChadhuvuThappu` (§25.2); `T.f()` for a trait's associated functions, also on type parameters (§25.2.1b); `Raayochu`/`Chadhavochu`/`Kotthadhi` derived as written "Ante" source (§13.6); `Rahasyam` is `Chadhavochu` (§25.2.2, §27.4); JSON writes NaN as `null` and floats JavaScript's way (§25.3.1); `form`/`query` spaces (§25.3.1); `Kaalam` getters are `millisec_lu`/`nanosec_lu`, `g + k` is `k ni g.kalupu()` and `a - b` is `b ni a.theda()`, `Date`/`Time` fields, the zone database may be the system's (§26); `random`'s `number`/`decimal` and its PCG-64 constants (§27.1); password rehash rules (§27.3); a `migatha_perlu` collector of `DataChettu` takes any `Raayochu` values (§11.4, §29.1); `config` names, `.env` and precedence (§29.2); `rakam_peru`, `kotthadhi_ivvu`, `baitlu_ga`, `baitlu_nunchi_lossy` (§21); seed cases DT008–DT020. |
 | r16 | `antec` 0.1.1 | Beginner readiness: `kuppa`, `line` and `sardina_jodi`, written in "Ante" (§21.2); `marpidi` and `varusa.marpidi` (§21.1, §21.2); a callee's receiver may be indexed (D7); a returned reference may come from any reference parameter (§9.3.2c); `antec run` builds natively when it can, and `antec pariksha` takes a name filter and folders (§23.1); a bad `@pariksha` signature is E1307 (§23.3); seed cases S020, S021, D017–D021, O037, O038, and O008 now tests a reference with no source. |

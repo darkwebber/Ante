@@ -1,0 +1,50 @@
+# category: run-pass
+# expect-stdout: namaste
+# expect-stdout: 0
+# expect-stdout: NetThappu.PeruDorakaledhu
+# expect-stdout: NetThappu.Timeout
+# level: services
+# TCP: a listener and a client in two tasks, the end of the stream, a host
+# that doesn't exist, and a read that times out (§28.1, §28.2).
+net thechuko
+samayam thechuko
+task thechuko
+
+# Echoes one message back, then closes.
+server(l: &net.Listener ni) -> khali ante:
+    c ante l.andhuko().kachithanga()
+    b ante (100 ni c.chadhuvu()).kachithanga()
+    (&b ni c.raayi()).kachithanga()
+
+# Accepts and says nothing, until the other side is gone.
+mounam(l: &net.Listener ni) -> khali ante:
+    c ante l.andhuko().kachithanga()
+    (100 ni c.chadhuvu()).kachithanga()
+
+rendu(j: &task.Jattu ni, l: &net.Listener tho) -> khali ante:
+    (() => l ni server()) ni j.pampu()
+    c ante (net.Address{host: "127.0.0.1", port: l.port()} ni net.connect()).kachithanga()
+    ("namaste".baitlu() ni c.raayi()).kachithanga()
+    b ante (100 ni c.chadhuvu()).kachithanga()
+    (&b ni padham.baitlu_nunchi_lossy()) ni choopinchu()
+    (100 ni c.chadhuvu()).kachithanga().enni() ni choopinchu()
+
+aalasyam(j: &task.Jattu ni, l: &net.Listener tho) -> khali ante:
+    (() => l ni mounam()) ni j.pampu()
+    maare c ante (net.Address{host: "127.0.0.1", port: l.port()} ni net.connect()).kachithanga()
+    undhi(50 ni samayam.Kaalam.millisec()) ni c.read_timeout()
+    (100 ni c.chadhuvu()) batti:
+        sare(_) aithe:
+            "vachindhaa?!" ni choopinchu()
+        thappu(e) aithe:
+            e ni choopinchu()
+
+modhalu() -> khali ante:
+    l ante (net.Address{host: "127.0.0.1", port: 0} ni net.vinu()).kachithanga()
+    ((j: &task.Jattu) => j ni, &l tho rendu()) ni task.kalisi()
+    (net.Address{host: "ledhu.invalid", port: 80} ni net.connect()) batti:
+        sare(_) aithe:
+            "connect ayyindhaa?!" ni choopinchu()
+        thappu(e) aithe:
+            e ni choopinchu()
+    ((j: &task.Jattu) => j ni, &l tho aalasyam()) ni task.kalisi()

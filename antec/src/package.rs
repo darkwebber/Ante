@@ -106,6 +106,9 @@ pub struct BuildSettings {
     /// Libraries to link (`-l`), and folders to find them in (`-L`).
     pub libs: Vec<String>,
     pub lib_dirs: Vec<PathBuf>,
+    /// The package's `migrations/*.sql` (name, text) in name order, built
+    /// into the program for `db.migrate()` (§29.3.3).
+    pub migrations: Vec<(String, String)>,
 }
 
 impl BuildSettings {
@@ -147,6 +150,7 @@ impl Default for BuildSettings {
             c_sources: Vec::new(),
             libs: Vec::new(),
             lib_dirs: Vec::new(),
+            migrations: Vec::new(),
         }
     }
 }
@@ -263,7 +267,67 @@ fn build_settings(text: &str, root: &Path) -> (BuildSettings, Vec<Diagnostic>) {
         let path = Path::new(&d);
         settings.lib_dirs.push(if path.is_absolute() { path.to_path_buf() } else { root.join(path) });
     }
+    if let Ok(entries) = fs::read_dir(root.join("migrations")) {
+        let mut files: Vec<PathBuf> = entries
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|x| x == "sql") && p.is_file())
+            // Not hidden files, such as the `._name` ones macOS leaves on some drives.
+            .filter(|p| p.file_name().is_some_and(|n| !n.to_string_lossy().starts_with('.')))
+            .collect();
+        files.sort();
+        for f in files {
+            let name = f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            match fs::read_to_string(&f) {
+                Ok(text) => settings.migrations.push((name, text)),
+                Err(e) => diags.push(Diagnostic::error(
+                    "E0905",
+                    Span::new(0, 0),
+                    format!("`migrations/{name}` chadhavalekapoyam: {e}"),
+                )),
+            }
+        }
+    }
     (settings, diags)
+}
+
+/// C source holding the package's migrations, for the runtime's
+/// `ante_sql_migration` (`runtime/ante_sql.c`).
+fn migrations_c(migrations: &[(String, String)]) -> String {
+    let bytes = |s: &str| -> String {
+        let mut out = String::from("{");
+        for b in s.bytes() {
+            out.push_str(&format!("{b},"));
+        }
+        out.push_str("0}");
+        out
+    };
+    let mut c = String::from("#include <stdint.h>\n");
+    for (i, (name, text)) in migrations.iter().enumerate() {
+        c.push_str(&format!("static const uint8_t n{i}[] = {};\n", bytes(name)));
+        c.push_str(&format!("static const uint8_t t{i}[] = {};\n", bytes(text)));
+    }
+    c.push_str(&format!("const int64_t ante_migration_count = {};\n", migrations.len()));
+    let list = |prefix: &str| -> String {
+        let items: Vec<String> = (0..migrations.len()).map(|i| format!("{prefix}{i}")).collect();
+        if items.is_empty() {
+            "0".into()
+        } else {
+            items.join(", ")
+        }
+    };
+    let lens = |pick: fn(&(String, String)) -> usize| -> String {
+        let items: Vec<String> = migrations.iter().map(|m| pick(m).to_string()).collect();
+        if items.is_empty() {
+            "0".into()
+        } else {
+            items.join(", ")
+        }
+    };
+    c.push_str(&format!("const uint8_t *const ante_migration_names[] = {{{}}};\n", list("n")));
+    c.push_str(&format!("const uint8_t *const ante_migration_texts[] = {{{}}};\n", list("t")));
+    c.push_str(&format!("const int64_t ante_migration_name_lens[] = {{{}}};\n", lens(|m| m.0.len())));
+    c.push_str(&format!("const int64_t ante_migration_text_lens[] = {{{}}};\n", lens(|m| m.1.len())));
+    c
 }
 
 /// `["a", "b"]` on one line, as written in `ante.toml`.
@@ -742,6 +806,7 @@ fn needs_native(program: &crate::mir::Program, g: &crate::typeck::Globals, build
         Term::Call { callee: Callee::Fn(fid, tys), .. } => {
             let sig = &g.fns[*fid];
             if g.res.modules[sig.module].name == "task"
+                || stdlib::NATIVE_ANTE_MODULES.contains(&g.res.modules[sig.module].name.as_str())
                 || sig.owner.as_deref() == Some("panchukunna")
                 || (g.res.modules[sig.module].name == "samayam" && sig.name == "timer")
             {
@@ -846,6 +911,16 @@ pub fn link_native(
         };
         fs::write(&ll, &ir).map_err(|e| e.to_string())?;
         let runtime = runtime_object(&cc, build.target.as_deref(), &dir)?;
+        let uses_sql = emitted.ir.contains("ante_sql_")
+            || emitted.glue.as_deref().is_some_and(|g| g.contains("ante_sql_"));
+        let sql = if uses_sql { Some(sql_object(&cc, build.target.as_deref(), &dir)?) } else { None };
+        let migrations = if uses_sql {
+            let c = dir.join("migrations.c");
+            fs::write(&c, migrations_c(&build.migrations)).map_err(|e| e.to_string())?;
+            Some(c)
+        } else {
+            None
+        };
         // The FFI glue (§22) declares C functions its own way, so clang's
         // idea of library builtins must stay out of it.
         let glue = match &emitted.glue {
@@ -875,6 +950,8 @@ pub fn link_native(
             cmd.arg(format!("--target={t}"));
         }
         cmd.arg("-o").arg(output).arg(&ll).arg(&runtime);
+        cmd.args(&sql);
+        cmd.args(&migrations);
         cmd.args(&glue);
         cmd.args(&build.c_sources);
         for d in &build.lib_dirs {
@@ -883,7 +960,9 @@ pub fn link_native(
         for l in &build.libs {
             cmd.arg(format!("-l{l}"));
         }
-        if !cfg!(windows) {
+        if build.target.as_deref().map_or(cfg!(windows), |t| t.contains("windows")) {
+            cmd.arg("-lws2_32");
+        } else {
             cmd.arg("-lm").arg("-pthread");
         }
         run_cc(&cc, &mut cmd)
@@ -931,53 +1010,90 @@ fn private_temp_dir() -> Result<PathBuf, String> {
 /// The runtime compiled to an object file, from the cache when possible.
 /// The cache key covers the runtime source, the compiler and the target.
 fn runtime_object(cc: &str, target: Option<&str>, scratch: &Path) -> Result<PathBuf, String> {
+    // Cleanups in the runtime run when a trapped task unwinds through it
+    // (§24.5.2); Windows doesn't unwind that way.
+    let unwind = !target.map_or(cfg!(windows), |t| t.contains("windows"));
+    let flags: &[&str] = if unwind { &["-O2", "-fexceptions"] } else { &["-O2"] };
+    cached_object("ante_rt", &[("ante_rt.c", crate::codegen::RUNTIME_C)], flags, cc, target, scratch)
+}
+
+/// SQLite with the runtime's glue for it (§29.3). Compiling it takes a while,
+/// so it is cached like the runtime.
+fn sql_object(cc: &str, target: Option<&str>, scratch: &Path) -> Result<PathBuf, String> {
+    use crate::codegen::{SQLITE_C, SQLITE_H, SQL_C};
+    const FLAGS: &[&str] = &[
+        "-O2",
+        "-DSQLITE_THREADSAFE=2",
+        "-DSQLITE_DEFAULT_MEMSTATUS=0",
+        "-DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1",
+        "-DSQLITE_DQS=0",
+        "-DSQLITE_OMIT_DEPRECATED",
+        "-DSQLITE_OMIT_LOAD_EXTENSION",
+        "-DSQLITE_OMIT_SHARED_CACHE",
+        "-DSQLITE_USE_ALLOCA",
+    ];
+    let files = [("ante_sql.c", SQL_C), ("sqlite3.c", SQLITE_C), ("sqlite3.h", SQLITE_H)];
+    cached_object("ante_sql", &files, FLAGS, cc, target, scratch)
+}
+
+/// Compiles `files[0]` (with the other files beside it) to an object, from
+/// the cache when possible. The key covers the sources, flags, compiler and
+/// target; each cache keeps the newest few objects.
+fn cached_object(
+    prefix: &str,
+    files: &[(&str, &str)],
+    flags: &[&str],
+    cc: &str,
+    target: Option<&str>,
+    scratch: &Path,
+) -> Result<PathBuf, String> {
     let version = cc_version(cc);
-    let key = fnv1a(format!("{}\0{cc}\0{version}\0{target:?}", crate::codegen::RUNTIME_C).as_bytes());
+    let mut keyed = format!("{cc}\0{version}\0{target:?}\0{}", flags.join(" "));
+    for (name, text) in files {
+        keyed.push_str(&format!("\0{name}\0{text}"));
+    }
+    let key = fnv1a(keyed.as_bytes());
     let compile = |obj: &Path| -> Result<(), String> {
-        let src = scratch.join("ante_rt.c");
-        fs::write(&src, crate::codegen::RUNTIME_C).map_err(|e| e.to_string())?;
-        let mut cmd = std::process::Command::new(cc);
-        cmd.arg("-O2").arg("-w").arg("-c");
-        // Cleanups in the runtime run when a trapped task unwinds through
-        // it (§24.5.2); Windows doesn't unwind that way.
-        if !target.map_or(cfg!(windows), |t| t.contains("windows")) {
-            cmd.arg("-fexceptions");
+        for (name, text) in files {
+            fs::write(scratch.join(name), text).map_err(|e| e.to_string())?;
         }
+        let mut cmd = std::process::Command::new(cc);
+        cmd.args(flags).arg("-w").arg("-c");
         if let Some(t) = target {
             cmd.arg(format!("--target={t}"));
         }
-        cmd.arg("-o").arg(obj).arg(&src);
+        cmd.arg("-o").arg(obj).arg(scratch.join(files[0].0));
         run_cc(cc, &mut cmd)
     };
     let Some(cache) = cache_dir() else {
-        let obj = scratch.join("ante_rt.o");
+        let obj = scratch.join(format!("{prefix}.o"));
         compile(&obj)?;
         return Ok(obj);
     };
-    let obj = cache.join(format!("ante_rt-{key:016x}.o"));
+    let obj = cache.join(format!("{prefix}-{key:016x}.o"));
     if obj.is_file() {
         return Ok(obj);
     }
-    let fresh = scratch.join("ante_rt.o");
+    let fresh = scratch.join(format!("{prefix}.o"));
     compile(&fresh)?;
     // Copy next to the final name, then rename: other builds never see half a file.
     static PARTIAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let n = PARTIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let partial = cache.join(format!("ante_rt-{key:016x}.{}-{n}.tmp", std::process::id()));
+    let partial = cache.join(format!("{prefix}-{key:016x}.{}-{n}.tmp", std::process::id()));
     if fs::create_dir_all(&cache).is_ok()
         && fs::copy(&fresh, &partial).is_ok()
         && fs::rename(&partial, &obj).is_ok()
     {
-        prune_runtime_cache(&cache);
+        prune_cache(&cache, prefix);
         return Ok(obj);
     }
     let _ = fs::remove_file(&partial);
     Ok(fresh)
 }
 
-/// Keeps the newest few cached runtimes; each `antec` or clang upgrade
-/// leaves an old one behind.
-fn prune_runtime_cache(cache: &Path) {
+/// Keeps the newest few cached objects with `prefix`; each `antec` or clang
+/// upgrade leaves an old one behind.
+fn prune_cache(cache: &Path, prefix: &str) {
     const KEEP: usize = 8;
     let Ok(entries) = fs::read_dir(cache) else { return };
     let mut objs: Vec<(std::time::SystemTime, PathBuf)> = entries
@@ -985,7 +1101,7 @@ fn prune_runtime_cache(cache: &Path) {
         .filter(|e| {
             let name = e.file_name();
             let name = name.to_string_lossy();
-            name.starts_with("ante_rt-") && name.ends_with(".o")
+            name.starts_with(&format!("{prefix}-")) && name.ends_with(".o")
         })
         .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
         .collect();

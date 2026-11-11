@@ -37,8 +37,17 @@ use crate::typeck::{AdtKind, FnId, Globals, Typeck};
 use crate::types::{Con, Ty};
 
 /// The C runtime, embedded so `antec` is a single binary.
-pub const RUNTIME_C: &str =
-    concat!(include_str!("../../runtime/ante_rt.c"), include_str!("../../runtime/ante_crypto.c"));
+pub const RUNTIME_C: &str = concat!(
+    include_str!("../../runtime/ante_rt.c"),
+    include_str!("../../runtime/ante_crypto.c"),
+    include_str!("../../runtime/ante_net.c")
+);
+
+/// SQLite and the runtime's glue for it (§29.3), compiled into their own
+/// object and linked only into programs that use `sql`.
+pub const SQL_C: &str = include_str!("../../runtime/ante_sql.c");
+pub const SQLITE_C: &str = include_str!("../../runtime/sqlite/sqlite3.c");
+pub const SQLITE_H: &str = include_str!("../../runtime/sqlite/sqlite3.h");
 
 /// Something emitted as one LLVM function.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

@@ -1,0 +1,31 @@
+# category: run-pass
+# expect-stdout: 1
+# expect-stdout: x'); DROP TABLE notes; --
+# expect-stdout: 1
+# expect-stdout: SELECT text FROM notes WHERE id = ?1 AND text = ?2
+# level: services
+# A value that looks like SQL is stored as it is: every `{…}` in `sql"…"`
+# is a bound parameter, never part of the query's text (§29.3.1).
+sql thechuko
+
+@automatic Chadhavochu
+rakam Note ante:
+    text: padham
+
+@automatic Chadhavochu
+rakam Lekka ante:
+    n: ankam
+
+modhalu() -> khali ante:
+    db ante ("sqlite::memory:" ni sql.open()).kachithanga()
+    (&"CREATE TABLE notes (id INTEGER PRIMARY KEY, text TEXT NOT NULL)" ni db.script()).kachithanga()
+    hacker ante "x'); DROP TABLE notes; --"
+    (sql"INSERT INTO notes (text) VALUES ({hacker})" ni db.run()).kachithanga() ni choopinchu()
+    id ante 1
+    q ante sql"SELECT text FROM notes WHERE id = {id} AND text = {hacker}"
+    text ante q.text().xerox()
+    note ante (q ni db.okati[Note]()).kachithanga()
+    note.kachithanga().text ni choopinchu()
+    lekka ante (sql"SELECT count(*) AS n FROM notes" ni db.okati[Lekka]()).kachithanga()
+    lekka.kachithanga().n ni choopinchu()
+    text ni choopinchu()

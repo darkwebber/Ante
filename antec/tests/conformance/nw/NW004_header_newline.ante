@@ -1,0 +1,24 @@
+# category: run-pass
+# expect-stdout: thappu(HeaderThappu{peru: x-peru})
+# expect-stdout: thappu(HeaderThappu{peru: bad
+# expect-stdout: name})
+# expect-stdout: sare(())
+# expect-stdout: undhi(Sita)
+# expect-stdout: [a=1, b=2]
+# expect-stdout: 1
+# level: services
+# A header name or value with a line break is refused, so a response can't
+# be split; names compare without case (§28.4).
+http thechuko
+
+modhalu() -> khali ante:
+    maare h ante http.Headers.kotthadhi()
+    ("x-peru" ni, "Sita\r\nSet-Cookie: evil=1" tho h.cherchu()) ni choopinchu()
+    ("bad\nname" ni, "x" tho h.cherchu()) ni choopinchu()
+    ("X-Peru" ni, "Sita" tho h.cherchu()) ni choopinchu()
+    ("x-PERU" ni h.thechu()) ni choopinchu()
+    ("Set-Cookie" ni, "a=1" tho h.cherchu()).kachithanga()
+    ("set-cookie" ni, "b=2" tho h.cherchu()).kachithanga()
+    ("SET-COOKIE" ni h.anni()) ni choopinchu()
+    "set-cookie" ni h.theesey()
+    h.enni() ni choopinchu()

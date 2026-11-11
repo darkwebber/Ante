@@ -623,7 +623,7 @@ impl<'a> Printer<'a> {
             | ExprKind::Str(_)
             | ExprKind::Char(_)
             | ExprKind::FStr(_)
-            | ExprKind::Sql(_) => self.literal(e.span),
+            | ExprKind::Sql { .. } => self.literal(e.span),
             ExprKind::Bool(true) => "avunu".into(),
             ExprKind::Bool(false) => "kaadhu".into(),
             ExprKind::Ledhu => "ledhu".into(),

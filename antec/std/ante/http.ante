@@ -1,0 +1,1016 @@
+# `http`: HTTP/1.1 requests, responses and a server (spec §28.4–28.6).
+#
+#     nadupu(r: http.Request ni) -> http.Response ante:
+#         "namaste!" ni http.Response.text() icchey
+#
+#     modhalu() -> khali ante:
+#         addr ante net.Address{host: "127.0.0.1", port: 8080}
+#         (nadupu ni, &addr tho http.serve()).kachithanga()
+#
+# The connections live in an event loop in the runtime (`ante_net.c`): it
+# reads and parses requests, enforces the limits, and writes responses in
+# batches. Each request is then handed to the handler here.
+
+json thechuko
+form thechuko
+query thechuko
+encoding thechuko
+file thechuko
+log thechuko
+memory thechuko
+net thechuko
+samayam thechuko
+task thechuko
+
+bayata "C" ante:
+    ante_http_open(
+        host: *aasajeevi ankam8,
+        hlen: ankam64,
+        port: ankam64,
+        max_conns: ankam64,
+        header_limit: ankam64,
+        body_limit: ankam64,
+        idle_ms: ankam64,
+        header_ms: ankam64,
+        reuse_port: ankam64,
+        err: *maare ankam64,
+    ) -> *maare khali
+    ante_http_port(srv: *maare khali) -> ankam64
+    ante_http_next(srv: *maare khali, out: *maare RawRequest) -> ankam64
+    ante_http_header(srv: *maare khali, i: ankam64, out: *maare RawHeader) -> khali
+    ante_http_respond(
+        srv: *maare khali,
+        conn: aasajeevi ankam64,
+        status: ankam64,
+        extra: *aasajeevi ankam8,
+        extra_len: ankam64,
+        body: *aasajeevi ankam8,
+        body_len: ankam64,
+        head_only: ankam64,
+        close: ankam64,
+    ) -> khali
+    ante_http_recover(srv: *maare khali) -> ankam64
+    ante_http_stop(srv: *maare khali) -> khali
+    ante_http_close(srv: *maare khali) -> khali
+
+# ── methods and statuses ─────────────────────────────────────────────────────
+
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki edho_okati Method ante:
+    GET
+    HEAD
+    POST
+    PUT
+    PATCH
+    DELETE
+    OPTIONS
+    # Any other method ("other").
+    Itharam(padham)
+
+Method panulu ante:
+    # The method's name as sent on the wire.
+    andhariki peru(naa: &idhi) -> padham ante:
+        naa batti:
+            Method.GET aithe:
+                "GET" icchey
+            Method.HEAD aithe:
+                "HEAD" icchey
+            Method.POST aithe:
+                "POST" icchey
+            Method.PUT aithe:
+                "PUT" icchey
+            Method.PATCH aithe:
+                "PATCH" icchey
+            Method.DELETE aithe:
+                "DELETE" icchey
+            Method.OPTIONS aithe:
+                "OPTIONS" icchey
+            Method.Itharam(m) aithe:
+                m.xerox() icchey
+
+    andhariki peru_nunchi(s: &padham ni) -> Method ante:
+        *s == "GET" aithe:
+            Method.GET icchey
+        *s == "HEAD" aithe:
+            Method.HEAD icchey
+        *s == "POST" aithe:
+            Method.POST icchey
+        *s == "PUT" aithe:
+            Method.PUT icchey
+        *s == "PATCH" aithe:
+            Method.PATCH icchey
+        *s == "DELETE" aithe:
+            Method.DELETE icchey
+        *s == "OPTIONS" aithe:
+            Method.OPTIONS icchey
+        Method.Itharam(s.xerox()) icchey
+
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki rakam Status ante:
+    andhariki code: ankam16
+
+andhariki OK: Status ante Status{code: 200}
+
+andhariki CREATED: Status ante Status{code: 201}
+
+andhariki NO_CONTENT: Status ante Status{code: 204}
+
+andhariki MOVED_PERMANENTLY: Status ante Status{code: 301}
+
+andhariki FOUND: Status ante Status{code: 302}
+
+andhariki SEE_OTHER: Status ante Status{code: 303}
+
+andhariki BAD_REQUEST: Status ante Status{code: 400}
+
+andhariki UNAUTHORIZED: Status ante Status{code: 401}
+
+andhariki FORBIDDEN: Status ante Status{code: 403}
+
+andhariki NOT_FOUND: Status ante Status{code: 404}
+
+andhariki METHOD_NOT_ALLOWED: Status ante Status{code: 405}
+
+andhariki CONFLICT: Status ante Status{code: 409}
+
+andhariki UNPROCESSABLE: Status ante Status{code: 422}
+
+andhariki TOO_MANY_REQUESTS: Status ante Status{code: 429}
+
+andhariki INTERNAL_SERVER_ERROR: Status ante Status{code: 500}
+
+andhariki SERVICE_UNAVAILABLE: Status ante Status{code: 503}
+
+# ── headers ─────────────────────────────────────────────────────────────────
+
+# A header name or value with CR, LF or NUL in it, which could split the
+# response; such headers are refused.
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki rakam HeaderThappu ante:
+    andhariki peru: padham
+
+# Header names compare without case; the order they were added is kept.
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki rakam Headers ante:
+    anni_: varusa[jatha[padham, padham]]
+
+andhariki _chinna(c: aasajeevi ankam8 ni) -> aasajeevi ankam8 ante:
+    c >= 65 && c <= 90 aithe:
+        (c + 32) icchey
+    c icchey
+
+andhariki _okate_peru(a: &padham ni, b: &padham tho) -> ato_ito ante:
+    x ante a.baitlu()
+    y ante b.baitlu()
+    x.enni() != y.enni() aithe:
+        kaadhu icchey
+    0 nunchi x.enni() lopu okko i ki:
+        (x[i] ni _chinna()) != (y[i] ni _chinna()) aithe:
+            kaadhu icchey
+    avunu icchey
+
+andhariki _surakshitham(s: &padham ni) -> ato_ito ante:
+    s.baitlu() lo okko c ki:
+        c == 13 || c == 10 || c == 0 aithe:
+            kaadhu icchey
+    avunu icchey
+
+Headers panulu ante:
+    andhariki kotthadhi() -> Headers ante:
+        Headers{anni_: []} icchey
+
+    # Adds `peru: viluva` (after any with that name).
+    andhariki cherchu(
+        naa: &maare idhi,
+        peru: padham ni,
+        viluva: padham tho,
+    ) -> sare_thappu[khali, HeaderThappu] ante:
+        !(&peru ni _surakshitham()) || !(&viluva ni _surakshitham()) || peru.enni() == 0 aithe:
+            thappu(HeaderThappu{peru: peru}) icchey
+        (peru, viluva) ni naa.anni_.cherchu()
+        sare(()) icchey
+
+    # Replaces every `peru` header with one holding `viluva` ("change").
+    andhariki maarchu(
+        naa: &maare idhi,
+        peru: padham ni,
+        viluva: padham tho,
+    ) -> sare_thappu[khali, HeaderThappu] ante:
+        peru.xerox() ni naa.theesey()
+        (peru ni, viluva tho naa.cherchu()) icchey
+
+    # Removes every `peru` header.
+    andhariki theesey(naa: &maare idhi, peru: padham ni) -> khali ante:
+        maare migatha: varusa[jatha[padham, padham]] ante []
+        paatha ante &maare naa.anni_, [] ni marpidi()
+        paatha.anni_theesuko() lo okko (k, v) ki:
+            !(&k ni, &peru tho _okate_peru()) aithe:
+                (k, v) ni migatha.cherchu()
+        naa.anni_ lo migatha pettu
+
+    # The first value of `peru`.
+    andhariki thechu(naa: &idhi, peru: padham ni) -> undochu[&padham] ante:
+        naa.anni_ lo okko e ki:
+            &e.0 ni, &peru tho _okate_peru() aithe:
+                undhi(&e.1) icchey
+        ledhu icchey
+
+    # Every value of `peru`, in order (copies: a `varusa` can't hold
+    # references).
+    andhariki anni(naa: &idhi, peru: padham ni) -> varusa[padham] ante:
+        maare out: varusa[padham] ante []
+        naa.anni_ lo okko e ki:
+            &e.0 ni, &peru tho _okate_peru() aithe:
+                e.1.xerox() ni out.cherchu()
+        out icchey
+
+    andhariki enni(naa: &idhi) -> ankam ante:
+        naa.anni_.enni() icchey
+
+    # Every header as (name, value), in order.
+    andhariki jathalu(naa: &idhi) -> &varusa[jatha[padham, padham]] ante:
+        &naa.anni_ icchey
+
+# ── URLs ────────────────────────────────────────────────────────────────────
+
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki rakam UrlThappu ante:
+    andhariki message: padham
+
+# A URL. A request's `url` has only `path` and `query` (from the request
+# line); `Url.chadhuvu` reads absolute URLs too.
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki rakam Url ante:
+    andhariki scheme: padham
+    andhariki host: padham
+    andhariki port: undochu[ankam]
+    # As sent: percent escapes are kept.
+    andhariki path: padham
+    andhariki query: padham
+    andhariki fragment: padham
+
+andhariki _byte_ekkada(
+    b: &mukka[aasajeevi ankam8] ni,
+    c: aasajeevi ankam8 tho,
+    modhalu_: ankam ki,
+) -> ankam ante:
+    modhalu_ nunchi b.enni() lopu okko i ki:
+        b[i] == c aithe:
+            i icchey
+    -1 icchey
+
+andhariki _mukka(s: &padham ni, a: ankam tho, b: ankam ki) -> padham ante:
+    a ni, b tho s.byte_mukka() batti:
+        sare(x) aithe:
+            x icchey
+        thappu(_) aithe:
+            "" icchey
+
+Url panulu ante:
+    # Reads `scheme://host[:port]/path?query#fragment`.
+    andhariki chadhuvu(s: &padham ni) -> sare_thappu[Url, UrlThappu] ante:
+        b ante s.baitlu()
+        n ante b.enni()
+        colon ante b ni, 58 tho, 0 ki _byte_ekkada()
+        colon <= 0 || colon + 2 >= n || b[colon + 1] != 47 || b[colon + 2] != 47 aithe:
+            thappu(UrlThappu{message: "`scheme://` tho modhalavvali"}) icchey
+        scheme ante s ni, 0 tho, colon ki _mukka()
+        maare i ante colon + 3
+        maare host_end ante n
+        i nunchi n lopu okko j ki:
+            b[j] == 47 || b[j] == 63 || b[j] == 35 aithe:
+                host_end lo j pettu
+                aapey
+        hostport ante s ni, i tho, host_end ki _mukka()
+        hostport.enni() == 0 aithe:
+            thappu(UrlThappu{message: "host ledhu"}) icchey
+        maare host ante hostport.xerox()
+        maare port: undochu[ankam] ante ledhu
+        hb ante hostport.baitlu()
+        maare last_colon ante -1
+        0 nunchi hb.enni() lopu okko j ki:
+            hb[j] == 58 aithe:
+                last_colon lo j pettu
+        last_colon > 0 && hb[0] != 91 || last_colon > 0 && hb[last_colon - 1] == 93 aithe:
+            p ante &hostport ni, (last_colon + 1) tho, hb.enni() ki _mukka()
+            p.ankam_ga() batti:
+                sare(v) aithe:
+                    v < 0 || v > 65535 aithe:
+                        thappu(UrlThappu{message: "port 0..65535 madhyalo undaali"}) icchey
+                    port lo undhi(v) pettu
+                thappu(_) aithe:
+                    thappu(UrlThappu{message: "port ardham kaaledhu"}) icchey
+            host lo (&hostport ni, 0 tho, last_colon ki _mukka()) pettu
+        i lo host_end pettu
+        maare frag ante ""
+        hash ante b ni, 35 tho, i ki _byte_ekkada()
+        maare end ante n
+        hash >= 0 aithe:
+            frag lo (s ni, (hash + 1) tho, n ki _mukka()) pettu
+            end lo hash pettu
+        q ante b ni, 63 tho, i ki _byte_ekkada()
+        maare path ante ""
+        maare query ante ""
+        q >= 0 && q < end aithe:
+            path lo (s ni, i tho, q ki _mukka()) pettu
+            query lo (s ni, (q + 1) tho, end ki _mukka()) pettu
+        ledhante:
+            path lo (s ni, i tho, end ki _mukka()) pettu
+        path.enni() == 0 aithe:
+            path lo "/" pettu
+        sare(Url{scheme: scheme, host: host, port: port, path: path, query: query, fragment: frag}) icchey
+
+    # Whether it is an `http` or `https` URL ("is it web?").
+    andhariki web_aa(naa: &idhi) -> ato_ito ante:
+        (naa.scheme == "http" || naa.scheme == "https") icchey
+
+    # The URL with `segment` (escaped) added to its path.
+    andhariki path_kalupu(naa: &idhi, segment: &padham ni) -> Url ante:
+        maare u ante naa.xerox()
+        esc ante segment ni encoding.url_escape()
+        u.path.baitlu().enni() > 0 && u.path.baitlu()[u.path.baitlu().enni() - 1] == 47 aithe:
+            u.path lo f"{u.path}{esc}" pettu
+        ledhante:
+            u.path lo f"{u.path}/{esc}" pettu
+        u icchey
+
+    # The URL with `k=v` (both escaped) added to its query.
+    andhariki query_cherchu(naa: &idhi, k: &padham ni, v: &padham tho) -> Url ante:
+        maare u ante naa.xerox()
+        pair ante f"{k ni encoding.url_escape()}={v ni encoding.url_escape()}"
+        u.query.enni() == 0 aithe:
+            u.query lo pair pettu
+        ledhante:
+            u.query lo f"{u.query}&{pair}" pettu
+        u icchey
+
+Url ki Choopinchochu gunam undhi:
+    padham_ga(naa: &idhi) -> padham ante:
+        maare r ante Raatha.kotthadhi()
+        naa.scheme.enni() > 0 aithe:
+            &f"{naa.scheme}://{naa.host}" ni r.raayi()
+            naa.port batti:
+                undhi(p) aithe:
+                    &f":{p}" ni r.raayi()
+                ledhu aithe:
+                    ()
+        &naa.path ni r.raayi()
+        naa.query.enni() > 0 aithe:
+            &f"?{naa.query}" ni r.raayi()
+        naa.fragment.enni() > 0 aithe:
+            &f"#{naa.fragment}" ni r.raayi()
+        r.padham_ga() icchey
+
+# ── requests and responses ──────────────────────────────────────────────────
+
+# Server limits (all may be changed). Exceeding one answers 413, 431 or 408
+# without calling the handler.
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki rakam Limits ante:
+    andhariki header_bytes: ankam
+    andhariki body_bytes: ankam
+    andhariki header_read_ms: ankam
+    andhariki idle_ms: ankam
+    andhariki connections: ankam
+
+andhariki LIMITS: Limits ante Limits{header_bytes: 16384, body_bytes: 1048576, header_read_ms: 10000, idle_ms: 60000, connections: 10000}
+
+# A request as the handler sees it.
+andhariki rakam Request ante:
+    andhariki method: Method
+    andhariki url: Url
+    andhariki headers: Headers
+    andhariki body: baitlu
+    andhariki remote: undochu[net.Address]
+    # The path's `{name}` parts, set by `Router`.
+    params_: varusa[jatha[padham, padham]]
+    # The request's number, as logs show it.
+    andhariki id: ankam
+
+Request panulu ante:
+    # A request built by hand (for tests, or a client).
+    andhariki kotthadhi(method: Method ni, path: padham tho) -> Request ante:
+        maare url ante Url{scheme: "", host: "", port: ledhu, path: path, query: "", fragment: ""}
+        maare q ante url.path.baitlu() ni, 63 tho, 0 ki _byte_ekkada()
+        q >= 0 aithe:
+            p ante &url.path
+            url.query lo (p ni, (q + 1) tho, p.baitlu().enni() ki _mukka()) pettu
+            url.path lo (p ni, 0 tho, q ki _mukka()) pettu
+        Request{method: method, url: url, headers: Headers.kotthadhi(), body: [], remote: ledhu, params_: [], id: 0} icchey
+
+    # The body as text (UTF-8).
+    andhariki text_chadhuvu(naa: &idhi) -> sare_thappu[padham, ChadhuvuThappu] ante:
+        &naa.body ni padham.baitlu_nunchi() batti:
+            sare(s) aithe:
+                sare(s) icchey
+            thappu(_) aithe:
+                thappu("body UTF-8 kaadhu" ni, ChadhuvuThappuVidham.Text tho ChadhuvuThappu.kotthadhi()) icchey
+
+    # The body as JSON, read into a `T`.
+    andhariki json_chadhuvu[T: Chadhavochu](naa: &idhi) -> sare_thappu[T, ChadhuvuThappu] ante:
+        s ante naa.text_chadhuvu()?
+        (&s ni json.chadhuvu[T]()) icchey
+
+    # The body as a form (`application/x-www-form-urlencoded`).
+    andhariki form_chadhuvu[T: Chadhavochu](naa: &idhi) -> sare_thappu[T, ChadhuvuThappu] ante:
+        s ante naa.text_chadhuvu()?
+        (&s ni form.chadhuvu[T]()) icchey
+
+    # The query string, read into a `T`.
+    andhariki query[T: Chadhavochu](naa: &idhi) -> sare_thappu[T, ChadhuvuThappu] ante:
+        (&naa.url.query ni _query_chadhuvu[T]()) icchey
+
+    # A cookie's value.
+    andhariki cookie(naa: &idhi, peru: padham ni) -> undochu[padham] ante:
+        "cookie" ni naa.headers.anni() lo okko line ki:
+            ";" ni line.vidagottu() lo okko part ki:
+                p ante part.kathirinchu()
+                b ante p.baitlu()
+                eq ante b ni, 61 tho, 0 ki _byte_ekkada()
+                eq > 0 aithe:
+                    (&p ni, 0 tho, eq ki _mukka()) == peru aithe:
+                        undhi(&p ni, (eq + 1) tho, b.enni() ki _mukka()) icchey
+        ledhu icchey
+
+    # A `{name}` part of the path matched by `Router` (percent escapes undone).
+    andhariki param(naa: &idhi, peru: padham ni) -> undochu[&padham] ante:
+        naa.params_ lo okko e ki:
+            e.0 == peru aithe:
+                undhi(&e.1) icchey
+        ledhu icchey
+
+andhariki _json_chadhuvu[T: Chadhavochu](s: &padham ni) -> sare_thappu[T, ChadhuvuThappu] ante:
+    (s ni json.chadhuvu[T]()) icchey
+
+andhariki _query_chadhuvu[T: Chadhavochu](s: &padham ni) -> sare_thappu[T, ChadhuvuThappu] ante:
+    (s ni query.chadhuvu[T]()) icchey
+
+# What the handler answers.
+andhariki rakam Response ante:
+    andhariki status: Status
+    andhariki headers: Headers
+    andhariki body: baitlu
+
+Response panulu ante:
+    # A response with `status` and an empty body.
+    andhariki kotthadhi(status: Status ni) -> Response ante:
+        Response{status: status, headers: Headers.kotthadhi(), body: []} icchey
+
+    # `text/plain` in UTF-8, status 200.
+    andhariki text(s: padham ni) -> Response ante:
+        maare h ante Headers.kotthadhi()
+        "content-type" ni, "text/plain; charset=utf-8" tho h.cherchu()
+        Response{status: OK, headers: h, body: s.baitlu_ga()} icchey
+
+    # `x` as JSON, status 200.
+    andhariki json[T: Raayochu](x: &T ni) -> Response ante:
+        maare h ante Headers.kotthadhi()
+        "content-type" ni, "application/json" tho h.cherchu()
+        Response{status: OK, headers: h, body: (x ni json.raayi()).baitlu_ga()} icchey
+
+    # A redirect to `url` (303 unless another status is given).
+    andhariki redirect(url: padham ni, status: Status tho = SEE_OTHER) -> Response ante:
+        maare h ante Headers.kotthadhi()
+        "location" ni, url tho h.cherchu()
+        Response{status: status, headers: h, body: []} icchey
+
+    # A file's contents, with a type guessed from its name.
+    andhariki file(path: &padham ni) -> Response ante:
+        path ni file.baitlu_chadhuvu() batti:
+            sare(b) aithe:
+                maare h ante Headers.kotthadhi()
+                "content-type" ni, (path ni _content_type()) tho h.cherchu()
+                Response{status: OK, headers: h, body: b} icchey
+            thappu(_) aithe:
+                maare r ante "dorakaledhu" ni Response.text()
+                r.status lo NOT_FOUND pettu
+                r icchey
+
+    # The body as text (UTF-8).
+    andhariki text_chadhuvu(naa: &idhi) -> sare_thappu[padham, ChadhuvuThappu] ante:
+        &naa.body ni padham.baitlu_nunchi() batti:
+            sare(s) aithe:
+                sare(s) icchey
+            thappu(_) aithe:
+                thappu("body UTF-8 kaadhu" ni, ChadhuvuThappuVidham.Text tho ChadhuvuThappu.kotthadhi()) icchey
+
+    # The body as JSON, read into a `T`.
+    andhariki json_chadhuvu[T: Chadhavochu](naa: &idhi) -> sare_thappu[T, ChadhuvuThappu] ante:
+        s ante naa.text_chadhuvu()?
+        (&s ni _json_chadhuvu[T]()) icchey
+
+    # The same response with another status.
+    andhariki status_tho(naa: idhi, s: Status ni) -> Response ante:
+        maare r ante naa
+        r.status lo s pettu
+        r icchey
+
+andhariki _mugisthundhaa(s: &padham ni, end: &padham tho) -> ato_ito ante:
+    a ante s.baitlu()
+    b ante end.baitlu()
+    b.enni() > a.enni() aithe:
+        kaadhu icchey
+    d ante a.enni() - b.enni()
+    0 nunchi b.enni() lopu okko i ki:
+        a[d + i] != b[i] aithe:
+            kaadhu icchey
+    avunu icchey
+
+andhariki _content_type(path: &padham ni) -> padham ante:
+    path ni, ".html" tho _mugisthundhaa() aithe:
+        "text/html; charset=utf-8" icchey
+    path ni, ".css" tho _mugisthundhaa() aithe:
+        "text/css; charset=utf-8" icchey
+    path ni, ".js" tho _mugisthundhaa() aithe:
+        "text/javascript; charset=utf-8" icchey
+    path ni, ".json" tho _mugisthundhaa() aithe:
+        "application/json" icchey
+    path ni, ".svg" tho _mugisthundhaa() aithe:
+        "image/svg+xml" icchey
+    path ni, ".png" tho _mugisthundhaa() aithe:
+        "image/png" icchey
+    (path ni, ".jpg" tho _mugisthundhaa()) || (path ni, ".jpeg" tho _mugisthundhaa()) aithe:
+        "image/jpeg" icchey
+    path ni, ".txt" tho _mugisthundhaa() aithe:
+        "text/plain; charset=utf-8" icchey
+    "application/octet-stream" icchey
+
+# ── the server ──────────────────────────────────────────────────────────────
+
+@C
+andhariki rakam RawRequest ante:
+    conn: aasajeevi ankam64
+    method: *aasajeevi ankam8
+    method_len: ankam64
+    path: *aasajeevi ankam8
+    path_len: ankam64
+    query: *aasajeevi ankam8
+    query_len: ankam64
+    headers: ankam64
+    body: *aasajeevi ankam8
+    body_len: ankam64
+    keep_alive: ankam64
+    id: ankam64
+
+@C
+andhariki rakam RawHeader ante:
+    name: *aasajeevi ankam8
+    name_len: ankam64
+    value: *aasajeevi ankam8
+    value_len: ankam64
+
+# The runtime's server, kept as an address so the task that runs its loop
+# can take it along.
+@automatic CopyKottochu, XeroxTheeyochu
+rakam Server ante:
+    addr: aasajeevi ankam64
+
+Server panulu ante:
+    p(naa: &idhi) -> *maare khali ante:
+        maare q ante _sunna() ni kolpothu_maarchu[*maare khali]()
+        naa_risk:
+            q lo (naa.addr ni kolpothu_maarchu[*maare khali]()) pettu
+        q icchey
+
+andhariki _baitlu(p: *aasajeevi ankam8 ni, n: ankam64 tho) -> baitlu ante:
+    n <= 0 aithe:
+        [] icchey
+    maare b: baitlu ante []
+    naa_risk:
+        len ante n ni kolpothu_maarchu[aasajeevi ankam]()
+        q ante p ni kolpothu_maarchu[*khali]()
+        b lo (q ni, len tho memory.baitlu_nunchi()) pettu
+    b icchey
+
+andhariki _padham(p: *aasajeevi ankam8 ni, n: ankam64 tho) -> padham ante:
+    b ante p ni, n tho _baitlu()
+    (&b ni padham.baitlu_nunchi_lossy()) icchey
+
+andhariki _sunna() -> *aasajeevi ankam8 ante:
+    maare p: *aasajeevi ankam8 ante "".baitlu().pointer()
+    p icchey
+
+# The request `raw` describes, copied out of the runtime's buffers.
+_request(srv: Server ni, raw: &RawRequest tho) -> Request ante:
+    method ante &(raw.method ni, raw.method_len tho _padham()) ni Method.peru_nunchi()
+    path ante raw.path ni, raw.path_len tho _padham()
+    q ante raw.query ni, raw.query_len tho _padham()
+    maare headers: varusa[jatha[padham, padham]] ante []
+    maare h ante RawHeader{name: _sunna(), name_len: 0, value: _sunna(), value_len: 0}
+    0 nunchi raw.headers lopu okko i ki:
+        naa_risk:
+            srv.p(), i, &maare h ante_http_header()
+        (h.name ni, h.name_len tho _padham(), (h.value ni, h.value_len tho _padham())) ni headers.cherchu()
+    url ante Url{scheme: "", host: "", port: ledhu, path: path, query: q, fragment: ""}
+    body ante raw.body ni, raw.body_len tho _baitlu()
+    Request{method: method, url: url, headers: Headers{anni_: headers}, body: body, remote: ledhu, params_: [], id: raw.id} icchey
+
+# The handler's headers as "Name: value\r\n" lines.
+andhariki _header_lines(h: &Headers ni) -> padham ante:
+    maare r ante Raatha.kotthadhi()
+    h.anni_ lo okko e ki:
+        k ante &e.0
+        # The runtime sets these itself.
+        !((k ni, &"content-length" tho _okate_peru()) || (k ni, &"date" tho _okate_peru()) || (k ni, &"connection" tho _okate_peru())) aithe:
+            k ni r.raayi()
+            &": " ni r.raayi()
+            &e.1 ni r.raayi()
+            &"\r\n" ni r.raayi()
+    r.padham_ga() icchey
+
+# Answers requests until the server stops (`avunu`), on this task.
+_loop(srv: Server ni, app: &pani[(Request ni) -> Response] tho) -> khali ante:
+    maare raw ante RawRequest{conn: 0, method: _sunna(), method_len: 0, path: _sunna(), path_len: 0, query: _sunna(), query_len: 0, headers: 0, body: _sunna(), body_len: 0, keep_alive: 1, id: 0}
+    avunu unnanthasepu:
+        maare got: ankam64 ante 0
+        naa_risk:
+            got lo (srv.p(), &maare raw ante_http_next()) pettu
+        got == 0 aithe:
+            icchey
+        maare req ante srv ni, &raw tho _request()
+        head ante req.method == Method.HEAD
+        head aithe:
+            req.method lo Method.GET pettu
+        conn ante raw.conn
+        resp ante req ni app()
+        extra ante &resp.headers ni _header_lines()
+        e ante extra.baitlu()
+        ep ante e.pointer()
+        en ante e.enni()
+        bp ante resp.body.pointer()
+        bn ante resp.body.enni()
+        code ante resp.status.code ni kolpothu_maarchu[ankam64]()
+        maare head_only: ankam64 ante 0
+        head aithe:
+            head_only lo 1 pettu
+        naa_risk:
+            srv.p(), conn, code, ep, en, bp, bn, head_only, 0 ante_http_respond()
+
+# Runs the loop as a task, so a trap in a handler ends only that task.
+_okasari(
+    j: &task.Jattu ni,
+    srv: Server tho,
+    app: &pani[(Request ni) -> Response] ki,
+) -> sare_thappu[khali, task.TaskThappu] ante:
+    t ante (() => srv ni, app tho _loop()) ni j.pampu()
+    t.aagu() icchey
+
+# Serves `app` on `addr` until the program is asked to stop (SIGTERM or
+# Ctrl-C) or this task is cancelled. A handler that traps answers 500; the
+# trap is logged with the request's number and the server keeps going.
+andhariki serve(
+    app: pani[(Request ni) -> Response] ni,
+    addr: net.Address tho,
+    limits: Limits ki = LIMITS,
+) -> sare_thappu[khali, net.NetThappu] ante:
+    hb ante addr.host.baitlu()
+    hp ante hb.pointer()
+    hn ante hb.enni()
+    maare err: ankam64 ante 0
+    maare p ante _sunna() ni kolpothu_maarchu[*maare khali]()
+    naa_risk:
+        p lo (hp, hn, addr.port, limits.connections, limits.header_bytes, limits.body_bytes, limits.idle_ms, limits.header_read_ms, 0, &maare err ante_http_open()) pettu
+    err < 0 aithe:
+        thappu(err ni net._thappu()) icchey
+    maare a: aasajeevi ankam64 ante 0
+    naa_risk:
+        a lo (p ni kolpothu_maarchu[aasajeevi ankam64]()) pettu
+    srv ante Server{addr: a}
+    avunu unnanthasepu:
+        dhorikindhi ante ((j: &task.Jattu) => j ni, srv tho, &app ki _okasari()) ni task.kalisi()
+        dhorikindhi batti:
+            sare(_) aithe:
+                aapey
+            thappu(task.TaskThappu.Cancel) aithe:
+                aapey
+            thappu(task.TaskThappu.Kompa(t)) aithe:
+                maare id: ankam64 ante 0
+                naa_risk:
+                    id lo (srv.p() ante_http_recover()) pettu
+                f"handler kompa munchindhi: {t.code} {t.message}" ni, id request ga log.error()
+    naa_risk:
+        srv.p() ante_http_close()
+    sare(()) icchey
+
+# The port a server listens on, for `serve_port` callers.
+_port(srv: Server ni) -> ankam ante:
+    maare n: ankam64 ante 0
+    naa_risk:
+        n lo (srv.p() ante_http_port()) pettu
+    n icchey
+
+# ── routing ─────────────────────────────────────────────────────────────────
+
+andhariki rakam Route ante:
+    method: Method
+    parts: varusa[padham]
+    # How many parts are literal, for "most specific first".
+    literal: ankam
+    rest: ato_ito
+    handler: pani[(Request ni) -> Response]
+
+# Matches method and path patterns: `"/users/{id}"`, `"/files/{*rest}"`.
+andhariki rakam Router ante:
+    routes: varusa[Route]
+
+andhariki _parts(path: &padham ni) -> varusa[padham] ante:
+    maare out: varusa[padham] ante []
+    "/" ni path.vidagottu() lo okko p ki:
+        p.enni() > 0 aithe:
+            p ni out.cherchu()
+    out icchey
+
+Router panulu ante:
+    andhariki kotthadhi() -> Router ante:
+        Router{routes: []} icchey
+
+    # Adds a route. Two patterns equally specific for one method trap
+    # (T05), naming both.
+    andhariki cherchu(
+        naa: &maare idhi,
+        pattern: padham ni,
+        method: Method tho,
+        handler: pani[(Request ni) -> Response] kosam,
+    ) -> khali ante:
+        parts ante &pattern ni _parts()
+        maare literal ante 0
+        maare rest ante kaadhu
+        parts lo okko p ki:
+            "{*" ni p.tho_modhalaindha() aithe:
+                rest lo avunu pettu
+            ledhante !("{" ni p.tho_modhalaindha()) aithe:
+                literal += 1
+        naa.routes lo okko r ki:
+            r.method == method && r.parts.enni() == parts.enni() && r.literal == literal && r.rest == rest aithe:
+                maare same ante avunu
+                0 nunchi parts.enni() lopu okko i ki:
+                    a ante &r.parts[i]
+                    b ante &parts[i]
+                    (!("{" ni a.tho_modhalaindha()) || !("{" ni b.tho_modhalaindha())) && *a != *b aithe:
+                        same lo kaadhu pettu
+                same aithe:
+                    f"`{method.peru()} {pattern}` route inkokadaaniki saripoyindhi" ni kompa_munigindhi()
+        Route{method: method, parts: parts, literal: literal, rest: rest, handler: handler} ni naa.routes.cherchu()
+
+    # Answers `req` with the most specific matching route: 404 if no path
+    # matches, 405 (with `allow`) if the path matches but not the method.
+    andhariki nadupu(naa: &idhi, req: Request ni) -> Response ante:
+        path ante &req.url.path ni _parts()
+        maare best ante -1
+        maare best_score ante -1
+        maare allow: varusa[padham] ante []
+        0 nunchi naa.routes.enni() lopu okko i ki:
+            r ante &naa.routes[i]
+            r ni, &path tho _saripothundhaa() aithe:
+                r.method == req.method aithe:
+                    maare score ante r.literal * 2
+                    !r.rest aithe:
+                        score += 1
+                    score > best_score aithe:
+                        best lo i pettu
+                        best_score lo score pettu
+                ledhante:
+                    r.method.peru() ni allow.cherchu()
+        best < 0 aithe:
+            allow.enni() > 0 aithe:
+                maare res ante "method ki anumathi ledhu" ni Response.text()
+                res.status lo METHOD_NOT_ALLOWED pettu
+                maare a ante Raatha.kotthadhi()
+                0 nunchi allow.enni() lopu okko i ki:
+                    i > 0 aithe:
+                        &", " ni a.raayi()
+                    &allow[i] ni a.raayi()
+                "allow" ni, a.padham_ga() tho res.headers.cherchu()
+                res icchey
+            maare res ante "dorakaledhu" ni Response.text()
+            res.status lo NOT_FOUND pettu
+            res icchey
+        r ante &naa.routes[best]
+        maare req ante req
+        0 nunchi r.parts.enni() lopu okko i ki:
+            p ante &r.parts[i]
+            "{*" ni p.tho_modhalaindha() aithe:
+                maare rest ante Raatha.kotthadhi()
+                i nunchi path.enni() lopu okko k ki:
+                    k > i aithe:
+                        &"/" ni rest.raayi()
+                    &path[k] ni rest.raayi()
+                name ante p ni, 2 tho, (p.baitlu().enni() - 1) ki _mukka()
+                (name, rest.padham_ga()) ni req.params_.cherchu()
+            ledhante "{" ni p.tho_modhalaindha() aithe:
+                name ante p ni, 1 tho, (p.baitlu().enni() - 1) ki _mukka()
+                maare v ante path[i].xerox()
+                &path[i] ni encoding.url_unescape() batti:
+                    sare(s) aithe:
+                        v lo s pettu
+                    thappu(_) aithe:
+                        ()
+                (name, v) ni req.params_.cherchu()
+        h ante &r.handler
+        (req ni h()) icchey
+
+andhariki _saripothundhaa(r: &Route ni, path: &varusa[padham] tho) -> ato_ito ante:
+    r.rest aithe:
+        path.enni() < r.parts.enni() - 1 aithe:
+            kaadhu icchey
+    ledhante path.enni() != r.parts.enni() aithe:
+        kaadhu icchey
+    0 nunchi r.parts.enni() lopu okko i ki:
+        p ante &r.parts[i]
+        "{*" ni p.tho_modhalaindha() aithe:
+            avunu icchey
+        !("{" ni p.tho_modhalaindha()) && *p != path[i] aithe:
+            kaadhu icchey
+    avunu icchey
+
+# ── the client ──────────────────────────────────────────────────────────────
+
+andhariki _slice(b: &baitlu ni, a: ankam tho, e: ankam ki) -> baitlu ante:
+    maare out: baitlu ante []
+    a nunchi e lopu okko i ki:
+        b[i] ni out.cherchu()
+    out icchey
+
+andhariki _hex(c: aasajeevi ankam8 ni) -> ankam ante:
+    c >= 48 && c <= 57 aithe:
+        ((c ni maarchu[ankam]()) - 48) icchey
+    c >= 97 && c <= 102 aithe:
+        ((c ni maarchu[ankam]()) - 87) icchey
+    c >= 65 && c <= 70 aithe:
+        ((c ni maarchu[ankam]()) - 55) icchey
+    -1 icchey
+
+# A chunked body starting at `start`, put back together.
+andhariki _chunked(raw: &baitlu ni, start: ankam tho) -> baitlu ante:
+    maare out: baitlu ante []
+    maare i ante start
+    n ante raw.enni()
+    i < n unnanthasepu:
+        maare size ante 0
+        i < n && (raw[i] ni _hex()) >= 0 unnanthasepu:
+            size lo (size * 16 + (raw[i] ni _hex())) pettu
+            i += 1
+        i < n && raw[i] != 10 unnanthasepu:
+            i += 1
+        i += 1
+        end ante i + size
+        size == 0 || end > n aithe:
+            aapey
+        i nunchi end lopu okko k ki:
+            raw[k] ni out.cherchu()
+        i lo (end + 2) pettu
+    out icchey
+
+andhariki _response_chadhuvu(raw: &baitlu ni) -> sare_thappu[Response, net.NetThappu] ante:
+    n ante raw.enni()
+    maare head_end ante -1
+    0 nunchi n - 3 lopu okko i ki:
+        raw[i] == 13 && raw[i + 1] == 10 && raw[i + 2] == 13 && raw[i + 3] == 10 aithe:
+            head_end lo i pettu
+            aapey
+    head_end < 0 aithe:
+        thappu(net.NetThappu.Os("server response ardham kaaledhu")) icchey
+    head_bytes ante raw ni, 0 tho, head_end ki _slice()
+    head ante &head_bytes ni padham.baitlu_nunchi_lossy()
+    lines ante "\r\n" ni head.vidagottu()
+    parts ante " " ni lines[0].vidagottu()
+    parts.enni() < 2 || !("HTTP/1." ni parts[0].tho_modhalaindha()) aithe:
+        thappu(net.NetThappu.Os("server response ardham kaaledhu")) icchey
+    maare code ante 0
+    parts[1].ankam_ga() batti:
+        sare(v) aithe:
+            code lo v pettu
+        thappu(_) aithe:
+            thappu(net.NetThappu.Os("server status ardham kaaledhu")) icchey
+    maare headers ante Headers.kotthadhi()
+    1 nunchi lines.enni() lopu okko i ki:
+        line ante &lines[i]
+        colon ante line.baitlu() ni, 58 tho, 0 ki _byte_ekkada()
+        colon > 0 aithe:
+            k ante line ni, 0 tho, colon ki _mukka()
+            v ante line ni, (colon + 1) tho, line.baitlu().enni() ki _mukka()
+            (k, v.kathirinchu()) ni headers.anni_.cherchu()
+    maare chunked ante kaadhu
+    "transfer-encoding" ni headers.thechu() batti:
+        undhi(v) aithe:
+            chunked lo ("chunked" ni v.lo_undha()) pettu
+        ledhu aithe:
+            ()
+    maare length ante -1
+    "content-length" ni headers.thechu() batti:
+        undhi(v) aithe:
+            v.ankam_ga() batti:
+                sare(x) aithe:
+                    length lo x pettu
+                thappu(_) aithe:
+                    ()
+        ledhu aithe:
+            ()
+    start ante head_end + 4
+    maare body: baitlu ante []
+    chunked aithe:
+        body lo (raw ni, start tho _chunked()) pettu
+    ledhante length >= 0 && start + length <= n aithe:
+        body lo (raw ni, start tho, (start + length) ki _slice()) pettu
+    ledhante:
+        body lo (raw ni, start tho, n ki _slice()) pettu
+    sare(Response{status: Status{code: code ni kolpothu_maarchu[ankam16]()}, headers: headers, body: body}) icchey
+
+# One request and its response, without following redirects.
+andhariki _okasari_pampu(req: &Request ni) -> sare_thappu[Response, net.NetThappu] ante:
+    req.url.scheme == "https" aithe:
+        thappu(net.NetThappu.Tls("https inka raaledhu (TLS M14 lo tharvatha vasthundhi)")) icchey
+    req.url.scheme != "http" aithe:
+        thappu(net.NetThappu.Os(f"`{req.url}` pampalem: `http://` URL kavali")) icchey
+    maare port ante 80
+    req.url.port batti:
+        undhi(p) aithe:
+            port lo p pettu
+        ledhu aithe:
+            ()
+    maare c ante net.Address{host: req.url.host.xerox(), port: port} ni net.connect()?
+    undhi(30 ni samayam.Kaalam.sec()) ni c.read_timeout()
+    undhi(30 ni samayam.Kaalam.sec()) ni c.write_timeout()
+    maare target ante req.url.path.xerox()
+    req.url.query.enni() > 0 aithe:
+        target lo f"{target}?{req.url.query}" pettu
+    maare host ante req.url.host.xerox()
+    port != 80 aithe:
+        host lo f"{host}:{port}" pettu
+    lines ante &req.headers ni _header_lines()
+    head ante f"{req.method.peru()} {target} HTTP/1.1\r\nhost: {host}\r\nconnection: close\r\ncontent-length: {req.body.enni()}\r\n{lines}\r\n"
+    head.baitlu() ni c.raayi()?
+    &req.body ni c.raayi()?
+    maare raw: baitlu ante []
+    avunu unnanthasepu:
+        b ante 65536 ni c.chadhuvu()?
+        b.enni() == 0 aithe:
+            aapey
+        b lo okko x ki:
+            x ni raw.cherchu()
+        raw.enni() > 16777216 aithe:
+            thappu(net.NetThappu.Limit("response 16 MiB kante pedhadhi")) icchey
+    (&raw ni _response_chadhuvu()) icchey
+
+# A request for an absolute `http://` URL.
+andhariki _url_request(
+    method: Method ni,
+    url: &padham tho,
+) -> sare_thappu[Request, net.NetThappu] ante:
+    url ni Url.chadhuvu() batti:
+        sare(u) aithe:
+            sare(Request{method: method, url: u, headers: Headers.kotthadhi(), body: [], remote: ledhu, params_: [], id: 0}) icchey
+        thappu(e) aithe:
+            thappu(net.NetThappu.Os(f"`{url}` URL ardham kaaledhu: {e.message}")) icchey
+
+# Sends `req` (its `url` must be absolute) and gives the response ("send").
+# Redirects are followed up to 10 times, never from `https` to `http`; each
+# read and write has a 30 s limit.
+andhariki pampu(req: Request ni) -> sare_thappu[Response, net.NetThappu] ante:
+    maare req ante req
+    0 nunchi 11 lopu okko _ ki:
+        res ante &req ni _okasari_pampu()?
+        code ante res.status.code
+        maare next ante ""
+        "location" ni res.headers.thechu() batti:
+            undhi(l) aithe:
+                next lo l.xerox() pettu
+            ledhu aithe:
+                ()
+        !(code == 301 || code == 302 || code == 303 || code == 307 || code == 308) || next.enni() == 0 aithe:
+            sare(res) icchey
+        "/" ni next.tho_modhalaindha() aithe:
+            q ante next.baitlu() ni, 63 tho, 0 ki _byte_ekkada()
+            q >= 0 aithe:
+                req.url.path lo (&next ni, 0 tho, q ki _mukka()) pettu
+                req.url.query lo (&next ni, (q + 1) tho, next.baitlu().enni() ki _mukka()) pettu
+            ledhante:
+                req.url.path lo next pettu
+                req.url.query lo "" pettu
+        ledhante:
+            &next ni Url.chadhuvu() batti:
+                sare(u) aithe:
+                    req.url.scheme == "https" && u.scheme == "http" aithe:
+                        thappu(net.NetThappu.Os("https nunchi http ki redirect follow avvamu")) icchey
+                    req.url lo u pettu
+                thappu(e) aithe:
+                    thappu(net.NetThappu.Os(f"redirect URL ardham kaaledhu: {e.message}")) icchey
+        code == 303 || (code == 301 || code == 302) && req.method == Method.POST aithe:
+            req.method lo Method.GET pettu
+            req.body lo [] pettu
+    thappu(net.NetThappu.Limit("10 kante ekkuva redirects")) icchey
+
+# `GET url`.
+andhariki get(url: padham ni) -> sare_thappu[Response, net.NetThappu] ante:
+    req ante Method.GET ni, &url tho _url_request()?
+    (req ni pampu()) icchey
+
+# `POST url` with `x` as a JSON body.
+andhariki post_json[T: Raayochu](
+    x: &T ni,
+    url: padham ki,
+) -> sare_thappu[Response, net.NetThappu] ante:
+    maare req ante Method.POST ni, &url tho _url_request()?
+    req.body lo (x ni json.raayi()).baitlu_ga() pettu
+    "content-type" ni, "application/json" tho req.headers.cherchu()
+    (req ni pampu()) icchey

@@ -337,7 +337,7 @@ pub fn expr(e: &Expr) -> String {
                 .collect();
             format!("(fstr {})", parts.join(" "))
         }
-        ExprKind::Sql(parts) => {
+        ExprKind::Sql { parts, .. } => {
             let parts: Vec<String> = parts
                 .iter()
                 .map(|p| match p {

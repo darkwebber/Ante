@@ -19,7 +19,8 @@
 | Beginner pass: `kuppa`/`line`/`sardina_jodi`, `antec pariksha`, native `run`, [`learn/`](../learn) | ✅ done |
 | M13 Data and security: `baitlu`, `encoding`, `Raayochu`/`Chadhavochu`, `json`/`form`/`query`, `samayam` zones, `bhadram`, `Rahasyam`, `random`, `log`, `config` (§25–27, §29.1–29.2) | ✅ done |
 | Language server `antec lsp` ([docs/TOOLING.md](../docs/TOOLING.md#language-server-antec-lsp)) | ✅ done |
-| M14–M24 | inka start avvaledhu (spec Appendix E) |
+| M14 first part: `net` (TCP), `http` (HTTP/1.1 server, router, client), `sql` (SQLite, `sql"…"`, migrations) (§28, §29.3). TLS, HTTP/2, WebSocket, SSE, SMTP, PostgreSQL inka raaledhu | 🚧 sagam |
+| M15–M24 | inka start avvaledhu (spec Appendix E) |
 
 ## Build and test
 
@@ -211,6 +212,9 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 | `lekkalu.motham` / `dot` | Floats ni 8 lanes lo kalipi, chivarlo lanes ni order lo kaluputhayi |
 | Collection elements drop order | `varusa`/arrays: modhati element nunchi chivari varaku. Records/tuples: fields reverse order lo (§19.3) |
 | Hash seeds | Fixed (deterministic) |
+| HTTP server (§28.5) | Okate event loop (Linux lo epoll, migatha chotla `poll`), handlers okkokkati ga run avthayi; oka handler wait chesthe venaka unna requests aaguthayi. Responses batch ga velthayi. Open connections limit process file limit varaku penchutham |
+| SQLite (§29.3) | SQLite 3.54.1 `antec` lone untundhi (`runtime/sqlite/`), `sql` vaade programs ki matrame link avthundhi; modhati build lo compile ayyi cache avthundhi. WAL, `synchronous = NORMAL`, foreign keys on, busy timeout 5s. Oka `Database` ki okate connection |
+| `net`, `http`, `sql` programs | Native build matrame (`--interp` lo raavu) |
 | Constant evaluation step limit | Avasaram ledhu: constants lo loops, function calls raavu (E1101), kaabatti evaluation eppudu aagipothundhi |
 | T08/T09 position | Interpreter lo position untundhi; native lo T08/T09 ki position undadhu. T15 (deadlock) ki position eppudu undadhu |
 | Lothu data (list, tree) | Drop ki limit ledhu: rendu backends lo okko step ga, stack vaadakunda. `xerox`, `==`, order, display matram recursion: interpreter lo 200,000 levels (≈100,000 list nodes) daatithe T08; native lo stack meedha aadharapadi (default 64MB ki ≈200,000 nodes varaku ok) |

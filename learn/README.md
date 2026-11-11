@@ -54,6 +54,13 @@ antec pariksha learn heap
 | [01 JSON](data/01_json.ante) | `@automatic Raayochu, Chadhavochu`, `json.raayi`/`json.chadhuvu`, thappu `daari`, extra keys enduku thappu |
 | [02 Passwords](data/02_passwords.ante) | Argon2id `password_hash`/`password_check`, salt, `Rahasyam` (`***`) |
 
+## Web: server, database
+
+| Lesson | Em nerchukuntam |
+|---|---|
+| [01 HTTP server](web/01_http_server.ante) | `http.Router`, `{peru}` paths, JSON response, 404/405, socket lekunda handler tests |
+| [02 SQLite](web/02_sqlite.ante) | `sql.open`, `sql"…"` (injection raadhu), `okati`/`anni`, transaction rollback |
+
 ## Kotha lesson raayalante
 
 - Okka file, okka idea. Paina explanation colloquial Tinglish lo: friend ki explain chesinattu.
