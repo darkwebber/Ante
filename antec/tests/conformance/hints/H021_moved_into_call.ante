@@ -1,0 +1,11 @@
+# category: compile-fail
+# expect-error: E0601 @ 11:5
+# expect-hint: `x: &padham ni`
+# level: core
+f(x: padham ni) -> khali ante:
+    x ni choopinchu()
+
+modhalu() -> khali ante:
+    a ante "hi"
+    a ni f()
+    a ni f()

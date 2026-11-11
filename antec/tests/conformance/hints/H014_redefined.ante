@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0308 @ 7:5
+# expect-hint: `x lo <kottha value> pettu`
+# level: core
+modhalu() -> khali ante:
+    x ante 5
+    x ante 6
+    x ni choopinchu()

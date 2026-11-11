@@ -9,7 +9,7 @@
 
 Simple ga cheppalante: amma ki explain chesinattu code raayochu, kaani adhi C laaga fast ga run avthundhi. 😎
 
-> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8), generics, traits and closures (M9), standard library (M10), C FFI (M11), tasks and sharing (M12), data and security (M13: JSON, form/query, encodings, time zones, crypto, `log`, `config`) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi, C libraries tho maatladathayi, anni CPU cores meedha okesaari pani chesthayi! Core 1.0 complete 🎉 DSA nerchukovadaniki [`learn/`](learn) lessons kuda start ayyayi. HTTP server, SQLite kuda vachesayi (M14 first part). Next: beginners ki easy start, install, `antec repl`, inka lessons ([roadmap](#roadmap) choodandi). 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
+> **Status:** Ippudu chaala early stage lo unnam. Spec ready, kaani compiler (`antec`) lo ippatiki lexer (M1), parser (M2), names and modules (M3), type checker (M4), MIR and interpreter (M6), native code (M7), borrow checker (M8), generics, traits and closures (M9), standard library (M10), C FFI (M11), tasks and sharing (M12), data and security (M13: JSON, form/query, encodings, time zones, crypto, `log`, `config`) ready. Ante: "Ante" programs ippudu **run avthayi**, native binaries ga kuda compile avthayi, C libraries tho maatladathayi, anni CPU cores meedha okesaari pani chesthayi! Core 1.0 complete 🎉 DSA nerchukovadaniki [`learn/`](learn) lessons kuda start ayyayi. HTTP server, SQLite kuda vachesayi (M14 first part). Ippudu P1 jaruguthondhi: Rust lekunda [install](#install), `antec new`, `antec repl`, beginner mistakes ki 💡 hints vachesayi; next lessons ([roadmap](#roadmap) choodandi). 🐣 Vocabulary inka change avvochu, breaking changes ela handle chestamo [versioning policy](docs/VERSIONING.md) lo undhi.
 
 ## "Ante" Sundharaniki! 🎬
 
@@ -116,7 +116,7 @@ Full list [spec Appendix A](spec/ante_language_spec_1_0.md#appendix-a--vocabular
 | M19 | Official website, "Ante" lone raasindhi: playground, docs, learn | 🔜 |
 | M20–M22 | `@twaraga` performance, PyTorch binding, Python bridge (numpy, pandas, Hugging Face, OpenAI…) | 🔜 |
 | M23 | Native desktop, mobile apps | 🔭 |
-| M24 | `antec repl` and Jupyter notebooks | 🔜 |
+| M24 | `antec repl` and Jupyter notebooks | 🚧 `antec repl` vachindhi, Jupyter inka |
 | Learn | Computer fundamentals, cp-algorithms lo unna algorithms anni, inka ML/DL/GenAI track: anni "Ante" lo, Tinglish explanations tho ([`learn/`](learn)) | 🚧 L1 lo 10 lessons ready |
 | Later | Self-hosting ("Ante" lo raasina `antec`) | 🔭 |
 
@@ -143,9 +143,54 @@ Mana rules (diversion avvakunda 😅):
 
 Full details kosam spec lo [Appendix E](spec/ante_language_spec_1_0.md#appendix-e--implementation-roadmap-for-antec) inka [Appendix I](spec/ante_language_spec_1_0.md#appendix-i--self-hosting-readiness) choodandi.
 
-## Build cheyyadam
+## Install
 
-Kavalsindhi: Rust 1.85 or latest ([rustup.rs](https://rustup.rs)), native binaries kosam `clang` (macOS lo Xcode tools tho vasthundhi, Linux lo `clang` package, Windows lo LLVM). Inka oka cup chai ☕ (optional, kaani recommended).
+Rust avasaram ledhu. macOS, Linux lo terminal open chesi:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/darkwebber/Ante/main/install.sh | sh
+```
+
+Windows lo PowerShell open chesi:
+
+```powershell
+irm https://raw.githubusercontent.com/darkwebber/Ante/main/install.ps1 | iex
+```
+
+Script ready-made `antec` ni [GitHub Releases](https://github.com/darkwebber/Ante/releases) nunchi theesukuni, SHA-256 check chesi, `~/.ante/bin` lo pedathundhi, PATH lo kuda add chesthundhi. Em chesthundho mundhe chadhavalante [install.sh](install.sh), [install.ps1](install.ps1) choodandi. Tharvatha kottha terminal open chesi mee modhati project:
+
+```bash
+antec new naa_project
+```
+
+```bash
+cd naa_project
+```
+
+```bash
+antec run
+```
+
+Code `src/modhalu.ante` lo undhi. Okko line try chesi ventane result choodalante `antec repl`:
+
+```text
+ante> x ante 20
+ante> x + 1
+21
+ante> x = 6
+error[E0201]: ikkada line end kavali, kaani `=` vachindhi
+  | x = 6
+  |   ^
+  = 💡 kottha peru ayithe `x ante 6`. Already unna `maare` value ni maarchaalante `x lo 6 pettu`
+```
+
+Python, JavaScript, C alavaatlu (`if x:`, `print(…)`, `x = 6`, `true`, `for i in range(…)`, text + number…) ki errors lo 💡 hint vasthundhi, "Ante" lo ela raayalo choopisthundhi.
+
+`clang` unte `antec run` native ga build chesi fast ga run chesthundhi; lekapothe interpreter lo run chesthundhi, adhi kuda ok. Native binaries (`antec build`) kosam clang kavali: macOS lo `xcode-select --install`, Linux lo `clang` package, Windows lo `winget install LLVM.LLVM`.
+
+## Source nunchi build cheyyadam
+
+"Ante" ni maarchaalante, leka ee machine ki ready-made binary lekapothe. Kavalsindhi: Rust 1.85 or latest ([rustup.rs](https://rustup.rs)), native binaries kosam `clang` (macOS lo Xcode tools tho vasthundhi, Linux lo `clang` package, Windows lo LLVM). Inka oka cup chai ☕ (optional, kaani recommended).
 
 ```bash
 git clone https://github.com/darkwebber/Ante.git
@@ -227,7 +272,7 @@ Cheyyochu! Keywords chinna, repeat ayye words. Oka week lo `aithe`, `ledhante` m
 Avunu. Program crash ayye time lo idhi kanna correct word inkokati ledhu.
 
 **Ippude production lo vaadochaa?**
-Inka ledhu boss. Programs run avthayi, native binaries kuda vasthayi, kaani words inka maarochu, bugs untayi, install cheyyadaniki ippatiki Rust kavali. Nerchukovadaniki, try cheyyadaniki super; company server ki inka kaadhu. Star ⭐ kotti watch cheyyandi, or inka better, contribute cheyyandi!
+Inka ledhu boss. Programs run avthayi, native binaries kuda vasthayi, kaani words inka maarochu, bugs untayi. Nerchukovadaniki, try cheyyadaniki super; company server ki inka kaadhu. Star ⭐ kotti watch cheyyandi, or inka better, contribute cheyyandi!
 
 **Maa ooru lo ee word vere laaga antaaru. Em cheyyali?**
 Super! [Vocabulary proposal](https://github.com/darkwebber/Ante/issues/new?template=vocabulary_proposal.yml) open cheyyandi. "Ante" words community kalisi decide chesthundhi.

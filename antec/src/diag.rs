@@ -15,15 +15,17 @@ pub struct Diagnostic {
     pub severity: Severity,
     pub span: Span,
     pub message: String,
+    /// One line showing the likely fix (`hint.rs`), under the source.
+    pub help: Option<String>,
 }
 
 impl Diagnostic {
     pub fn error(code: &'static str, span: Span, message: impl Into<String>) -> Self {
-        Diagnostic { code, severity: Severity::Error, span, message: message.into() }
+        Diagnostic { code, severity: Severity::Error, span, message: message.into(), help: None }
     }
 
     pub fn warning(code: &'static str, span: Span, message: impl Into<String>) -> Self {
-        Diagnostic { code, severity: Severity::Warning, span, message: message.into() }
+        Diagnostic { code, severity: Severity::Warning, span, message: message.into(), help: None }
     }
 
     pub fn is_error(&self) -> bool {
@@ -60,8 +62,12 @@ impl Diagnostic {
             text.push('…');
         }
         let width = width.min((end + 1).saturating_sub(col).max(1));
+        let help = match &self.help {
+            Some(h) => format!("{pad} = 💡 {h}\n"),
+            None => String::new(),
+        };
         format!(
-            "{severity}[{code}]: {message}\n{pad}--> {file}:{line}:{col}\n{pad} |\n{gutter} | {text}\n{pad} | {indent}{marks}\n",
+            "{severity}[{code}]: {message}\n{pad}--> {file}:{line}:{col}\n{pad} |\n{gutter} | {text}\n{pad} | {indent}{marks}\n{help}",
             code = self.code,
             message = self.message,
             file = src.name,

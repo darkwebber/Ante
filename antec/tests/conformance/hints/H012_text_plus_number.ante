@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0401 @ 8:13
+# expect-hint: f"{peru}{vayasu}"
+# level: core
+modhalu() -> khali ante:
+    peru ante "Ravi"
+    vayasu ante 20
+    (peru + vayasu) ni choopinchu()

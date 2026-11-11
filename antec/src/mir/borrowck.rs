@@ -749,7 +749,9 @@ impl<'a> Cx<'a> {
                 self.error(
                     "E0601",
                     span,
-                    format!("`{name}` ni already icchesav kada! (line {line} lo move ayyindhi) Malli vaadalevu; rendu chotla kavalante mundhe `.xerox()` cheyyi"),
+                    format!(
+                        "`{name}` ni already icchesav kada! (line {line} lo move ayyindhi) Malli vaadalevu"
+                    ),
                 );
             } else {
                 self.error(

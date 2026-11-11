@@ -39,6 +39,8 @@ struct Expectations {
     category: String,
     errors: Vec<String>,
     warnings: Vec<String>,
+    /// Text each expected hint contains (`expect-hint:`, roadmap P1).
+    hints: Vec<String>,
     stdout: Vec<String>,
     trap: Option<String>,
     exit: Option<i32>,
@@ -63,6 +65,7 @@ fn parse_header(text: &str) -> Expectations {
         category: String::new(),
         errors: Vec::new(),
         warnings: Vec::new(),
+        hints: Vec::new(),
         stdout: Vec::new(),
         trap: None,
         exit: None,
@@ -77,6 +80,8 @@ fn parse_header(text: &str) -> Expectations {
             e.errors.push(normalize(value));
         } else if let Some(value) = comment.strip_prefix("expect-warning:") {
             e.warnings.push(normalize(value));
+        } else if let Some(value) = comment.strip_prefix("expect-hint:") {
+            e.hints.push(value.trim().to_string());
         } else if let Some(value) = comment.strip_prefix("expect-stdout:") {
             e.stdout.push(value.strip_prefix(' ').unwrap_or(value).to_string());
         } else if let Some(value) = comment.strip_prefix("expect-trap:") {
@@ -91,6 +96,7 @@ fn parse_header(text: &str) -> Expectations {
 struct Outcome {
     errors: Vec<String>,
     warnings: Vec<String>,
+    hints: Vec<String>,
     header: String,
     run: Option<antec::interp::RunOutput>,
     /// Code generation or link errors, for cases that run natively (§22.6).
@@ -114,6 +120,7 @@ fn run_test(path: &Path) -> Outcome {
     let checked = antec::on_big_stack(|| antec::package::process(path, action)).expect("readable test");
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
+    let hints = checked.diagnostics.iter().filter_map(|(_, d)| d.help.clone()).collect();
     for (file, d) in &checked.diagnostics {
         let src = &checked.sources[*file];
         let (line, col) = src.line_col(d.span.start);
@@ -125,7 +132,7 @@ fn run_test(path: &Path) -> Outcome {
             warnings.push(entry);
         }
     }
-    Outcome { errors, warnings, header: text, run: checked.run, backend: checked.backend_errors }
+    Outcome { errors, warnings, hints, header: text, run: checked.run, backend: checked.backend_errors }
 }
 
 #[test]
@@ -173,6 +180,11 @@ fn conformance_suite() {
                 } else if matches!(category, "run-pass" | "runtime-trap") {
                     failures.push(format!("{name}: didn't run: {:?}", out.backend));
                 }
+            }
+        }
+        for wanted in &expect.hints {
+            if !out.hints.iter().any(|h| h.contains(wanted.as_str())) {
+                failures.push(format!("{name}: expected a hint with {wanted:?}, found {:?}", out.hints));
             }
         }
         for wanted in &expect.warnings {

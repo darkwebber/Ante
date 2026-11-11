@@ -877,6 +877,11 @@ fn finish(
     mir: Option<String>,
 ) -> Checked {
     diagnostics.sort_by_key(|(file, d)| (*file, d.span.start));
+    for (file, d) in &mut diagnostics {
+        if let Some(src) = sources.get(*file) {
+            crate::hint::add(d, src);
+        }
+    }
     Checked { sources, diagnostics, run, mir, built: None, backend_errors: Vec::new(), tests: Vec::new() }
 }
 

@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0201 @ 6:5
+# expect-hint: `1 nunchi 5 lopu okko i ki:`
+# level: core
+modhalu() -> khali ante:
+    for i in range(1, 5):
+        i ni choopinchu()

@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0301 @ 7:5
+# expect-hint: `peru` ani anukunnara?
+# level: core
+modhalu() -> khali ante:
+    peru ante "Ravi"
+    piru ni choopinchu()

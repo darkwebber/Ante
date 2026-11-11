@@ -30,7 +30,7 @@ Peru lo `heap` unna tests matrame:
 antec pariksha learn heap
 ```
 
-(Repo nunchi direct ga ayithe `antec` badhulu `cargo run -p antec --` raayandi.)
+(`antec` lekapothe [install](../README.md#install) cheyyandi. Repo nunchi direct ga ayithe `antec` badhulu `cargo run -p antec --` raayandi.)
 
 ## L1: numbers, searching, sorting, basic data structures
 

@@ -1,0 +1,6 @@
+# category: compile-fail
+# expect-error: E0201 @ 6:9
+# expect-hint: `x ante 5`
+# level: core
+modhalu() -> khali ante:
+    let x = 5

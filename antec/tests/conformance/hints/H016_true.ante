@@ -1,0 +1,6 @@
+# category: compile-fail
+# expect-error: E0301 @ 6:5
+# expect-hint: `avunu`
+# level: core
+modhalu() -> khali ante:
+    true ni choopinchu()

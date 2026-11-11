@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0201 @ 7:12
+# expect-hint: `x == 5 aithe:`
+# level: core
+modhalu() -> khali ante:
+    x ante 5
+    x == 5 aithe
+        "five" ni choopinchu()

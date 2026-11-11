@@ -21,6 +21,54 @@ use crate::typeck::{FnId, FnOrigin, Typeck};
 use crate::types::{Con, IntTy, Ty};
 
 pub use value::Value;
+
+/// The lines a program reads with `system.line_chadhuvu`, kept for
+/// `antec repl`: a session runs its earlier entries again for every new
+/// one, and they get the lines they read the first time instead of
+/// waiting at the keyboard again.
+pub mod input {
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
+
+    struct Log {
+        replay: VecDeque<Option<String>>,
+        read: Vec<Option<String>>,
+    }
+
+    static LOG: Mutex<Option<Log>> = Mutex::new(None);
+
+    /// Starts recording; reads take from `replay` first, then the keyboard.
+    pub fn start(replay: Vec<Option<String>>) {
+        *LOG.lock().unwrap_or_else(|e| e.into_inner()) =
+            Some(Log { replay: replay.into(), read: Vec::new() });
+    }
+
+    /// Stops recording and gives every line read since `start`, replayed
+    /// ones included (`None` for the end of input).
+    pub fn finish() -> Vec<Option<String>> {
+        LOG.lock().unwrap_or_else(|e| e.into_inner()).take().map(|l| l.read).unwrap_or_default()
+    }
+
+    /// One line from standard input, without its line ending.
+    pub(crate) fn read_line() -> Option<String> {
+        let mut log = LOG.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(l) = log.as_mut() {
+            if let Some(line) = l.replay.pop_front() {
+                l.read.push(line.clone());
+                return line;
+            }
+        }
+        let mut line = String::new();
+        let got = match std::io::stdin().read_line(&mut line) {
+            Ok(0) | Err(_) => None,
+            Ok(_) => Some(line.trim_end_matches(['\n', '\r']).to_string()),
+        };
+        if let Some(l) = log.as_mut() {
+            l.read.push(got.clone());
+        }
+        got
+    }
+}
 use value::{Addr, Closure, DeepBox, Elem, Root};
 
 /// How a run ended.
