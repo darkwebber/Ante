@@ -22,6 +22,8 @@
 | M14 first part: `net` (TCP), `http` (HTTP/1.1 server, router, client), `sql` (SQLite, `sql"…"`, migrations) (§28, §29.3). TLS, HTTP/2, WebSocket, SSE, SMTP, PostgreSQL inka raaledhu | 🚧 sagam |
 | M15–M24 | inka start avvaledhu (spec Appendix E) |
 
+M numbers perlu matrame. Ippudu pani **phases P0–P6** order lo jaruguthundhi (install + `antec repl` + hints, roju vaade language gaps, lessons, playground, Python, web), prathi phase ki oka gate: [root README](../README.md#ippudu-ee-order-lo-) inka spec Appendix E "Order of work" choodandi. Interpreter Core 1.0 varaku matrame (`net`, `http`, `sql` native lo ne); adhe `antec repl`, playground ki engine avthundhi.
+
 ## Build and test
 
 Repo root nunchi:

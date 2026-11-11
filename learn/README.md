@@ -2,7 +2,7 @@
 
 Ikkada prathi lesson oka chinna `.ante` file: paina Tinglish lo explanation, madhyalo algorithm, chivarlo `@pariksha` tests. Chadhivi, run chesi, maarchi, tests malli run cheyyandi. Algorithm ni break chesthe test ventane cheptundhi! 😄
 
-Spec lo [learning track](../spec/ante_language_spec_1_0.md#appendix-e--implementation-roadmap-for-antec) plan undhi: L0 (computer fundamentals) nunchi L9 (GenAI apps) varaku. Ippudu L1 start ayyindhi.
+Spec lo [learning track](../spec/ante_language_spec_1_0.md#appendix-e--implementation-roadmap-for-antec) plan undhi: L0 (computer fundamentals) nunchi L9 (GenAI apps) varaku. Ippudu L1 start ayyindhi. Roadmap lo lessons ki pedda place undhi (phase P3: L0–L3, sumaru 60 lessons): lesson raasthunnappudu language lo edhaina ibbandi anipisthe, adhi bug laage count avthundhi, issue open cheyyandi.
 
 ## Ela vaadali
 
