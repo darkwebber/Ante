@@ -132,6 +132,26 @@ cargo run -p antec -- pariksha learn
 
 `antec run` program ni check chesi, clang dorikithe native ga build chesi run chesthundhi: interpreter kante 10–50x fast. Clang lekapothe (leka `--interp` isthe) MIR interpreter lo run avthundhi. Output, traps rendu lo okate.
 
+## `antec new` 🐣
+
+`antec new naa_project` oka folder create chesthundhi: `ante.toml`, `src/modhalu.ante` (chinna program + oka `@pariksha` test), `.gitignore`. `cd naa_project`, `antec run`, `antec pariksha`, anthe. Folder already undi andhulo files unte emi touch cheyyadhu.
+
+## `antec repl` 💬
+
+Okko line raasi Enter kottandi, ventane result (spec §23.7.1):
+
+- `x ante 5` laanti lines gurthu untayi, tharvatha lines lo vaadochu.
+- Expression ayithe (`x * 2`) value choopisthundhi.
+- `:` tho end ayye line (function, `aithe`, loop) ki inka lines adugutundhi; khali line tho mugisthundhi.
+- Error leka trap vachina line ni vadilesthundhi, session alaage untundhi.
+- `:program` ippati varaku raasindhi motham choopisthundhi, `:save file.ante` file lo pedathundhi, `:reset`, `:q`.
+
+Interpreter lo run avthundhi (clang avasaram ledhu). Stage 0 lo prathi kottha line ki mundhu lines anni malli run avthayi, kaani output kottha line dhi matrame vasthundhi, keyboard nunchi chadhivina lines malli adagadhu. `random`, time laanti values matram malli run lo maaravochu. Package lopala run chesina package modules inka raavu.
+
+## 💡 Hints
+
+Errors kindha `= 💡` line lo fix choopisthundhi, mee code lo unna peru tho: `x = 6` ki `x ante 6`, `if x > 3:` ki `x > 3 aithe:`, `print("hi")` ki `"hi" ni choopinchu()`, `true` ki `avunu`, text + number ki f-string, moved value ki `&` tho borrow, spelling mistake ki "`peru` ani anukunnara?". `antec lsp` lo kuda message tho paatu vasthundhi. Code: `antec/src/hint.rs`; prathi hint ki `antec/tests/conformance/hints/` lo oka case (`# expect-hint:`).
+
 ## `antec fmt` ✨
 
 Code ni official style lo pedathundhi: 4 spaces indentation, operators chuttu spaces, commas tharvatha okka space, D4 kosam avasaramaina brackets (spec §6), `(a + b) icchey` laanti chadavadaniki easy brackets, okka blank line kante ekkuva undavu, top-level items madhyalo okka blank line. 100 characters kante pedda function signatures lo prathi parameter oka line lo. Literals (`0xFF`, `1_000`, escapes) ela raasaro ala ne untayi. Comments ekkada unnayo akkade untayi.
@@ -153,7 +173,6 @@ cargo run -p antec -- fmt --check examples
 | Tool | Em chesthundhi | Eppudu | Depends on |
 |---|---|---|---|
 | **Type-aware lints** | Vaadani results, naming style, `xerox()` avasaram lenichota | Next | Type checker ✅ |
-| **`antec new`** | Kotha package (`ante.toml`, `src/modhalu.ante`, oka test) okka command tho | Next | `antec pariksha` ✅ |
 | **LSP extras** | Signature help, quick fixes, semantic highlighting, inlay type hints, stdlib ki go to definition | `antec lsp` tharvatha | `antec lsp` ✅ |
 | **tree-sitter grammar** | Neovim, Helix, Zed, Emacs lo fast incremental highlighting; GitHub code navigation | Fmt tharvatha | Parser grammar (spec §5) |
 | **GitHub highlighting** | github.com lo `.ante` files ki colors | Language popular ayyaaka | [Linguist](https://github.com/github-linguist/linguist) ki PR; daaniki kanisam 200 public repos `.ante` vaadali |

@@ -1,0 +1,6 @@
+# category: compile-fail
+# expect-error: E0204 @ 6:5
+# expect-hint: `"hello" ni choopinchu()`
+# level: core
+modhalu() -> khali ante:
+    print("hello")

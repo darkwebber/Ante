@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0201 @ 6:12
+# expect-hint: `2 icchey`
+# level: core
+rendu() -> ankam ante:
+    return 2
+modhalu() -> khali ante:
+    rendu() ni choopinchu()

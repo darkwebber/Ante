@@ -336,7 +336,14 @@ impl<W: Write> Server<W> {
                 ("severity", severity.into()),
                 ("code", d.code.into()),
                 ("source", "antec".into()),
-                ("message", d.message.clone().into()),
+                (
+                    "message",
+                    match &d.help {
+                        Some(h) => format!("{}\n💡 {h}", d.message),
+                        None => d.message.clone(),
+                    }
+                    .into(),
+                ),
             ]);
             by_uri.entry(self.uri_of(path)).or_default().push(diag);
         }

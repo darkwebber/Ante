@@ -9,6 +9,8 @@ const USAGE: &str = "\
 antec: \"Ante\" compiler (stage 0) 🛠️
 
 usage:
+  antec new <peru>                kottha project folder (ante.toml, src/modhalu.ante) create cheyyi
+  antec repl                      okko line raasi ventane result choodu (`:help` lopala)
   antec run [path] [--interp] [-- args…]
                                   program ni run cheyyi (check chesi, `modhalu()` nunchi start);
                                   clang unte native ga build chesi fast ga run chesthundhi,
@@ -134,6 +136,9 @@ fn dispatch(args: &[String]) -> ExitCode {
         ["pariksha" | "test", one] if Path::new(one).exists() => pariksha(one, None),
         ["pariksha" | "test", filter] => pariksha(".", Some(filter)),
         ["pariksha" | "test", path, filter] => pariksha(path, Some(filter)),
+        ["repl"] => repl(),
+        ["new"] => usage_error("`antec new` tharvatha project peru kavali, ex: `antec new naa_project`"),
+        ["new", name] => new_project(name),
         ["lsp"] => ExitCode::from(antec::lsp::run(std::io::stdin(), std::io::stdout()) as u8),
         ["check"] => check("."),
         ["check", path] => check(path),
@@ -150,11 +155,155 @@ fn dispatch(args: &[String]) -> ExitCode {
         ["emit", what, ..] => {
             usage_error(&format!("`emit {what}` theliyadhu: tokens, ast, mir, llvm lo okati"))
         }
-        [cmd, ..] if !["check", "run", "build", "emit", "fmt", "pariksha", "test", "lsp"].contains(cmd) => {
+        [cmd, ..]
+            if !["check", "run", "build", "emit", "fmt", "pariksha", "test", "lsp", "new", "repl"]
+                .contains(cmd) =>
+        {
             usage_error(&format!("`{cmd}` ane command ledhu"))
         }
         [cmd, ..] => usage_error(&format!("`antec {cmd}` ki arguments ekkuva ayyayi")),
     }
+}
+
+const REPL_HELP: &str = "\
+Okko line raasi Enter kottandi:
+  x ante 5                 peru pettu (tharvatha lines lo kuda untundhi)
+  x * 2                    expression ayithe value choopisthundhi
+  \"hi\" ni choopinchu()     statements run avthayi
+  rendu(x: ankam ni) -> ankam ante:
+      (x * 2) icchey       `:` tho end ayithe inka lines adugutha; khali line tho mugisthundhi
+Commands:
+  :program                 ippati varaku raasina program motham choopinchu
+  :save <file.ante>        aa program ni file lo save cheyyi
+  :reset                   anni marchipoyi kotthaga start cheyyi
+  :q                       bayatiki (Ctrl-D kuda ok)";
+
+/// `antec repl` (spec §23.7.1).
+fn repl() -> ExitCode {
+    use std::io::{BufRead as _, IsTerminal as _, Write as _};
+    let interactive = std::io::stdin().is_terminal();
+    let prompt = |p: &str| {
+        if interactive {
+            out!("{p}");
+            let _ = std::io::stdout().flush();
+        }
+    };
+    if interactive {
+        outln!(
+            "\"Ante\" {} repl 🐣  okko line raasi Enter kottandi. `:help` ki help, `:q` ki bye",
+            env!("CARGO_PKG_VERSION")
+        );
+    }
+    let mut session = antec::repl::Session::new();
+    let stdin = std::io::stdin();
+    loop {
+        prompt("ante> ");
+        let mut line = String::new();
+        if stdin.lock().read_line(&mut line).unwrap_or(0) == 0 {
+            if interactive {
+                outln!("\ntata bye bye 👋");
+            }
+            return ExitCode::SUCCESS;
+        }
+        let command = line.trim();
+        match command.split_whitespace().next().unwrap_or("") {
+            ":q" | ":quit" | ":exit" | "exit" | "quit" | "tata" => return ExitCode::SUCCESS,
+            ":help" | ":h" | "help" => {
+                outln!("{REPL_HELP}");
+                continue;
+            }
+            ":reset" => {
+                session.reset();
+                outln!("🧹 kottha session");
+                continue;
+            }
+            ":program" => {
+                out!("{}", session.source());
+                continue;
+            }
+            ":save" => {
+                let Some(file) = command.split_whitespace().nth(1) else {
+                    eprintln!("`:save` tharvatha file peru kavali, ex: `:save naa_program.ante`");
+                    continue;
+                };
+                match std::fs::write(file, session.source()) {
+                    Ok(()) => outln!("💾 {file} lo save chesam. `antec run {file}` tho run cheyyochu"),
+                    Err(err) => eprintln!("error: `{file}` raayalekapoyanu ({err})"),
+                }
+                continue;
+            }
+            c if c.starts_with(':') => {
+                eprintln!("`{c}` ane command ledhu. `:help` choodandi");
+                continue;
+            }
+            _ => {}
+        }
+        // A line ending in `:` opens a block: read until an empty line.
+        let mut text = line.trim_end().to_string();
+        if text.ends_with(':') {
+            loop {
+                prompt("....> ");
+                let mut more = String::new();
+                if stdin.lock().read_line(&mut more).unwrap_or(0) == 0 || more.trim().is_empty() {
+                    break;
+                }
+                text.push('\n');
+                text.push_str(more.trim_end());
+            }
+        }
+        let reply = session.entry(&text);
+        out!("{}", reply.out);
+        let _ = std::io::stdout().flush();
+        eprint!("{}", reply.err);
+    }
+}
+
+/// `antec new`: a package folder with a first program and a test in it.
+fn new_project(name: &str) -> ExitCode {
+    let root = Path::new(name);
+    let peru = root.file_name().and_then(|n| n.to_str()).unwrap_or(name);
+    let valid = peru.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+        && peru.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    if !valid {
+        return usage_error(&format!(
+            "`{peru}` project peru ga kudharadhu: English letters, numbers, `_`, `-` matrame, modhalu letter tho"
+        ));
+    }
+    if root.exists() && std::fs::read_dir(root).map_or(true, |mut d| d.next().is_some()) {
+        eprintln!("error: `{name}` already undhi, andhulo files kuda unnayi. Vere peru try cheyyandi");
+        return ExitCode::from(2);
+    }
+    let toml =
+        format!("[package]\nname = \"{peru}\"\nversion = \"0.1.0\"\nedition = \"1.0\"\nkind = \"bin\"\n");
+    let main = "\
+# Mee modhati \"Ante\" program 🎉
+#
+# Run:   antec run
+# Test:  antec pariksha
+
+hello_cheppu(evariki: padham ni) -> padham ante:
+    f\"Hello {evariki}! 👋\" icchey
+
+modhalu() -> khali ante:
+    \"World\" ni hello_cheppu() |> choopinchu()
+
+@pariksha
+hello_pariksha() -> khali ante:
+    ((\"Ravi\" ni hello_cheppu()) == \"Hello Ravi! 👋\") nijame()
+";
+    let ignore = format!("/{peru}\n/{peru}.exe\n");
+    let written = std::fs::create_dir_all(root.join("src"))
+        .and_then(|()| std::fs::write(root.join("ante.toml"), toml))
+        .and_then(|()| std::fs::write(root.join("src").join("modhalu.ante"), main))
+        .and_then(|()| std::fs::write(root.join(".gitignore"), ignore));
+    if let Err(err) = written {
+        eprintln!("error: `{name}` create cheyyalekapoyanu ({err})");
+        return ExitCode::from(2);
+    }
+    outln!(
+        "✨ `{name}` ready!\n\n    cd {name}\n    antec run\n\nCode `src/modhalu.ante` lo undhi. Enjoy 🚀"
+    );
+    ExitCode::SUCCESS
 }
 
 fn check(path: &str) -> ExitCode {
@@ -452,6 +601,8 @@ fn emit(path: &str, what: Emit) -> ExitCode {
 
 fn report(src: &SourceFile, diags: &[Diagnostic]) -> ExitCode {
     for d in diags {
+        let mut d = d.clone();
+        antec::hint::add(&mut d, src);
         eprint!("{}", d.render(src));
     }
     summary(diags.iter().filter(|d| d.is_error()).count())

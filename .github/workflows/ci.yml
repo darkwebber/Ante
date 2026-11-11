@@ -111,11 +111,48 @@ jobs:
       - run: npm test
       - run: npm run package
 
+  # install.sh, offline: the binary this commit builds, packaged the way
+  # release.yml packages it, served from a folder, then a first project.
+  install:
+    name: install script (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - if: runner.os == 'Linux'
+        run: shellcheck install.sh
+      - run: cargo build --release -p antec
+      - name: Install from a local release folder
+        shell: bash
+        run: |
+          target="$(uname -m | sed 's/arm64/aarch64/')-$([ "$(uname -s)" = Darwin ] && echo apple-darwin || echo unknown-linux-gnu)"
+          name="antec-v0.0.0-$target"
+          dist="$RUNNER_TEMP/dist"
+          mkdir -p "$dist/$name"
+          cp target/release/antec "$dist/$name/"
+          (cd "$dist" && tar czf "$name.tar.gz" "$name" && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
+          ANTE_VERSION=v0.0.0 ANTE_DIST="file://$dist" ANTE_HOME="$RUNNER_TEMP/ante" ANTE_NO_MODIFY_PATH=1 sh install.sh
+          echo "$RUNNER_TEMP/ante/bin" >> "$GITHUB_PATH"
+      - name: First project, away from the repository
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: |
+          antec new naa_project
+          cd naa_project
+          antec run --interp | grep -q "Hello World"
+          antec pariksha
+          printf 'x ante 20\nx + 1\n' | antec repl | grep -qx 21
+
   # One required check for branch protection, so the job list can change freely.
   ci-ok:
     name: CI ok
     if: always()
-    needs: [fmt, clippy, test, msrv, sanitizers, editor]
+    needs: [fmt, clippy, test, msrv, sanitizers, editor, install]
     runs-on: ubuntu-latest
     steps:
       - run: |

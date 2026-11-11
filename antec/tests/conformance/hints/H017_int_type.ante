@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0301 @ 6:8
+# expect-hint: `ankam`
+# level: core
+modhalu() -> khali ante:
+    x: int ante 5
+    x ni choopinchu()

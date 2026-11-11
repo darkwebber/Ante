@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r20. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r21. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -1156,6 +1156,7 @@ The C standard library (and `libm`) is always linked. Bad entries are E0905. The
 
 | Command | Action |
 |---|---|
+| `antec new <name>` | create a package folder: `ante.toml`, `src/modhalu.ante` with a short program and one test. A folder that already holds files is left alone |
 | `antec build [path] [-o out] [--release]` | compile a package or file to a native executable |
 | `antec run [path] [--interp] [-- args]` | run the program; `args` become `system.args()`. Built natively when a C compiler is available, otherwise (or with `--interp`) run by the MIR interpreter; the semantics are the same |
 | `antec pariksha [path] [peru]` | build and run the tests ("exam", §23.3); `peru` keeps the tests whose name contains it; a folder without `ante.toml` has each of its files tested on its own |
@@ -1210,6 +1211,8 @@ The standard library is ordinary "Ante" source compiled together with each progr
 error[E0601]: `a` ni already `b` ki icchesav kada! Malli vaadalevu.
   --> src/modhalu.ante:4:5
 ```
+
+A diagnostic may end with a **hint**, one line that shows the likely fix written with the program's own names (`= 💡 …`). Hints aim at the mistakes beginners make most, including habits from other languages (`x = 6`, `if x > 3:`, `print("hi")`, `true`, `for i in range(…)`, adding text to a number, a value moved where a borrow was meant). Like the message, a hint's wording is not normative; Appendix C lists the cases (H series) whose hints the reference compiler must keep showing.
 
 23.5 **Editions and vocabulary evolution.**
 - `ante.toml`'s `edition` selects the edition. One compiler supports several editions, and packages of different editions link together.
@@ -3010,12 +3013,13 @@ Tests live in `tests/<category>/<id>_<name>.ante`. Expectations are written in l
 # expect-stdout: 30
 # expect-error: E0601 @ 4:5
 # expect-warning: W0001 @ 5:5
+# expect-hint: `x ante 6`
 # expect-trap: T01 @ 3:9
 # expect-exit: 101
 # level: core | services | web | torch | python
 ```
 
-A test may have several `expect-stdout` lines, which are matched in order.
+A test may have several `expect-stdout` lines, which are matched in order. An `expect-hint` line passes when some diagnostic's hint contains its text.
 
 A **package test** is a folder holding `ante.toml` and `src/`. Its expectations are the leading `#` comments of `ante.toml`, and error spans name the file: `# expect-error: E0303 @ src/modhalu.ante:1:14`. A compile-fail test passes when the expected code is reported with the expected primary span. Other errors may also be reported.
 
@@ -3326,6 +3330,36 @@ Python-level seeds name the packages they need; the suite pins them in its own `
 | DB001 | SQLite: migrate, insert, `okati`, `anni`, transaction rollback | stdout matches (services level) |
 | DB002 | `sql"…"` with an injected-looking string | stored verbatim (services level) |
 | DB003 | `sql"…"` interpolating a `pani` | E1306 (services level) |
+| H001 | `x = 6` for a new name | E0201; hint `x ante 6` |
+| H002 | `x = 6` on a `maare` name | E0201; hint `x lo 6 pettu` |
+| H003 | `if x > 3:` | E0201; hint `x > 3 aithe:` |
+| H004 | `else:` | E0201; hint `ledhante:` |
+| H005 | `elif x > 1:` | E0201; hint `ledhante x > 1 aithe:` |
+| H006 | `while i < 3:` | E0201; hint `i < 3 unnanthasepu:` |
+| H007 | `for i in range(1, 5):` | E0201; hint `1 nunchi 5 lopu okko i ki:` |
+| H008 | `for x in xs:` | E0201; hint `xs lo okko x ki:` |
+| H009 | `print("hello")` | E0204; hint `"hello" ni choopinchu()` |
+| H010 | `choopinchu("hello")` | E0204; hint `"hello" ni choopinchu()` |
+| H011 | `"hello" ni choopinchu` without `()` | E0203; hint `"hello" ni choopinchu()` |
+| H012 | text `+` number | E0401; hint `f"{peru}{vayasu}"` |
+| H013 | `x += 1` on a name that isn't `maare` | E0602; hint `maare x ante 5` |
+| H014 | `x ante 6` twice in one scope | E0308; hint `x lo <kottha value> pettu` |
+| H015 | `return 2` | E0201; hint `2 icchey` |
+| H016 | `true` | E0301; hint `avunu` |
+| H017 | `x: int` | E0301; hint `ankam` |
+| H018 | `'hello'` in single quotes | E0109; hint `"hello"` |
+| H019 | `x == 5 aithe` without `:` | E0201; hint `x == 5 aithe:` |
+| H020 | `x = 5 aithe:` | E0201; hint `x == 5 aithe:` |
+| H021 | value moved into a call, then used | E0601; hint `x: &padham ni` |
+| H022 | `b ante a`, then `a` used | E0601; hint `b ante &a` |
+| H023 | misspelled name `piru` | E0301; hint "`peru` ani anukunnara?" |
+| H024 | `x aithe:` on a number | E0403; hint `x != 0 aithe:` |
+| H025 | `ankam` times `amsam` | E0401; hint `kolpothu_maarchu[amsam]` |
+| H026 | `break` | E0301; hint `aapey` |
+| H027 | `len(xs)` | E0204; hint `xs.enni()` |
+| H028 | `input()` | E0301; hint `system.line_chadhuvu` |
+| H029 | `let x = 5` | E0201; hint `x ante 5` |
+| H030 | `def main():` | E0209; hint `modhalu() -> khali ante:` |
 | WB001 | Annex W.2 counter: SSR HTML, then click twice in `web.pariksha` | "Lekka: 2" (web level) |
 | WB002 | `sql` used in a page's `roopam` | E1401 (web level) |
 | WB003 | `@server` without a guard | E1403 (web level) |
@@ -3627,6 +3661,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r21 | `antec` 0.1.1 | No change to programs. `antec new` (§23.1); diagnostics may end with a hint (§23.4); `antec repl` is implemented (§23.7.1); conformance tests may say `expect-hint` (C.1), and seed cases H001–H030 cover the commonest beginner mistakes. |
 | r20 | `antec` 0.1.1 | No change to programs. Appendix E gains an order of work: phases P0–P6, each with a gate, put what a beginner meets first (installing, `antec repl`, diagnostics with hints, everyday language gaps, lessons, a playground) ahead of the rest of M14 and the web track; Annexes T, P and W are drafts until their phase starts; the interpreter's scope is Core 1.0. |
 | r19 | `antec` 0.1.1 | M14, first part (TCP, the HTTP/1.1 server and client, SQLite), settled while implementing it: addresses are passed by value and a listener tells its port (§28.2); header names are passed by value, `anni` gives copies, `maarchu` and `theesey`, `Request.param`, the fields of `http.Limits` (§28.4); handlers run one at a time on the server's loop (§28.5); the client speaks `http` only until TLS lands (§28.6); `SqlPettochu`, `sql.Viluva`, `db.script`, `sqlite::memory:` (§29.3.2); migrations are read in name order and hidden files are skipped (§29.3.3); `memory.baitlu_nunchi` (§21.3); seed cases NW006–NW008. TLS, HTTP/2, WebSocket, SSE, SMTP and PostgreSQL are still to come. |
 | r18 | `antec` 0.1.1 | `antec lsp`, a language server for editors (§23.1). |

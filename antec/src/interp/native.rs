@@ -1731,13 +1731,10 @@ impl Machine<'_> {
                 Ok(v) => Value::some(Value::Str(Rc::from(v))),
                 Err(_) => Value::none(),
             }),
-            "system.line_chadhuvu" => {
-                let mut line = String::new();
-                Ok(match std::io::stdin().read_line(&mut line) {
-                    Ok(0) | Err(_) => Value::none(),
-                    Ok(_) => Value::some(Value::Str(Rc::from(line.trim_end_matches(['\n', '\r'])))),
-                })
-            }
+            "system.line_chadhuvu" => Ok(match super::input::read_line() {
+                None => Value::none(),
+                Some(line) => Value::some(Value::Str(Rc::from(line))),
+            }),
             "system.flush" => {
                 self.flush();
                 Ok(Value::Unit)

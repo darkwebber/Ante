@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0201 @ 7:7
+# expect-hint: `x lo 6 pettu`
+# level: core
+modhalu() -> khali ante:
+    maare x ante 5
+    x = 6

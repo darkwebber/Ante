@@ -206,3 +206,79 @@ fn learn_lessons_pass() {
     let out = antec(&["fmt", "--check", path]);
     assert!(out.status.success(), "{}", text(&out.stdout));
 }
+
+#[test]
+fn new_makes_a_project_that_runs_and_tests() {
+    let dir = scratch("new");
+    let project = dir.join("naa_project");
+    let out = antec(&["new", project.to_str().unwrap()]);
+    assert!(out.status.success(), "stderr: {}", text(&out.stderr));
+    let out = antec(&["run", "--interp", project.to_str().unwrap()]);
+    assert_eq!(text(&out.stdout), "Hello World! 👋\n", "stderr: {}", text(&out.stderr));
+    let out = antec(&["pariksha", project.to_str().unwrap()]);
+    assert!(out.status.success(), "stdout: {}", text(&out.stdout));
+    // A folder with files in it is left alone, and the name must suit a package.
+    let out = antec(&["new", project.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2));
+    let out = antec(&["new", "9_vaddhu"]);
+    assert_eq!(out.status.code(), Some(2));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+fn repl(input: &str) -> Output {
+    use std::io::Write as _;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_antec"))
+        .arg("repl")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("antec repl runs");
+    child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn repl_keeps_bindings_and_shows_values() {
+    let out = repl(concat!(
+        "x ante 5\n",
+        "x * 2\n",
+        "rendu(n: ankam ni) -> ankam ante:\n",
+        "    (n * 2) icchey\n",
+        "\n",
+        "x ni rendu()\n",
+        "\"hi\" ni choopinchu()\n",
+        "\"a\" == \"a\"\n",
+    ));
+    assert!(out.status.success());
+    assert_eq!(text(&out.stdout), "10\n10\nhi\navunu\n", "stderr: {}", text(&out.stderr));
+}
+
+#[test]
+fn repl_drops_entries_that_fail() {
+    let out = repl(concat!(
+        "xs ante [1, 2, 3]\n",
+        "x = 6\n",
+        "xs[5]\n",
+        "\"inka undhi\" ni choopinchu()\n",
+        ":program\n",
+    ));
+    let stdout = text(&out.stdout);
+    let stderr = text(&out.stderr);
+    assert!(stderr.contains("E0201") && stderr.contains("`x ante 6`"), "{stderr}");
+    assert!(stderr.contains("index 5") && !stderr.contains("repl:"), "{stderr}");
+    assert!(stdout.starts_with("inka undhi\n"), "{stdout}");
+    assert!(!stdout.contains("xs[5]") && !stdout.contains("x = 6"), "{stdout}");
+}
+
+#[test]
+fn repl_replays_input_to_earlier_entries() {
+    let out = repl(concat!(
+        "system thechuko\n",
+        "peru ante system.line_chadhuvu()\n",
+        "Ravi\n",
+        "peru ni choopinchu()\n",
+        "\"tharvatha\" ni choopinchu()\n",
+    ));
+    assert_eq!(text(&out.stdout), "undhi(Ravi)\ntharvatha\n", "stderr: {}", text(&out.stderr));
+}

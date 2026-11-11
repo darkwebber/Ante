@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0401 @ 8:10
+# expect-hint: kolpothu_maarchu[amsam]
+# level: core
+modhalu() -> khali ante:
+    x ante 3
+    y ante 2.5
+    (x * y) ni choopinchu()

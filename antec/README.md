@@ -19,6 +19,7 @@
 | Beginner pass: `kuppa`/`line`/`sardina_jodi`, `antec pariksha`, native `run`, [`learn/`](../learn) | ✅ done |
 | M13 Data and security: `baitlu`, `encoding`, `Raayochu`/`Chadhavochu`, `json`/`form`/`query`, `samayam` zones, `bhadram`, `Rahasyam`, `random`, `log`, `config` (§25–27, §29.1–29.2) | ✅ done |
 | Language server `antec lsp` ([docs/TOOLING.md](../docs/TOOLING.md#language-server-antec-lsp)) | ✅ done |
+| P1 Five minutes lo start: `install.sh`/`install.ps1`, `antec new`, `antec repl`, errors ki 💡 hints | 🚧 code ready, gate (nijamaina beginners tho test) inka |
 | M14 first part: `net` (TCP), `http` (HTTP/1.1 server, router, client), `sql` (SQLite, `sql"…"`, migrations) (§28, §29.3). TLS, HTTP/2, WebSocket, SSE, SMTP, PostgreSQL inka raaledhu | 🚧 sagam |
 | M15–M24 | inka start avvaledhu (spec Appendix E) |
 
@@ -141,11 +142,13 @@ cargo run -p antec -- emit tokens examples/ante_sundharaniki.ante
 | `tests/native.rs` | Prathi run-pass/runtime-trap test ni native ga `-O0` lo, `--release` lo build chesi output, exit code, trap code, position compare chesthundhi |
 | `tests/fmt.rs` | `antec fmt` golden tests; repo lo prathi valid program fixed point ki format avvali |
 | `tests/fuzz.rs` | Mutation fuzzing (deterministic): e input ichhina checker, formatter panic avvakoodadhu; lothaina nesting ki E0216 |
-| `tests/cli.rs` | CLI: `--help`, unknown commands, `run -- args`, `-o` source ni overwrite cheyyakoodadhu, `[build]` settings, `fmt --check` |
+| `tests/cli.rs` | CLI: `--help`, unknown commands, `run -- args`, `-o` source ni overwrite cheyyakoodadhu, `[build]` settings, `fmt --check`, `antec new`, `antec repl` |
 | `std/*.ante` | Standard library signatures, "Ante" lone raasinavi (prelude, `lekkalu`, `file`, `system`, `samayam`, `memory`, `task`, `bhadram`) |
 | `src/lint.rs` | Warnings (W0001 unused binding, W0002 unnecessary `maare`, W0003 unreachable code, W0005 unused import); errors lenappudu matrame |
 | `src/package.rs` | `ante.toml` + `src/` packages, module discovery, entry point (`modhalu`) check |
-| `src/main.rs` | `antec` CLI |
+| `src/main.rs` | `antec` CLI (`antec new`, `antec repl` loop kuda) |
+| `src/hint.rs` | Beginner mistakes ki 💡 hints: diagnostic code + aa source line chusi fix raasthundhi (`x = 6` → `x ante 6`) |
+| `src/repl.rs` | `antec repl` session: imports, declarations, statements okate program ga; prathi entry check chesi interpreter lo run, kottha output matrame |
 | `src/lsp/mod.rs` | `antec lsp`: LSP server (stdin/stdout, `Content-Length` frames), open files, debounce tho re-check, diagnostics, hover / definition / references / rename / completion / formatting |
 | `src/lsp/index.rs` | Prathi check tharvatha resolver, type checker tables nunchi editor kosam index: prathi peru ae definition ki, prathi expression type, scope lo locals, prathi type members |
 | `src/lsp/pos.rs` | Byte offsets ↔ LSP positions (line + UTF-16 column; Telugu letter 1 unit, emoji 2) |
@@ -241,6 +244,7 @@ Ivi bugs kaavu, kaani telisi undali:
 - **Chaala tasks okesaari wait chesthe:** anni okate condition variable meedha wait chesthayi, kaabatti prathi wake-up anni tasks ni leputhundhi. Vandala tasks ok; velalo block ayithe slow (2,000 tasks ki ≈15s).
 - **Deadlock:** anni tasks time limit lekunda wait chesthunte program hang avvadhu, T15 tho aagipothundhi (§24.4). Okati input kosam leka C code lo block ayithe adhi wait kaadhu, program alaage untundhi.
 - **Windows:** task trap ayinappudu values drop avthayi (MSVC `longjmp` unwinding, cleanup funclets tho). MinGW lo inka ledhu. Sort comparator lo trap ayithe runtime sort buffer Windows lo leak avthundhi.
+- **`antec repl` malli run chesthundhi:** prathi kottha line ki mundhu lines anni malli run avthayi (output kottha line dhi matrame). Keyboard input replay avthundhi, kaani `random`/time values maaravochu, chaala pedda session slow avthundhi.
 - **`antec emit … | head`:** output madhyalo pipe close ayina panic avvadhu, migatha output vadilesthundhi.
 
 ## Gurthu pettukovalsinavi

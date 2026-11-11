@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0403 @ 7:5
+# expect-hint: `x != 0 aithe:`
+# level: core
+modhalu() -> khali ante:
+    x ante 5
+    x aithe:
+        "a" ni choopinchu()

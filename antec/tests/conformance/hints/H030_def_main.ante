@@ -1,0 +1,6 @@
+# category: compile-fail
+# expect-error: E0209 @ 5:1
+# expect-hint: `modhalu() -> khali ante:`
+# level: core
+def main():
+    print("hi")

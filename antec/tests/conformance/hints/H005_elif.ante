@@ -1,0 +1,10 @@
+# category: compile-fail
+# expect-error: E0201 @ 9:5
+# expect-hint: `ledhante x > 1 aithe:`
+# level: core
+modhalu() -> khali ante:
+    x ante 5
+    x > 3 aithe:
+        "a" ni choopinchu()
+    elif x > 1:
+        "b" ni choopinchu()

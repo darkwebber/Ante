@@ -1,0 +1,8 @@
+# category: compile-fail
+# expect-error: E0301 @ 8:9
+# expect-hint: `aapey`
+# level: core
+modhalu() -> khali ante:
+    maare i ante 0
+    i < 3 unnanthasepu:
+        break

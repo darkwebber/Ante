@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0204 @ 7:12
+# expect-hint: `xs.enni()`
+# level: core
+modhalu() -> khali ante:
+    xs ante [1, 2]
+    n ante len(xs)
