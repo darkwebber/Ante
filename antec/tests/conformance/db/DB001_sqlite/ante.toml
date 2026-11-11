@@ -1,0 +1,18 @@
+# category: run-pass
+# expect-stdout: 2
+# expect-stdout: 0
+# expect-stdout: undhi(User{id: 1, peru: Sita, active: avunu, email: ledhu})
+# expect-stdout: ledhu
+# expect-stdout: [Ram, Sita]
+# expect-stdout: thappu(SqlThappu{code: 0, message: vaddhu})
+# expect-stdout: 2
+# expect-stdout: sare(3)
+# expect-stdout: 3
+# expect-stdout: thappu(SqlThappu{code: 19, message: UNIQUE constraint failed: users.peru})
+# level: services
+# SQLite: migrations, insert, `okati`, `anni`, and a transaction that rolls
+# back (§29.3).
+[package]
+name = "db001"
+version = "0.1.0"
+edition = "1.0"

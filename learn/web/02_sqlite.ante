@@ -1,0 +1,103 @@
+# Web.02 · Database: data ni gurthu pettukovadam 🗄️
+#
+# Program aagipothe variables anni pothayi. Users, posts, orders laantivi
+# malli start chesina tharvatha kuda undali ante database kavali. SQLite
+# "Ante" tho paatu vasthundhi: install cheyyalsina pani ledhu, database
+# antha okka file.
+#
+# - `"sqlite:app.db" ni sql.open()` file ni open chesthundhi (lekapothe
+#   create). Ikkada tests kosam `sqlite::memory:` vaadutham: memory lone
+#   untundhi, program aagithe pothundhi.
+# - `sql"…"` lo query raasthaam. `{peru}` ani pedithe aa value query text
+#   lo kalavadhu; "bound parameter" ga velthundhi. Ante user
+#   `'; DROP TABLE users; --` ani type chesina adhi peru gaane store
+#   avthundhi. SQL injection ane bug ikkada raaneradhu! 🛡️
+# - `q ni db.run()`: rows maarche queries (INSERT, UPDATE, DELETE).
+# - `q ni db.okati[T]()`: okka row (`undochu[T]`). `q ni db.anni[T]()`: anni.
+#   `T` fields perlu columns perlu okate undali.
+# - `f ni db.transaction()`: `f` lo anni queries kalisi jarugutayi leka
+#   asalu jaragavu. Dabbulu transfer lo "theeseyadam ayyindhi, veyyadam
+#   avvaledhu" ane paristhithi raakunda.
+#
+# Run:   antec run learn/web/02_sqlite.ante
+# Test:  antec pariksha learn/web/02_sqlite.ante
+
+sql thechuko
+
+@automatic Chadhavochu, Polchochu, Choopinchochu
+rakam Khaata ante:
+    id: ankam
+    peru: padham
+    balance: ankam
+
+# Kotha database, rendu khaatalu tho.
+bank() -> sql.Database ante:
+    db ante ("sqlite::memory:" ni sql.open()).kachithanga()
+    (&"CREATE TABLE khaatalu (id INTEGER PRIMARY KEY, peru TEXT NOT NULL, balance INTEGER NOT NULL CHECK (balance >= 0))" ni db.script()).kachithanga()
+    [("Sita", 500), ("Ram", 100)] lo okko (peru, balance) ki:
+        (sql"INSERT INTO khaatalu (peru, balance) VALUES ({peru}, {balance})" ni db.run()).kachithanga()
+    db icchey
+
+khaata(db: &sql.Database ni, peru: padham tho) -> undochu[Khaata] ante:
+    (sql"SELECT id, peru, balance FROM khaatalu WHERE peru = {peru}" ni db.okati[Khaata]()).kachithanga() icchey
+
+# `evari` nunchi `evariki` ki `entha` pampisthundhi. Rendu UPDATEs oke
+# transaction lo: okati fail ayithe rendu venakki velthayi.
+pampu(
+    db: &sql.Database ni,
+    evari: padham tho,
+    evariki: padham ki,
+    entha: ankam batti,
+) -> sare_thappu[khali, sql.SqlThappu] ante:
+    (((tx: &maare sql.Transaction) => tx ni, &evari tho, &evariki ki, entha batti rendu_updates()) ni db.transaction()) icchey
+
+rendu_updates(
+    tx: &maare sql.Transaction ni,
+    evari: &padham tho,
+    evariki: &padham ki,
+    entha: ankam batti,
+) -> sare_thappu[khali, sql.SqlThappu] ante:
+    sql"UPDATE khaatalu SET balance = balance + {entha} WHERE peru = {evariki}" ni tx.run()?
+    # Balance chaalakapothe CHECK constraint ikkada thappu isthundhi.
+    sql"UPDATE khaatalu SET balance = balance - {entha} WHERE peru = {evari}" ni tx.run()?
+    sare(()) icchey
+
+modhalu() -> khali ante:
+    db ante bank()
+    (&db ni, "Sita" tho, "Ram" ki, 200 batti pampu()) ni choopinchu()
+    (&db ni, "Sita" tho khaata()) ni choopinchu()
+    (&db ni, "Ram" tho khaata()) ni choopinchu()
+    # Ram daggara antha ledhu: emi maaradhu.
+    (&db ni, "Ram" tho, "Sita" ki, 5000 batti pampu()) ni choopinchu()
+    (&db ni, "Ram" tho khaata()) ni choopinchu()
+
+@pariksha
+pampithe_rendu_maarutayi() -> khali ante:
+    db ante bank()
+    (&db ni, "Sita" tho, "Ram" ki, 200 batti pampu()).kachithanga()
+    ((&db ni, "Sita" tho khaata()).kachithanga().balance == 300) nijame()
+    ((&db ni, "Ram" tho khaata()).kachithanga().balance == 300) nijame()
+
+@pariksha
+chaalakapothe_emi_maaradhu() -> khali ante:
+    db ante bank()
+    r ante &db ni, "Ram" tho, "Sita" ki, 5000 batti pampu()
+    (r != sare(())) nijame()
+    # Sita ki vesina 5000 kuda venakki vellindhi.
+    ((&db ni, "Sita" tho khaata()).kachithanga().balance == 500) nijame()
+    ((&db ni, "Ram" tho khaata()).kachithanga().balance == 100) nijame()
+
+@pariksha
+injection_panicheyyadhu() -> khali ante:
+    db ante bank()
+    dongodu ante "x'); DROP TABLE khaatalu; --"
+    (sql"INSERT INTO khaatalu (peru, balance) VALUES ({dongodu}, {0})" ni db.run()).kachithanga()
+    # Table inka undhi, aa peru unnadhi unnattu store ayyindhi.
+    k ante (&db ni, dongodu.xerox() tho khaata()).kachithanga()
+    (k.peru == dongodu) nijame()
+    ((&db ni, "Sita" tho khaata()) != ledhu) nijame()
+
+@pariksha
+leni_khaata_ledhu() -> khali ante:
+    db ante bank()
+    ((&db ni, "Lakshman" tho khaata()) == ledhu) nijame()

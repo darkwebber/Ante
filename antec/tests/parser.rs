@@ -445,7 +445,11 @@ fn planned_features_are_e1202() {
         let file = SourceFile::new("t.ante", src);
         antec::check_source(&file).iter().map(|d| d.code).collect()
     };
-    assert_eq!(check("modhalu() -> khali ante:\n    x ante 1\n    q ante sql\"{x}\"\n"), ["E1202"]);
+    // `sql"…"` works since M14 (§29.3.1); it needs the `sql` module.
+    assert_eq!(check("modhalu() -> khali ante:\n    x ante 1\n    q ante sql\"{x}\"\n"), ["E0301"]);
+    assert!(
+        check("sql thechuko\n\nmodhalu() -> khali ante:\n    x ante 1\n    _q ante sql\"{x}\"\n").is_empty()
+    );
     assert_eq!(check("rakam U ante:\n    @daari \"a\"\n    id: ankam\n"), ["E1202"]);
     // The data tree's field annotations work since M13 (§25.2.3).
     assert!(check("rakam U ante:\n    @peru \"a\"\n    id: ankam\n").is_empty());

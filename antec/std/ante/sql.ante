@@ -1,0 +1,540 @@
+# `sql`: databases and safe queries (spec §29.3).
+#
+#     db ante "sqlite:app.db" ni sql.open()?
+#     sql"INSERT INTO users (peru) VALUES ({peru})" ni db.run()?
+#     user ante sql"SELECT id, peru FROM users WHERE id = {id}" ni db.okati[User]()?
+#
+# Every `{…}` in a `sql"…"` literal becomes a bound parameter, never text in
+# the query, so values can't change what the query does. SQLite is built
+# into the runtime (`runtime/ante_sql.c`); statements are prepared once per
+# text and reused.
+
+bhadram thechuko
+encoding thechuko
+memory thechuko
+samayam thechuko
+
+bayata "C" ante:
+    ante_sql_error(out: *maare aasajeevi ankam8, cap: ankam64) -> ankam64
+    ante_sql_open(path: *aasajeevi ankam8, n: ankam64, err: *maare ankam64) -> *maare khali
+    ante_sql_close(db: *maare khali) -> khali
+    ante_sql_lock(db: *maare khali) -> khali
+    ante_sql_unlock(db: *maare khali) -> khali
+    ante_sql_prepare(
+        db: *maare khali,
+        text: *aasajeevi ankam8,
+        n: ankam64,
+        err: *maare ankam64,
+    ) -> *maare khali
+    ante_sql_params(st: *maare khali) -> ankam64
+    ante_sql_bind_null(st: *maare khali, i: ankam64) -> ankam64
+    ante_sql_bind_int(st: *maare khali, i: ankam64, v: ankam64) -> ankam64
+    ante_sql_bind_float(st: *maare khali, i: ankam64, v: amsam64) -> ankam64
+    ante_sql_bind_text(st: *maare khali, i: ankam64, p: *aasajeevi ankam8, n: ankam64) -> ankam64
+    ante_sql_bind_blob(st: *maare khali, i: ankam64, p: *aasajeevi ankam8, n: ankam64) -> ankam64
+    ante_sql_step(db: *maare khali, st: *maare khali) -> ankam64
+    ante_sql_reset(st: *maare khali) -> khali
+    ante_sql_columns(st: *maare khali) -> ankam64
+    ante_sql_column_type(st: *maare khali, i: ankam64) -> ankam64
+    ante_sql_column_name(st: *maare khali, i: ankam64, n: *maare ankam64) -> *aasajeevi ankam8
+    ante_sql_column_int(st: *maare khali, i: ankam64) -> ankam64
+    ante_sql_column_float(st: *maare khali, i: ankam64) -> amsam64
+    ante_sql_column_text(st: *maare khali, i: ankam64, n: *maare ankam64) -> *aasajeevi ankam8
+    ante_sql_column_blob(st: *maare khali, i: ankam64, n: *maare ankam64) -> *aasajeevi ankam8
+    ante_sql_changes(db: *maare khali) -> ankam64
+    ante_sql_exec(db: *maare khali, text: *aasajeevi ankam8, n: ankam64) -> ankam64
+    ante_sql_migrations() -> ankam64
+    ante_sql_migration_name(i: ankam64, n: *maare ankam64) -> *aasajeevi ankam8
+    ante_sql_migration_text(i: ankam64, n: *maare ankam64) -> *aasajeevi ankam8
+
+# What went wrong: SQLite's result code (0 when it didn't come from SQLite)
+# and its message.
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki rakam SqlThappu ante:
+    andhariki code: ankam
+    andhariki message: padham
+
+# A value bound to a query parameter ("value").
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki edho_okati Viluva ante:
+    Null
+    Ankam(ankam)
+    Amsam(amsam)
+    Padham(padham)
+    Baitlu(baitlu)
+
+# Types whose values can go into a `sql"…"` literal ("can put in SQL").
+andhariki gunam SqlPettochu ante:
+    sql_viluva(naa: &idhi) -> Viluva
+
+ankam ki SqlPettochu gunam undhi:
+    sql_viluva(naa: &idhi) -> Viluva ante:
+        Viluva.Ankam(*naa) icchey
+
+ankam32 ki SqlPettochu gunam undhi:
+    sql_viluva(naa: &idhi) -> Viluva ante:
+        Viluva.Ankam(*naa ni maarchu[ankam]()) icchey
+
+amsam ki SqlPettochu gunam undhi:
+    sql_viluva(naa: &idhi) -> Viluva ante:
+        Viluva.Amsam(*naa) icchey
+
+padham ki SqlPettochu gunam undhi:
+    sql_viluva(naa: &idhi) -> Viluva ante:
+        Viluva.Padham(naa.xerox()) icchey
+
+baitlu ki SqlPettochu gunam undhi:
+    sql_viluva(naa: &idhi) -> Viluva ante:
+        Viluva.Baitlu(naa.xerox()) icchey
+
+ato_ito ki SqlPettochu gunam undhi:
+    sql_viluva(naa: &idhi) -> Viluva ante:
+        *naa aithe:
+            Viluva.Ankam(1) icchey
+        Viluva.Ankam(0) icchey
+
+[T: SqlPettochu] undochu[T] ki SqlPettochu gunam undhi:
+    sql_viluva(naa: &idhi) -> Viluva ante:
+        naa batti:
+            undhi(x) aithe:
+                x.sql_viluva() icchey
+            ledhu aithe:
+                Viluva.Null icchey
+
+samayam.Gadiyaram ki SqlPettochu gunam undhi:
+    sql_viluva(naa: &idhi) -> Viluva ante:
+        Viluva.Padham(naa.rfc3339()) icchey
+
+Viluva ki SqlPettochu gunam undhi:
+    sql_viluva(naa: &idhi) -> Viluva ante:
+        naa.xerox() icchey
+
+# A query and its parameters, as a `sql"…"` literal builds it. There is no
+# way to turn a `padham` into one in safe code.
+@automatic XeroxTheeyochu, Polchochu, Choopinchochu
+andhariki rakam Query ante:
+    text: padham
+    params: varusa[Viluva]
+
+Query panulu ante:
+    # The query's text, with `?1`, `?2`, … where the values go.
+    andhariki text(naa: &idhi) -> &padham ante:
+        &naa.text icchey
+
+    andhariki params(naa: &idhi) -> &varusa[Viluva] ante:
+        &naa.params icchey
+
+# What a `sql"…"` literal turns into.
+andhariki _query(text: padham ni, params: varusa[Viluva] tho) -> Query ante:
+    Query{text: text, params: params} icchey
+
+andhariki _viluva[T: SqlPettochu](x: &T ni) -> Viluva ante:
+    x.sql_viluva() icchey
+
+andhariki _sunna() -> *aasajeevi ankam8 ante:
+    maare p: *aasajeevi ankam8 ante "".baitlu().pointer()
+    p icchey
+
+andhariki _bytes(p: *aasajeevi ankam8 ni, n: ankam64 tho) -> baitlu ante:
+    n <= 0 aithe:
+        [] icchey
+    maare b: baitlu ante []
+    naa_risk:
+        len ante n ni kolpothu_maarchu[aasajeevi ankam]()
+        q ante p ni kolpothu_maarchu[*khali]()
+        b lo (q ni, len tho memory.baitlu_nunchi()) pettu
+    b icchey
+
+andhariki _text(p: *aasajeevi ankam8 ni, n: ankam64 tho) -> padham ante:
+    b ante p ni, n tho _bytes()
+    (&b ni padham.baitlu_nunchi_lossy()) icchey
+
+andhariki _thappu(code: ankam64 ni) -> SqlThappu ante:
+    maare b: baitlu ante []
+    naa_risk:
+        buf ante 512 ni, 1 tho memory.allocate()
+        out ante buf ni kolpothu_maarchu[*maare aasajeevi ankam8]()
+        n ante out, 512 ante_sql_error()
+        len ante n ni kolpothu_maarchu[aasajeevi ankam]()
+        b lo (buf ni, len tho memory.baitlu_nunchi()) pettu
+        buf ni, 512 tho, 1 tho memory.release()
+    SqlThappu{code: -code ni maarchu[ankam](), message: (&b ni padham.baitlu_nunchi_lossy())} icchey
+
+andhariki _addr(p: *maare khali ni) -> aasajeevi ankam64 ante:
+    maare a: aasajeevi ankam64 ante 0
+    naa_risk:
+        a lo (p ni kolpothu_maarchu[aasajeevi ankam64]()) pettu
+    a icchey
+
+andhariki _ptr(a: aasajeevi ankam64 ni) -> *maare khali ante:
+    maare q ante _sunna() ni kolpothu_maarchu[*maare khali]()
+    naa_risk:
+        q lo (a ni kolpothu_maarchu[*maare khali]()) pettu
+    q icchey
+
+# Holds the database's lock until it is dropped, even if a trap unwinds.
+rakam Pattu ante:
+    db: aasajeevi ankam64
+
+Pattu ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        p ante naa.db ni _ptr()
+        naa_risk:
+            p ante_sql_unlock()
+
+_pattu(db: aasajeevi ankam64 ni) -> Pattu ante:
+    p ante db ni _ptr()
+    naa_risk:
+        p ante_sql_lock()
+    Pattu{db: db} icchey
+
+# Prepares `q` and binds its values; the lock must be held.
+andhariki _prepare(
+    db: aasajeevi ankam64 ni,
+    q: &Query tho,
+) -> sare_thappu[*maare khali, SqlThappu] ante:
+    h ante db ni _ptr()
+    t ante q.text.baitlu()
+    tp ante t.pointer()
+    tn ante t.enni()
+    maare err: ankam64 ante 0
+    maare st ante _sunna() ni kolpothu_maarchu[*maare khali]()
+    naa_risk:
+        st lo (h, tp, tn, &maare err ante_sql_prepare()) pettu
+    err < 0 aithe:
+        thappu(err ni _thappu()) icchey
+    maare want: ankam64 ante 0
+    naa_risk:
+        want lo (st ante_sql_params()) pettu
+    want != q.params.enni() aithe:
+        thappu(SqlThappu{code: 0, message: f"query ki {want} values kavali, {q.params.enni()} ichharu"}) icchey
+    0 nunchi q.params.enni() lopu okko i ki:
+        k ante i + 1
+        &q.params[i] batti:
+            Viluva.Null aithe:
+                naa_risk:
+                    st, k ante_sql_bind_null()
+            Viluva.Ankam(v) aithe:
+                naa_risk:
+                    st, k, v ante_sql_bind_int()
+            Viluva.Amsam(v) aithe:
+                naa_risk:
+                    st, k, v ante_sql_bind_float()
+            Viluva.Padham(s) aithe:
+                b ante s.baitlu()
+                bp ante b.pointer()
+                bn ante b.enni()
+                naa_risk:
+                    st, k, bp, bn ante_sql_bind_text()
+            Viluva.Baitlu(b) aithe:
+                bp ante b.pointer()
+                bn ante b.enni()
+                naa_risk:
+                    st, k, bp, bn ante_sql_bind_blob()
+    sare(st) icchey
+
+# The current row as a data tree: column names to values.
+andhariki _row(st: *maare khali ni) -> DataChettu ante:
+    maare n: ankam64 ante 0
+    naa_risk:
+        n lo (st ante_sql_columns()) pettu
+    maare out: varusa[jatha[padham, DataChettu]] ante []
+    0 nunchi n lopu okko i ki:
+        maare len: ankam64 ante 0
+        maare kind: ankam64 ante 0
+        maare np ante _sunna()
+        naa_risk:
+            np lo (st, i, &maare len ante_sql_column_name()) pettu
+            kind lo (st, i ante_sql_column_type()) pettu
+        peru ante np ni, len tho _text()
+        maare v ante DataChettu.Null
+        kind == 1 aithe:
+            maare x: ankam64 ante 0
+            naa_risk:
+                x lo (st, i ante_sql_column_int()) pettu
+            v lo DataChettu.Ankam(x) pettu
+        ledhante kind == 6 aithe:
+            maare x: ankam64 ante 0
+            naa_risk:
+                x lo (st, i ante_sql_column_int()) pettu
+            v lo DataChettu.Bool(x != 0) pettu
+        ledhante kind == 2 aithe:
+            maare x: amsam64 ante 0.0
+            naa_risk:
+                x lo (st, i ante_sql_column_float()) pettu
+            v lo DataChettu.Amsam(x) pettu
+        ledhante kind == 3 aithe:
+            maare tp ante _sunna()
+            naa_risk:
+                tp lo (st, i, &maare len ante_sql_column_text()) pettu
+            v lo DataChettu.Padham(tp ni, len tho _text()) pettu
+        ledhante kind == 4 aithe:
+            maare bp ante _sunna()
+            naa_risk:
+                bp lo (st, i, &maare len ante_sql_column_blob()) pettu
+            v lo DataChettu.Baitlu(bp ni, len tho _bytes()) pettu
+        (peru, v) ni out.cherchu()
+    DataChettu.Jodi(out) icchey
+
+andhariki _chadhuvu[T: Chadhavochu](t: DataChettu ni) -> sare_thappu[T, SqlThappu] ante:
+    t ni DataChettu.chadhuvu[T]() batti:
+        sare(x) aithe:
+            sare(x) icchey
+        thappu(e) aithe:
+            thappu(SqlThappu{code: 0, message: f"row chadhavalekapoyam: {e}"}) icchey
+
+andhariki _run(db: aasajeevi ankam64 ni, q: Query tho) -> sare_thappu[ankam, SqlThappu] ante:
+    _lock ante db ni _pattu()
+    st ante db ni, &q tho _prepare()?
+    h ante db ni _ptr()
+    maare r: ankam64 ante 1
+    r == 1 unnanthasepu:
+        naa_risk:
+            r lo (h, st ante_sql_step()) pettu
+    naa_risk:
+        st ante_sql_reset()
+    r < 0 aithe:
+        thappu(r ni _thappu()) icchey
+    maare n: ankam64 ante 0
+    naa_risk:
+        n lo (h ante_sql_changes()) pettu
+    sare(n) icchey
+
+andhariki _anni[T: Chadhavochu](
+    db: aasajeevi ankam64 ni,
+    q: Query tho,
+    okati_: ato_ito ki,
+) -> sare_thappu[varusa[T], SqlThappu] ante:
+    _lock ante db ni _pattu()
+    st ante db ni, &q tho _prepare()?
+    h ante db ni _ptr()
+    maare out: varusa[T] ante []
+    maare r: ankam64 ante 0
+    avunu unnanthasepu:
+        naa_risk:
+            r lo (h, st ante_sql_step()) pettu
+        r != 1 aithe:
+            aapey
+        row ante st ni _row()
+        row ni _chadhuvu[T]() batti:
+            sare(x) aithe:
+                x ni out.cherchu()
+            thappu(e) aithe:
+                naa_risk:
+                    st ante_sql_reset()
+                thappu(e) icchey
+        okati_ aithe:
+            aapey
+    naa_risk:
+        st ante_sql_reset()
+    r < 0 aithe:
+        thappu(r ni _thappu()) icchey
+    sare(out) icchey
+
+andhariki _exec(db: aasajeevi ankam64 ni, text: &padham tho) -> sare_thappu[khali, SqlThappu] ante:
+    h ante db ni _ptr()
+    t ante text.baitlu()
+    tp ante t.pointer()
+    tn ante t.enni()
+    maare r: ankam64 ante 0
+    naa_risk:
+        r lo (h, tp, tn ante_sql_exec()) pettu
+    r < 0 aithe:
+        thappu(r ni _thappu()) icchey
+    sare(()) icchey
+
+# The first column of the first row as text, if there is a row.
+andhariki _okka_padham(
+    db: aasajeevi ankam64 ni,
+    q: Query tho,
+) -> sare_thappu[undochu[padham], SqlThappu] ante:
+    st ante db ni, &q tho _prepare()?
+    h ante db ni _ptr()
+    maare r: ankam64 ante 0
+    maare out: undochu[padham] ante ledhu
+    naa_risk:
+        r lo (h, st ante_sql_step()) pettu
+    r == 1 aithe:
+        maare len: ankam64 ante 0
+        maare tp ante _sunna()
+        naa_risk:
+            tp lo (st, 0, &maare len ante_sql_column_text()) pettu
+        out lo undhi(tp ni, len tho _text()) pettu
+    naa_risk:
+        st ante_sql_reset()
+    r < 0 aithe:
+        thappu(r ni _thappu()) icchey
+    sare(out) icchey
+
+# Applies migration `i` unless it is recorded; `avunu` if it ran.
+andhariki _migrate_okati(
+    db: aasajeevi ankam64 ni,
+    i: ankam64 tho,
+) -> sare_thappu[ato_ito, SqlThappu] ante:
+    maare len: ankam64 ante 0
+    maare np ante _sunna()
+    naa_risk:
+        np lo (i, &maare len ante_sql_migration_name()) pettu
+    peru ante np ni, len tho _text()
+    maare tp ante _sunna()
+    naa_risk:
+        tp lo (i, &maare len ante_sql_migration_text()) pettu
+    text ante tp ni, len tho _text()
+    hash ante text.baitlu() ni bhadram.sha256() |> encoding.hex()
+    find ante Query{text: "SELECT sha256 FROM ante_migrations WHERE peru = ?1", params: [Viluva.Padham(peru.xerox())]}
+    db ni, find tho _okka_padham()? batti:
+        undhi(old) aithe:
+            old != hash aithe:
+                thappu(SqlThappu{code: 0, message: f"`migrations/{peru}` apply chesaka maarindhi. Paatha file ni maarchakandi, kotha migration raayandi"}) icchey
+            sare(kaadhu) icchey
+        ledhu aithe:
+            ()
+    db ni, &"BEGIN IMMEDIATE" tho _exec()?
+    record ante Query{text: "INSERT INTO ante_migrations (peru, sha256) VALUES (?1, ?2)", params: [Viluva.Padham(peru.xerox()), Viluva.Padham(hash)]}
+    maare result ante db ni, &text tho _exec()
+    result batti:
+        sare(_) aithe:
+            db ni, record tho _run() batti:
+                sare(_) aithe:
+                    result lo (db ni, &"COMMIT" tho _exec()) pettu
+                thappu(e) aithe:
+                    result lo thappu(e) pettu
+        thappu(_) aithe:
+            ()
+    result batti:
+        sare(_) aithe:
+            sare(avunu) icchey
+        thappu(e) aithe:
+            db ni, &"ROLLBACK" tho _exec() batti:
+                sare(_) aithe:
+                    ()
+                thappu(_) aithe:
+                    ()
+            thappu(SqlThappu{code: e.code, message: f"`migrations/{peru}`: {e.message}"}) icchey
+
+# A database connection. Share it by reference: every use takes its lock.
+andhariki rakam Database ante:
+    h: aasajeevi ankam64
+
+Database ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        p ante naa.h ni _ptr()
+        naa_risk:
+            p ante_sql_close()
+
+Database panulu ante:
+    # Runs a query that returns no rows; the number of rows it changed.
+    andhariki run(naa: &idhi, q: Query ni) -> sare_thappu[ankam, SqlThappu] ante:
+        (naa.h ni, q tho _run()) icchey
+
+    # The first row, if there is one ("one").
+    andhariki okati[T: Chadhavochu](
+        naa: &idhi,
+        q: Query ni,
+    ) -> sare_thappu[undochu[T], SqlThappu] ante:
+        maare rows ante naa.h ni, q tho, avunu ki _anni[T]()?
+        sare(rows.theesey()) icchey
+
+    # Every row ("all").
+    andhariki anni[T: Chadhavochu](
+        naa: &idhi,
+        q: Query ni,
+    ) -> sare_thappu[varusa[T], SqlThappu] ante:
+        (naa.h ni, q tho, kaadhu ki _anni[T]()) icchey
+
+    # Runs a batch of statements without parameters (setting up tables).
+    andhariki script(naa: &idhi, text: &padham ni) -> sare_thappu[khali, SqlThappu] ante:
+        _lock ante naa.h ni _pattu()
+        (naa.h ni, text tho _exec()) icchey
+
+    # Applies the package's `migrations/NNNN_name.sql` files that this
+    # database hasn't seen, in name order, each in its own transaction; how
+    # many ran. Fails if a file changed after it was applied.
+    andhariki migrate(naa: &idhi) -> sare_thappu[ankam, SqlThappu] ante:
+        _lock ante naa.h ni _pattu()
+        naa.h ni, &"CREATE TABLE IF NOT EXISTS ante_migrations (peru TEXT PRIMARY KEY, sha256 TEXT NOT NULL, eppudu TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)" tho _exec()?
+        maare count: ankam64 ante 0
+        naa_risk:
+            count lo ante_sql_migrations() pettu
+        maare ran ante 0
+        0 nunchi count lopu okko i ki:
+            naa.h ni, i tho _migrate_okati()? aithe:
+                ran += 1
+        sare(ran) icchey
+
+    # Runs `f` in a transaction: it commits if `f` returns `sare`, and rolls
+    # back if it returns `thappu` or traps.
+    andhariki transaction[R](
+        naa: &idhi,
+        f: pani[(&maare Transaction ni) -> sare_thappu[R, SqlThappu]] ni,
+    ) -> sare_thappu[R, SqlThappu] ante:
+        _lock ante naa.h ni _pattu()
+        naa.h ni, &"BEGIN IMMEDIATE" tho _exec()?
+        maare tx ante Transaction{h: naa.h, mugisindhi: kaadhu}
+        r ante &maare tx ni f()
+        r batti:
+            sare(_) aithe:
+                naa.h ni, &"COMMIT" tho _exec() batti:
+                    sare(_) aithe:
+                        tx.mugisindhi lo avunu pettu
+                    thappu(e) aithe:
+                        thappu(e) icchey
+            thappu(_) aithe:
+                ()
+        r icchey
+
+# The queries of one transaction (see `Database.transaction`).
+andhariki rakam Transaction ante:
+    h: aasajeevi ankam64
+    # Committed: nothing to roll back ("finished").
+    mugisindhi: ato_ito
+
+Transaction ki Sardhukochu gunam undhi:
+    sardhu(naa: &maare idhi) -> khali ante:
+        !naa.mugisindhi aithe:
+            naa.h ni, &"ROLLBACK" tho _exec() batti:
+                sare(_) aithe:
+                    ()
+                thappu(_) aithe:
+                    ()
+
+Transaction panulu ante:
+    andhariki run(naa: &idhi, q: Query ni) -> sare_thappu[ankam, SqlThappu] ante:
+        (naa.h ni, q tho _run()) icchey
+
+    andhariki okati[T: Chadhavochu](
+        naa: &idhi,
+        q: Query ni,
+    ) -> sare_thappu[undochu[T], SqlThappu] ante:
+        maare rows ante naa.h ni, q tho, avunu ki _anni[T]()?
+        sare(rows.theesey()) icchey
+
+    andhariki anni[T: Chadhavochu](
+        naa: &idhi,
+        q: Query ni,
+    ) -> sare_thappu[varusa[T], SqlThappu] ante:
+        (naa.h ni, q tho, kaadhu ki _anni[T]()) icchey
+
+# Opens a database: `sqlite:path/to/file.db` (WAL mode, foreign keys on).
+andhariki open(url: &padham ni) -> sare_thappu[Database, SqlThappu] ante:
+    !("sqlite:" ni url.tho_modhalaindha()) aithe:
+        "postgres:" ni url.tho_modhalaindha() aithe:
+            thappu(SqlThappu{code: 0, message: "PostgreSQL inka raaledhu (M14 lo tharvatha); `sqlite:` vaadandi"}) icchey
+        thappu(SqlThappu{code: 0, message: f"`{url}` ardham kaaledhu: `sqlite:path` ani raayandi"}) icchey
+    b ante url.baitlu()
+    maare path ante ""
+    7 ni, b.enni() tho url.byte_mukka() batti:
+        sare(p) aithe:
+            path lo p pettu
+        thappu(_) aithe:
+            ()
+    pb ante path.baitlu()
+    pp ante pb.pointer()
+    pn ante pb.enni()
+    maare err: ankam64 ante 0
+    maare h ante _sunna() ni kolpothu_maarchu[*maare khali]()
+    naa_risk:
+        h lo (pp, pn, &maare err ante_sql_open()) pettu
+    err < 0 aithe:
+        thappu(err ni _thappu()) icchey
+    sare(Database{h: h ni _addr()}) icchey

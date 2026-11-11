@@ -1,0 +1,5 @@
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    peru TEXT NOT NULL UNIQUE,
+    active BOOLEAN NOT NULL DEFAULT 1
+);

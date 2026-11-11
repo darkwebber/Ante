@@ -1833,6 +1833,11 @@ pub(super) fn std_call(
             ));
             (r, ret)
         }
+        "memory.baitlu_nunchi" => {
+            let out = fx.alloca("%vec");
+            fx.emit(format!("call void @ante_bytes_copy(ptr {out}, ptr {}, i64 {})", v(0), v(1)));
+            (fx.load("%vec", &out), ret)
+        }
         "memory.copy" => {
             fx.emit(format!(
                 "call void @llvm.memmove.p0.p0.i64(ptr {}, ptr {}, i64 {}, i1 false)",

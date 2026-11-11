@@ -29,7 +29,14 @@ pub const ANTE_MODULES: &[(&str, &str)] = &[
     ("log", include_str!("../std/ante/log.ante")),
     ("config", include_str!("../std/ante/config.ante")),
     ("random", include_str!("../std/ante/random.ante")),
+    ("net", include_str!("../std/ante/net.ante")),
+    ("http", include_str!("../std/ante/http.ante")),
+    ("sql", include_str!("../std/ante/sql.ante")),
 ];
+
+/// Standard modules written in "Ante" over the runtime's C functions
+/// (sockets, SQLite): programs that use them are built natively (§22.6).
+pub const NATIVE_ANTE_MODULES: &[&str] = &["<ante>/net", "<ante>/http", "<ante>/sql"];
 
 /// Parts of the prelude written in "Ante" (`prelude/<part>` above) that a
 /// program compiles only when its text mentions one of their words, so small
@@ -287,7 +294,7 @@ pub const STD_MODULES: &[StdModule] = &[
     },
     StdModule {
         name: "memory",
-        values: &["allocate", "release", "reallocate", "copy", "sunna_cheyyi"],
+        values: &["allocate", "release", "reallocate", "copy", "sunna_cheyyi", "baitlu_nunchi"],
         types: &[],
         open: false,
     },
@@ -332,6 +339,9 @@ pub const STD_MODULES: &[StdModule] = &[
         open: false,
     },
     StdModule { name: "random", values: &[], types: &[], open: false },
+    StdModule { name: "net", values: &[], types: &[], open: false },
+    StdModule { name: "http", values: &[], types: &[], open: false },
+    StdModule { name: "sql", values: &[], types: &[], open: false },
     StdModule { name: "log", values: &[], types: &[], open: false },
     StdModule { name: "config", values: &[], types: &[], open: false },
     StdModule { name: "torch", values: &[], types: &[], open: true },

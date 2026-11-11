@@ -1032,7 +1032,7 @@ impl<'a, 'p> Builder<'a, 'p> {
                 let c = float_const(text, &ty);
                 self.assign(dest, Rvalue::Use(Operand::Const(c)));
             }
-            ExprKind::Sql(_) => self.unsupported("sql", dest, e.span),
+            ExprKind::Sql { call, .. } => self.lower_into(call, dest),
             ExprKind::FStr(parts) => {
                 let mut texts = vec![String::new()];
                 let mut tys = Vec::new();

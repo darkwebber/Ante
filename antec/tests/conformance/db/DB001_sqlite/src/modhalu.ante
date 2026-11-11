@@ -1,0 +1,49 @@
+sql thechuko
+
+@automatic Chadhavochu, Choopinchochu
+rakam User ante:
+    id: ankam
+    peru: padham
+    active: ato_ito
+    email: undochu[padham]
+
+@automatic Chadhavochu
+rakam Lekka ante:
+    n: ankam
+
+enni(db: &sql.Database ni) -> ankam ante:
+    row ante (sql"SELECT count(*) AS n FROM users" ni db.okati[Lekka]()).kachithanga()
+    row.kachithanga().n icchey
+
+# Adds a user, then fails: the insert must not stay.
+vaddhu(tx: &maare sql.Transaction ni) -> sare_thappu[ankam, sql.SqlThappu] ante:
+    peru ante "Lakshman"
+    (sql"INSERT INTO users (peru) VALUES ({peru})" ni tx.run())?
+    thappu(sql.SqlThappu{code: 0, message: "vaddhu"}) icchey
+
+kavali(tx: &maare sql.Transaction ni) -> sare_thappu[ankam, sql.SqlThappu] ante:
+    peru ante "Lakshman"
+    (sql"INSERT INTO users (peru) VALUES ({peru})" ni tx.run())?
+    row ante (sql"SELECT count(*) AS n FROM users" ni tx.okati[Lekka]())?
+    sare(row.kachithanga().n) icchey
+
+modhalu() -> khali ante:
+    db ante ("sqlite::memory:" ni sql.open()).kachithanga()
+    db.migrate().kachithanga() ni choopinchu()
+    db.migrate().kachithanga() ni choopinchu()
+    ["Sita", "Ram"] lo okko peru ki:
+        (sql"INSERT INTO users (peru) VALUES ({peru})" ni db.run()).kachithanga()
+    id ante 1
+    (sql"SELECT id, peru, active, email FROM users WHERE id = {id}" ni db.okati[User]()).kachithanga() ni choopinchu()
+    (sql"SELECT id, peru, active, email FROM users WHERE id = {99}" ni db.okati[User]()).kachithanga() ni choopinchu()
+    anni ante (sql"SELECT id, peru, active, email FROM users ORDER BY peru" ni db.anni[User]()).kachithanga()
+    maare perlu: varusa[padham] ante []
+    anni lo okko u ki:
+        u.peru.xerox() ni perlu.cherchu()
+    perlu ni choopinchu()
+    (vaddhu ni db.transaction()) ni choopinchu()
+    &db ni enni() |> choopinchu()
+    (kavali ni db.transaction()) ni choopinchu()
+    &db ni enni() |> choopinchu()
+    peru ante "Sita"
+    (sql"INSERT INTO users (peru) VALUES ({peru})" ni db.run()) ni choopinchu()

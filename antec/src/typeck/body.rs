@@ -710,18 +710,23 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                 }
                 Ty::Str
             }
-            ExprKind::Sql(parts) => {
-                for part in parts {
-                    if let FStrPart::Expr(x) = part {
-                        self.check_expr(x, None);
+            ExprKind::Sql { parts, call } => {
+                // A value with no SQL mapping is E1306 (§29.3.2), reported at
+                // the value (the call's own span for it is the closing brace).
+                let before = self.obligations.len();
+                let ty = self.check_expr(call, None);
+                for i in before..self.obligations.len() {
+                    if self.trait_name(self.obligations[i].1.def) == "SqlPettochu" {
+                        let at = self.obligations[i].2.start;
+                        let value = parts.iter().find_map(|p| match p {
+                            FStrPart::Expr(x) if x.span.end == at => Some(x.span),
+                            _ => None,
+                        });
+                        self.obligations[i].2 = value.unwrap_or(self.obligations[i].2);
+                        self.obligations[i].3 = "E1306";
                     }
                 }
-                self.error(
-                    "E1202",
-                    e.span,
-                    "`sql\"…\"` spec lo undhi (§29.3.1) kaani `antec` lo inka raaledhu (M14)",
-                );
-                Ty::Error
+                ty
             }
             ExprKind::Ledhu => {
                 let inner = match &expected {
@@ -1726,6 +1731,8 @@ impl<'s, 'g> BodyCx<'s, 'g> {
                 let name = self.trait_name(tr.def);
                 let mut msg = if code == "E0407" {
                     format!("`{shown}` ki ee operator ledhu (`{name}` gunam kavali)")
+                } else if code == "E1306" {
+                    format!("`{shown}` ni SQL lo pettalem: number, `padham`, `baitlu`, `ato_ito`, `Gadiyaram`, leka vaati `undochu` matrame")
                 } else {
                     format!("`{shown}` ki `{name}` gunam ledhu")
                 };

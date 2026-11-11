@@ -1,0 +1,106 @@
+# Web.01 · Mana modhati web server 🌐
+#
+# Browser lo `http://localhost:8080/namaste/Sita` kodithe evaro okaru
+# "Namaste Sita!" ani reply ivvali. Aa "evaro" ae server: request vasthe
+# chadhivi, response pampe program.
+#
+# "Ante" lo server ante oka function anthe:
+#
+#     Request theesukuni -> Response icchedhi
+#
+# - `http.Router` ki "ee path ki ee function" ani chepthaam. Path lo
+#   `{peru}` ante "ikkada edaina raavochu, daani peru `peru`".
+# - `"peru" ni r.param()` tho aa bhaagam theesukuntam.
+# - `x ni http.Response.json()` mana `rakam` ni JSON ga pampisthundhi
+#   (`@automatic Raayochu` unte chaalu).
+# - Evaru adagani path ki router ae 404 isthundhi; path undi kaani method
+#   thappu ayithe 405.
+#
+# Handler lo kompa munigithe (trap) server padipodhu: aa okka request ki
+# 500 velthundhi, migathavi nadusthune untayi.
+#
+# Tests lo socket avasaram ledhu! Handler mamulu function kaabatti
+# `http.Request.kotthadhi` tho request thayaaru chesi direct ga pilusthaam.
+#
+# Run:   antec run learn/web/01_http_server.ante   (Ctrl-C tho aapandi)
+#        curl http://localhost:8080/namaste/Sita
+# Test:  antec pariksha learn/web/01_http_server.ante
+
+http thechuko
+net thechuko
+
+@automatic Raayochu, Chadhavochu, Polchochu, Choopinchochu
+rakam Palakarimpu ante:
+    message: padham
+    aksharaalu: ankam
+
+home(r: http.Request ni) -> http.Response ante:
+    ("Ante server nadusthondhi 🚀" ni http.Response.text()) icchey
+
+namaste(r: http.Request ni) -> http.Response ante:
+    peru ante ("peru" ni r.param()).kachithanga()
+    p ante Palakarimpu{message: f"Namaste {peru}!", aksharaalu: peru.enni()}
+    (&p ni http.Response.json()) icchey
+
+# Body lo vachina JSON ni chadhivi, venakki pampisthundhi. JSON sariga
+# lekapothe 400 (adhi client thappu, mana thappu kaadhu).
+echo(r: http.Request ni) -> http.Response ante:
+    r.json_chadhuvu[Palakarimpu]() batti:
+        sare(p) aithe:
+            res ante &p ni http.Response.json()
+            (http.CREATED ni res.status_tho()) icchey
+        thappu(e) aithe:
+            bad ante f"JSON sariga ledhu: {e}" ni http.Response.text()
+            (http.BAD_REQUEST ni bad.status_tho()) icchey
+
+routes() -> http.Router ante:
+    maare r ante http.Router.kotthadhi()
+    "/" ni, http.Method.GET tho, home kosam r.cherchu()
+    "/namaste/{peru}" ni, http.Method.GET tho, namaste kosam r.cherchu()
+    "/echo" ni, http.Method.POST tho, echo kosam r.cherchu()
+    r icchey
+
+modhalu() -> khali ante:
+    r ante routes()
+    "http://localhost:8080 lo vinthunnam 👂 (Ctrl-C tho aapandi)" ni choopinchu()
+    ((q: http.Request) => q ni r.nadupu()) ni, net.Address{host: "127.0.0.1", port: 8080} tho http.serve() batti:
+        sare(_) aithe:
+            "Server aagindhi. Bye! 👋" ni choopinchu()
+        thappu(e) aithe:
+            f"Server start avvaledhu: {e}" ni choopinchu()
+
+@pariksha
+namaste_json() -> khali ante:
+    r ante routes()
+    res ante (http.Method.GET ni, "/namaste/Sita" tho http.Request.kotthadhi()) ni r.nadupu()
+    (res.status == http.OK) nijame()
+    p ante res.json_chadhuvu[Palakarimpu]().kachithanga()
+    (p == Palakarimpu{message: "Namaste Sita!", aksharaalu: 4}) nijame()
+
+@pariksha
+teliyani_path_404() -> khali ante:
+    r ante routes()
+    res ante (http.Method.GET ni, "/ekkadiki" tho http.Request.kotthadhi()) ni r.nadupu()
+    (res.status == http.NOT_FOUND) nijame()
+
+@pariksha
+thappu_method_405() -> khali ante:
+    r ante routes()
+    res ante (http.Method.POST ni, "/namaste/Sita" tho http.Request.kotthadhi()) ni r.nadupu()
+    (res.status == http.METHOD_NOT_ALLOWED) nijame()
+
+@pariksha
+echo_json() -> khali ante:
+    r ante routes()
+    maare req ante http.Method.POST ni, "/echo" tho http.Request.kotthadhi()
+    req.body lo "{\"message\":\"hi\",\"aksharaalu\":2}".baitlu_ga() pettu
+    res ante req ni r.nadupu()
+    (res.status == http.CREATED) nijame()
+
+@pariksha
+chedda_json_400() -> khali ante:
+    r ante routes()
+    maare req ante http.Method.POST ni, "/echo" tho http.Request.kotthadhi()
+    req.body lo "{oops".baitlu_ga() pettu
+    res ante req ni r.nadupu()
+    (res.status == http.BAD_REQUEST) nijame()

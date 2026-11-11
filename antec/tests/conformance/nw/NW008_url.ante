@@ -1,0 +1,24 @@
+# category: run-pass
+# expect-stdout: https example.com undhi(8443) /a/b x=1&y=2 top
+# expect-stdout: http localhost ledhu /  avunu
+# expect-stdout: thappu(UrlThappu{message: `scheme://` tho modhalavvali})
+# expect-stdout: thappu(UrlThappu{message: port 0..65535 madhyalo undaali})
+# expect-stdout: http://localhost/files/naa%20file.txt?q=a%26b
+# expect-stdout: kaadhu
+# level: services
+# `http.Url`: reading a URL's parts, and building one, which always escapes
+# (§28.4).
+http thechuko
+
+modhalu() -> khali ante:
+    u ante (&"https://example.com:8443/a/b?x=1&y=2#top" ni http.Url.chadhuvu()).kachithanga()
+    f"{u.scheme} {u.host} {u.port} {u.path} {u.query} {u.fragment}" ni choopinchu()
+    v ante (&"http://localhost" ni http.Url.chadhuvu()).kachithanga()
+    f"{v.scheme} {v.host} {v.port} {v.path} {v.query} {v.web_aa()}" ni choopinchu()
+    (&"/just/a/path" ni http.Url.chadhuvu()) ni choopinchu()
+    (&"http://localhost:99999/" ni http.Url.chadhuvu()) ni choopinchu()
+    files ante &"files" ni v.path_kalupu()
+    file ante &"naa file.txt" ni files.path_kalupu()
+    (&"q" ni, &"a&b" tho file.query_cherchu()) ni choopinchu()
+    f ante (&"ftp://example.com/x" ni http.Url.chadhuvu()).kachithanga()
+    f.web_aa() ni choopinchu()

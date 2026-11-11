@@ -132,6 +132,62 @@ fn mk(kind: ExprKind, span: Span) -> Expr {
 }
 
 /// Number of top-level `_` phrases in a call (or a `?`-wrapped call).
+/// What `sql"…"` means (§29.3.1): `sql._query("… ?1 …", [sql._viluva(e1), …])`.
+/// The nodes it adds get spans of their own inside the literal's (on its
+/// quote marks and the braces around each value), so nothing they record
+/// collides with the values' own expressions.
+fn sql_call(parts: &[FStrPart], lit: Span) -> Expr {
+    let s = lit.start;
+    let at = |a: usize, b: usize| Span::new(a, b);
+    let path = |first: Span, second: (&str, Span), whole: Span| -> Expr {
+        let segments =
+            vec![Ident { name: "sql".into(), span: first }, Ident { name: second.0.into(), span: second.1 }];
+        mk(ExprKind::Path(Path { segments, span: whole }), whole)
+    };
+    let phrase = |e: Expr, role: Role| Phrase {
+        span: e.span,
+        kind: PhraseKind::Value(e),
+        role: Some(role),
+        label: None,
+    };
+    let mut text = String::new();
+    let mut values = Vec::new();
+    for part in parts {
+        match part {
+            FStrPart::Text(t) => text.push_str(t),
+            FStrPart::Expr(e) => {
+                values.push(e);
+                text.push_str(&format!("?{}", values.len()));
+            }
+        }
+    }
+    let values: Vec<Expr> = values
+        .into_iter()
+        .map(|e| {
+            let (a, b) = (e.span.start.saturating_sub(1), e.span.end);
+            // Passed as it is: the call borrows a value and takes a reference
+            // as given (§12.3), so `{peru}` works for `padham` and `&padham`.
+            let r = e.clone();
+            let callee = path(at(a, a + 1), ("_viluva", at(b, b + 1)), at(a, a + 1));
+            let call = ExprKind::Call {
+                callee: Box::new(callee),
+                type_args: Vec::new(),
+                phrases: vec![phrase(r, Role::Ni)],
+            };
+            mk(call, at(a, b + 1))
+        })
+        .collect();
+    let callee = path(at(s, s + 1), ("_query", at(s + 1, s + 2)), at(s, s + 1));
+    let text = mk(ExprKind::Str(text), at(s + 2, s + 3));
+    let list = mk(ExprKind::List(values), at(s + 3, s + 4));
+    let call = ExprKind::Call {
+        callee: Box::new(callee),
+        type_args: Vec::new(),
+        phrases: vec![phrase(text, Role::Ni), phrase(list, Role::Tho)],
+    };
+    mk(call, lit)
+}
+
 fn count_holes(e: &Expr) -> usize {
     match &e.kind {
         ExprKind::Call { phrases, .. } => {
@@ -1921,7 +1977,9 @@ impl<'a> Parser<'a> {
             }
             TokenKind::SqlStr(parts) => {
                 self.advance();
-                ExprKind::Sql(self.parse_fstring_parts(parts))
+                let parts = self.parse_fstring_parts(parts);
+                let call = Box::new(sql_call(&parts, span));
+                ExprKind::Sql { parts, call }
             }
             TokenKind::Keyword(Keyword::Avunu) => {
                 self.advance();

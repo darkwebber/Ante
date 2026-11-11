@@ -1,0 +1,66 @@
+# category: run-pass
+# expect-stdout: HTTP/1.1 413 Content Too Large | body chaala pedhadhi
+# expect-stdout: HTTP/1.1 431 Request Header Fields Too Large | headers chaala pedhavi
+# expect-stdout: HTTP/1.1 400 Bad Request | request ardham kaaledhu
+# expect-stdout: HTTP/1.1 200 OK | 5 bytes
+# level: services
+# Requests over the limits, and one sent with both `Content-Length` and
+# `Transfer-Encoding`, are answered without calling the handler (§28.5).
+http thechuko
+net thechuko
+samayam thechuko
+task thechuko
+
+nadupu(r: http.Request ni) -> http.Response ante:
+    f"{r.body.enni()} bytes" ni http.Response.text() icchey
+
+# A port nobody is using: the system picks one, and the listener closes when
+# this function returns.
+khaali_port() -> ankam ante:
+    l ante (net.Address{host: "127.0.0.1", port: 0} ni net.vinu()).kachithanga()
+    l.port() icchey
+
+# Waits until the server takes connections ("until ready").
+siddham_varaku(port: ankam ni) -> khali ante:
+    0 nunchi 500 lopu okko _ ki:
+        (net.Address{host: "127.0.0.1", port: port} ni net.connect()) batti:
+            sare(_) aithe:
+                icchey
+            thappu(_) aithe:
+                (10 ni samayam.Kaalam.millisec()) ni task.nidrapo()
+
+# Sends `text` on a new connection; the status line and the last line.
+adugu(port: ankam ni, text: &padham tho) -> padham ante:
+    maare c ante (net.Address{host: "127.0.0.1", port: port} ni net.connect()).kachithanga()
+    (text.baitlu() ni c.raayi()).kachithanga()
+    maare anni: baitlu ante []
+    avunu unnanthasepu:
+        b ante (4096 ni c.chadhuvu()).kachithanga()
+        b.enni() == 0 aithe:
+            aapey
+        b lo okko x ki:
+            x ni anni.cherchu()
+    s ante &anni ni padham.baitlu_nunchi_lossy()
+    lines ante "\r\n" ni s.vidagottu()
+    f"{lines[0]} | {lines[lines.enni() - 1]}" icchey
+
+# Serves with small limits: 1 KiB of headers, 64 bytes of body.
+serve_cheyyi(port: ankam ni) -> sare_thappu[khali, net.NetThappu] ante:
+    limits ante http.Limits{header_bytes: 1024, body_bytes: 64, header_read_ms: 10000, idle_ms: 60000, connections: 100}
+    (nadupu ni, net.Address{host: "127.0.0.1", port: port} tho, limits ki http.serve()) icchey
+
+pani_(j: &task.Jattu ni, port: ankam tho) -> khali ante:
+    server ante (() => port ni serve_cheyyi()) ni j.pampu()
+    port ni siddham_varaku()
+    (port ni, &"POST / HTTP/1.1\r\nContent-Length: 65\r\n\r\n" tho adugu()) ni choopinchu()
+    maare pedha ante Raatha.kotthadhi()
+    0 nunchi 1100 lopu okko _ ki:
+        &"a" ni pedha.raayi()
+    (port ni, &f"GET / HTTP/1.1\r\nX-Big: {pedha.padham_ga()}\r\n\r\n" tho adugu()) ni choopinchu()
+    (port ni, &"POST / HTTP/1.1\r\nContent-Length: 5\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n" tho adugu()) ni choopinchu()
+    (port ni, &"POST / HTTP/1.1\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello" tho adugu()) ni choopinchu()
+    server.cancel_cheyyi()
+
+modhalu() -> khali ante:
+    port ante khaali_port()
+    ((j: &task.Jattu) => j ni, port tho pani_()) ni task.kalisi()

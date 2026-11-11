@@ -362,7 +362,7 @@ impl Expr {
             | ExprKind::Unit
             | ExprKind::Hole
             | ExprKind::Path(_) => Vec::new(),
-            ExprKind::FStr(parts) | ExprKind::Sql(parts) => parts
+            ExprKind::FStr(parts) | ExprKind::Sql { parts, .. } => parts
                 .iter()
                 .filter_map(|p| match p {
                     FStrPart::Expr(e) => Some(e),
@@ -442,8 +442,13 @@ pub enum ExprKind {
     Str(String),
     Char(char),
     FStr(Vec<FStrPart>),
-    /// `sql"…"` (Services, §29.3.1).
-    Sql(Vec<FStrPart>),
+    /// `sql"…"` (Services, §29.3.1). `call` is what it means, built by the
+    /// parser: `sql._query("… ?1 …", [sql._viluva(e1), …])`; names, types
+    /// and code come from it, while `parts` keep the literal as written.
+    Sql {
+        parts: Vec<FStrPart>,
+        call: Box<Expr>,
+    },
     Bool(bool),
     /// The absence literal `ledhu`.
     Ledhu,

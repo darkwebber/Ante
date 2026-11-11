@@ -1,0 +1,57 @@
+# category: run-pass
+# expect-stdout: 200 home
+# expect-stdout: 200 user 42
+# expect-stdout: 200 nenu
+# expect-stdout: 200 user a b
+# expect-stdout: 200 file css/site.css
+# expect-stdout: 404 dorakaledhu
+# expect-stdout: 405 undhi(GET)
+# expect-stdout: 200 undhi(abc)
+# level: services
+# `http.Router`: patterns with `{name}` and `{*rest}`, the most specific
+# route first, 404 and 405, and a request's cookie (§28.5).
+http thechuko
+
+home(r: http.Request ni) -> http.Response ante:
+    "home" ni http.Response.text() icchey
+
+user(r: http.Request ni) -> http.Response ante:
+    id ante ("id" ni r.param()).kachithanga()
+    f"user {id}" ni http.Response.text() icchey
+
+nenu(r: http.Request ni) -> http.Response ante:
+    "nenu" ni http.Response.text() icchey
+
+file_(r: http.Request ni) -> http.Response ante:
+    rest ante ("rest" ni r.param()).kachithanga()
+    f"file {rest}" ni http.Response.text() icchey
+
+cookie(r: http.Request ni) -> http.Response ante:
+    session ante "session" ni r.cookie()
+    f"{session}" ni http.Response.text() icchey
+
+choodu(r: &http.Router ni, req: http.Request tho) -> khali ante:
+    res ante req ni r.nadupu()
+    res.status.code == 405 aithe:
+        allow ante "allow" ni res.headers.thechu()
+        f"405 {allow}" ni choopinchu()
+        icchey
+    f"{res.status.code} {res.text_chadhuvu().kachithanga()}" ni choopinchu()
+
+modhalu() -> khali ante:
+    maare r ante http.Router.kotthadhi()
+    "/" ni, http.Method.GET tho, home kosam r.cherchu()
+    "/users/{id}" ni, http.Method.GET tho, user kosam r.cherchu()
+    "/users/me" ni, http.Method.GET tho, nenu kosam r.cherchu()
+    "/files/{*rest}" ni, http.Method.GET tho, file_ kosam r.cherchu()
+    "/cookie" ni, http.Method.GET tho, cookie kosam r.cherchu()
+    &r ni, (http.Method.GET ni, "/" tho http.Request.kotthadhi()) tho choodu()
+    &r ni, (http.Method.GET ni, "/users/42?x=1" tho http.Request.kotthadhi()) tho choodu()
+    &r ni, (http.Method.GET ni, "/users/me" tho http.Request.kotthadhi()) tho choodu()
+    &r ni, (http.Method.GET ni, "/users/a%20b" tho http.Request.kotthadhi()) tho choodu()
+    &r ni, (http.Method.GET ni, "/files/css/site.css" tho http.Request.kotthadhi()) tho choodu()
+    &r ni, (http.Method.GET ni, "/nope" tho http.Request.kotthadhi()) tho choodu()
+    &r ni, (http.Method.POST ni, "/users/42" tho http.Request.kotthadhi()) tho choodu()
+    maare req ante http.Method.GET ni, "/cookie" tho http.Request.kotthadhi()
+    ("Cookie" ni, "theme=dark; session=abc" tho req.headers.cherchu()).kachithanga()
+    &r ni, req tho choodu()
