@@ -1,0 +1,8 @@
+# category: run-pass
+# expect-stdout: Hi Mr. Ravi! }
+# level: core
+# An f-string's `{…}` may hold text literals; braces inside them don't
+# count (r22).
+modhalu() -> khali ante:
+    peru ante "Ravi"
+    f"Hi {"Mr. " + peru}! {"}"}" ni choopinchu()

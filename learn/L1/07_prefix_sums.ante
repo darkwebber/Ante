@@ -36,13 +36,12 @@ k_motham_parts(xs: &varusa[ankam], k: ankam ni) -> ankam ante:
     xs lo okko x ki:
         motham += x
         kavali ante motham - k
-        &kavali ni chusinavi.thechu() batti:
-            undhi(c) aithe:
-                count += *c
-            ledhu aithe:
-                count += 0
-        c ante motham ni, 0 tho chusinavi.lekapothe_cherchu()
-        *c += 1
+        kavali ni chusinavi.undhaa() aithe:
+            count += chusinavi[kavali]
+        motham ni chusinavi.undhaa() aithe:
+            chusinavi[motham] += 1
+        ledhante:
+            chusinavi[motham] lo 1 pettu
     count icchey
 
 modhalu() -> khali ante:

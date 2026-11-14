@@ -1197,6 +1197,7 @@ NORETURN void ante_trap_shift(int64_t count, int32_t bits, const ante_loc *loc) 
 
 NORETURN void ante_trap_code(int32_t code, const ante_loc *loc) {
     switch (code) {
+    case 1: trap_at("T01", "ee value aa type lo pattadhu, `maarchu` cheyyalem", loc);
     case 2: trap_at("T02", "sunna (0) tho bhaagham cheyyalem", loc);
     case 6: trap_at("T06", "`ledhu` meeda kachithanga() pilicharu", loc);
     case 7: trap_at("T07", "nijame() fail ayyindhi", loc);

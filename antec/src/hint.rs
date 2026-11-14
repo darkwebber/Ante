@@ -253,9 +253,10 @@ fn call_form(line: &str, marked: &str) -> Option<String> {
             return Some(format!("length kosam `{}.enni()`", if args.is_empty() { "x" } else { args }));
         }
         "input" | "raw_input" | "readline" | "readLine" | "scanf" | "gets" => {
-            return Some(
-                "keyboard nunchi oka line chadhavaalante `system.line_chadhuvu()` (`system thechuko` file paina)".into(),
-            );
+            let q = if args.is_empty() { "\"Mee peru? \"" } else { args };
+            return Some(format!(
+                "prashna adigi answer chadhavaalante `{q} ni adugu()`; number kavalante `{q} ni ankam_adugu()`"
+            ));
         }
         "str" | "String" | "toString" => {
             return Some(format!(
@@ -308,7 +309,7 @@ fn english_word(word: &str) -> Option<String> {
         "false" | "False" | "FALSE" => "kaadhu",
         "null" | "None" | "nil" | "NULL" | "undefined" | "nullptr" => "ledhu",
         "print" | "println" | "printf" | "puts" | "echo" | "console" => "choopinchu",
-        "input" | "readline" | "scanf" => "system.line_chadhuvu",
+        "input" | "readline" | "scanf" => "\"Mee peru? \" ni adugu()",
         "break" => "aapey",
         "continue" => "vadhiley",
         "return" => "icchey",
@@ -423,11 +424,11 @@ fn mismatch(message: &str, line: &str) -> Option<String> {
                 piece(right)
             ));
         }
-        return Some("text, number kalapalem. Text kavalante `f\"… {x}\"` leka `x.padham_ga()`; number kavalante `x.ankam_ga()`".into());
+        return None;
     }
     if text_and_number("ankam", "amsam") {
         return Some(
-            "`ankam` (2), `amsam` (2.0) kalapalem. `x ni kolpothu_maarchu[amsam]()` tho maarchandi, leka number ni `2.0` laaga raayandi"
+            "`ankam` (2), `amsam` (2.0) kalapalem. `x ni maarchu[amsam]()` tho maarchandi, leka number ni `2.0` laaga raayandi"
                 .into(),
         );
     }

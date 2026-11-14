@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use super::lower::Lower;
-use super::results::{expr_id, AdtRef, FieldStep, PathRes, Results};
+use super::results::{expr_id, AdtRef, FieldStep, MapIndex, PathRes, Results};
 use super::solve::{self, Solver};
 use super::{AdtKind, FnId, FnOrigin, Generic, Globals, RecvMode, Smart, TraitRef, TyEnv};
 use crate::ast::*;
@@ -22,7 +22,8 @@ pub(super) struct Local {
 /// The three conversion functions of §18.4.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Conv {
-    Lossless,
+    /// `maarchu`: any numeric pair; traps if the value doesn't fit.
+    Plain,
     Checked,
     Lossy,
 }
@@ -1339,6 +1340,28 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             }
             return Ty::Error;
         }
+        if let Ty::App(con @ (Con::Jodi | Con::GajibijiJodi), args) = &t {
+            // `j[k]`: the value under key `k`, which must be there (P2).
+            let (key, value) = (args[0].clone(), args[1].clone());
+            let idx = &indices[0];
+            if matches!(idx.kind, ExprKind::Range { .. }) {
+                self.error(
+                    "E0414",
+                    idx.span,
+                    "`jodi` ni range tho index cheyyalem, okka key ivvandi: `j[k]`",
+                );
+                return Ty::Error;
+            }
+            self.check_coerce(idx, &key);
+            let mut plan = MapIndex::default();
+            for name in ["thechu", "maare_thechu", "cherchu"] {
+                if let Some(m) = self.map_method(*con, name, &t, &key, &value) {
+                    plan.methods.push((name, m.0, m.1));
+                }
+            }
+            self.out.map_index.insert(expr_id(self.file, span), plan);
+            return value;
+        }
         let elem = match &t {
             Ty::Array(e, _) => (**e).clone(),
             Ty::App(Con::Varusa | Con::Mukka, args) => args[0].clone(),
@@ -1375,6 +1398,36 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             self.error("E0414", idx.span, format!("index integer ayyi undali, kaani `{shown}` undhi"));
         }
         elem
+    }
+
+    /// A `jodi` method instantiated for `map` (`jodi[key, value]`), as a call
+    /// to it would be: the receiver and the key and value formals decide the
+    /// type arguments.
+    fn map_method(
+        &mut self,
+        con: Con,
+        name: &str,
+        map: &Ty,
+        key: &Ty,
+        value: &Ty,
+    ) -> Option<(FnId, Vec<Ty>)> {
+        let fid = *self.g.inherent.get(&crate::typeck::Head::Con(con))?.get(name)?;
+        let sig = &self.g.fns[fid];
+        let fresh: Vec<Ty> = sig.generics.iter().map(|_| self.infer.fresh(VarKind::General)).collect();
+        let strip = |mut t: Ty| {
+            while let Ty::Ref(_, inner) = t {
+                t = *inner;
+            }
+            t
+        };
+        if let Some(r) = &sig.receiver {
+            solve::unify(&mut self.infer, &strip(r.ty.subst(&fresh)), map);
+        }
+        let formals: Vec<Ty> = sig.params.iter().map(|p| strip(p.ty.subst(&fresh))).collect();
+        for (f, want) in formals.iter().zip([key, value]) {
+            solve::unify(&mut self.infer, f, want);
+        }
+        Some((fid, fresh))
     }
 
     fn check_closure(&mut self, params: &[ClosureParam], body: &Expr, expected: Option<&Ty>) -> Ty {
@@ -1794,16 +1847,10 @@ impl<'s, 'g> BodyCx<'s, 'g> {
     fn check_conversion(&mut self, kind: Conv, s: &Ty, d: &Ty, span: Span, risky: bool) {
         let numeric = |t: &Ty| matches!(t, Ty::Int(_) | Ty::Float(_));
         let ok = match kind {
-            Conv::Lossless => match (s, d) {
-                (Ty::Int(a), Ty::Int(b)) => {
-                    (a.signed == b.signed && b.bits >= a.bits) || (!a.signed && b.signed && b.bits > a.bits)
-                }
-                (Ty::Int(a), Ty::Float(32)) => a.bits <= 24 - u8::from(a.signed),
-                (Ty::Int(a), Ty::Float(64)) => a.bits <= 32,
-                (Ty::Float(a), Ty::Float(b)) => a <= b,
-                (Ty::Char, Ty::Int(IntTy { signed: false, bits })) => *bits >= 32,
-                _ => false,
-            },
+            Conv::Plain => {
+                (numeric(s) && numeric(d))
+                    || matches!((s, d), (Ty::Char, Ty::Int(IntTy { signed: false, bits })) if *bits >= 32)
+            }
             Conv::Checked => {
                 (numeric(s) && numeric(d))
                     || matches!((s, d), (Ty::Int(IntTy { signed: false, bits: 32 }), Ty::Char))
@@ -1820,17 +1867,7 @@ impl<'s, 'g> BodyCx<'s, 'g> {
             return;
         }
         let (ss, ds) = (self.show(s), self.show(d));
-        if kind == Conv::Lossless && (numeric(s) || *s == Ty::Char) && numeric(d) {
-            self.error(
-                "E0409",
-                span,
-                format!(
-                    "`{ss}` nunchi `{ds}` ki `maarchu` value kolpovachu. `kudhirithe_maarchu` (undochu isthundhi) leka `kolpothu_maarchu` vaadu"
-                ),
-            );
-        } else {
-            self.error("E0401", span, format!("`{ss}` ni `{ds}` ga maarchalem"));
-        }
+        self.error("E0401", span, format!("`{ss}` ni `{ds}` ga maarchalem"));
     }
 
     /// A function's origin decides whether calling it is unsafe (§22).

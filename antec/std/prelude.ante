@@ -84,6 +84,8 @@ bayata "ante" ante:
     kudhirithe_maarchu[T, S](vishayam: S ni) -> undochu[T]
     kolpothu_maarchu[T, S](vishayam: S ni) -> T
     marpidi[T](ekkada: &maare T, kotthadhi: T ni) -> T
+    # One line from the keyboard, for `adugu` (std/ante/prelude.ante).
+    _line_chadhuvu() -> undochu[padham]
     size_of[T]() -> ankam
     rakam_peru[T]() -> padham
     align_of[T]() -> ankam

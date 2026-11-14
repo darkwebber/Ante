@@ -1878,7 +1878,7 @@ pub(super) fn std_call(
             fx.emit(format!("call void @ante_{}(ptr {out})", &key["system.".len()..]));
             (fx.load("%str", &out), Ty::Str)
         }
-        "system.env" | "system.line_chadhuvu" => {
+        "system.env" | "system.line_chadhuvu" | "prelude._line_chadhuvu" => {
             let out = fx.alloca("%str");
             let ok = fx.r();
             if key == "system.env" {
@@ -1974,10 +1974,12 @@ pub(super) fn std_call(
     }
 }
 
-/// `maarchu` (lossless), `kudhirithe_maarchu` (checked), `kolpothu_maarchu` (lossy) (§18.4).
+/// `maarchu` (rounds, traps if the value doesn't fit), `kudhirithe_maarchu`
+/// (exact or `ledhu`), `kolpothu_maarchu` (wraps and saturates) (§18.4).
 fn convert(fx: &mut Fx, key: &str, v: &str, from: &Ty, to: &Ty, dest: &Ty, span: Span) -> (String, Ty) {
     let checked = key == "prelude.kudhirithe_maarchu";
     let lossy = key == "prelude.kolpothu_maarchu";
+    let plain = !checked && !lossy;
     // The exact conversion, plus (for checked) a flag saying it fits.
     let (val, fits): (String, Option<String>) = match (from, to) {
         (Ty::Int(_) | Ty::Char, Ty::Int(b)) => {
@@ -2031,6 +2033,23 @@ fn convert(fx: &mut Fx, key: &str, v: &str, from: &Ty, to: &Ty, dest: &Ty, span:
                 let i = format!("i{}", b.bits);
                 let r = fx.r();
                 fx.emit(format!("{r} = fpto{s}i {ft} {v} to {i}"));
+                if plain {
+                    // Drops the fraction; fits when the whole part is in range
+                    // (NaN fails both ordered comparisons).
+                    let (lo, hi) = b.range();
+                    let below = (lo as f64) - 1.0;
+                    let lo_ok = fx.r();
+                    if below != lo as f64 {
+                        fx.emit(format!("{lo_ok} = fcmp ogt {ft} {v}, {}", float_lit(*fb, below)));
+                    } else {
+                        fx.emit(format!("{lo_ok} = fcmp oge {ft} {v}, {}", float_lit(*fb, lo as f64)));
+                    }
+                    let hi_ok = fx.r();
+                    fx.emit(format!("{hi_ok} = fcmp olt {ft} {v}, {}", float_lit(*fb, (hi as f64) + 1.0)));
+                    let ok = fx.r();
+                    fx.emit(format!("{ok} = and i1 {lo_ok}, {hi_ok}"));
+                    return finish_convert(fx, r, Some(ok), checked, lossy, to, dest, span);
+                }
                 let back = fx.r();
                 fx.emit(format!("{back} = {s}itofp {i} {r} to {ft}"));
                 let same = fx.r();
@@ -2053,7 +2072,7 @@ fn convert(fx: &mut Fx, key: &str, v: &str, from: &Ty, to: &Ty, dest: &Ty, span:
             let s = if a.signed { 's' } else { 'u' };
             let r = fx.r();
             fx.emit(format!("{r} = {s}itofp i{} {v} to {ft}", a.bits));
-            let fits = if lossy || a.bits <= if *fb == 32 { 16 } else { 32 } {
+            let fits = if !checked || a.bits <= if *fb == 32 { 16 } else { 32 } {
                 None
             } else {
                 let back = fx.r();
@@ -2078,7 +2097,7 @@ fn convert(fx: &mut Fx, key: &str, v: &str, from: &Ty, to: &Ty, dest: &Ty, span:
                 fx.emit(format!("{back} = fpext float {r} to double"));
                 let same = fx.r();
                 fx.emit(format!("{same} = fcmp ueq double {back}, {v}"));
-                (r, if lossy { None } else { Some(same) })
+                (r, if checked { Some(same) } else { None })
             }
         }
         (Ty::Int(a), Ty::Char) => {
@@ -2111,6 +2130,22 @@ fn convert(fx: &mut Fx, key: &str, v: &str, from: &Ty, to: &Ty, dest: &Ty, span:
         }
         _ => return unsupported(fx, key, dest),
     };
+    finish_convert(fx, val, fits, checked, lossy, to, dest, span)
+}
+
+/// Wraps a converted value: `undochu` for `kudhirithe_maarchu`, a T01 trap
+/// for a `maarchu` that doesn't fit.
+#[allow(clippy::too_many_arguments)]
+fn finish_convert(
+    fx: &mut Fx,
+    val: String,
+    fits: Option<String>,
+    checked: bool,
+    lossy: bool,
+    to: &Ty,
+    dest: &Ty,
+    span: Span,
+) -> (String, Ty) {
     if checked {
         let opt = dest.clone();
         let r = match fits {
@@ -2123,11 +2158,10 @@ fn convert(fx: &mut Fx, key: &str, v: &str, from: &Ty, to: &Ty, dest: &Ty, span:
         return (r, opt);
     }
     if let (false, Some(ok)) = (lossy, fits) {
-        // `maarchu` is checked at compile time (E0409); this guards runtime data anyway.
         let bad = fx.r();
         fx.emit(format!("{bad} = xor i1 {ok}, true"));
         let loc = fx.loc(span);
-        fx.guard(&bad, |fx| fx.emit(format!("call void @ante_trap_code(i32 99, ptr {loc})")));
+        fx.guard(&bad, |fx| fx.emit(format!("call void @ante_trap_code(i32 1, ptr {loc})")));
     }
     (val, to.clone())
 }

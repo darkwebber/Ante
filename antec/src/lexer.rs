@@ -442,7 +442,26 @@ impl<'a> Scanner<'a> {
                     let mut closed = false;
                     while let Some(b) = self.peek() {
                         match b {
-                            b'\n' | b'\r' | b'"' => break,
+                            b'\n' | b'\r' => break,
+                            // A text literal inside the braces (r22): skip to
+                            // its closing quote, braces in it don't count.
+                            b'"' => {
+                                let quote = self.pos;
+                                self.pos += 1;
+                                while let Some(c) = self.peek() {
+                                    match c {
+                                        b'\n' | b'\r' => break,
+                                        b'\\' => self.pos += 2,
+                                        b'"' => break,
+                                        _ => self.pos += 1,
+                                    }
+                                }
+                                if self.peek() != Some(b'"') {
+                                    // No closing quote: that `"` ends the f-string.
+                                    self.pos = quote;
+                                    break;
+                                }
+                            }
                             b'{' => depth += 1,
                             b'}' => {
                                 depth -= 1;
@@ -456,14 +475,12 @@ impl<'a> Scanner<'a> {
                         self.pos += 1;
                     }
                     if !closed {
-                        // A `"` inside the braces: a string literal, which an
-                        // interpolation can't hold (§4.5).
-                        let msg = if self.peek() == Some(b'"') {
-                            "f-string `{…}` lopala string literal (`\"…\"`) raayakoodadhu. Mundhu daanini oka variable lo pettandi, `{peru}` ga vaadandi"
-                        } else {
-                            "ee `{` open chesaru, kaani `}` tho close cheyyaledhu"
-                        };
-                        self.error("E0110", open, self.pos, msg);
+                        self.error(
+                            "E0110",
+                            open,
+                            self.pos,
+                            "ee `{` open chesaru, kaani `}` tho close cheyyaledhu",
+                        );
                         continue;
                     }
                     if text_src[expr_start..self.pos].trim().is_empty() {

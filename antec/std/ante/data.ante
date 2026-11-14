@@ -370,9 +370,9 @@ Chadhivevaadu panulu ante:
             DataChettu.Amsam(x) aithe:
                 sare(x) icchey
             DataChettu.Ankam(n) aithe:
-                sare(n ni kolpothu_maarchu[amsam]()) icchey
+                sare(n ni maarchu[amsam]()) icchey
             DataChettu.Aasajeevi(n) aithe:
-                sare(n ni kolpothu_maarchu[amsam]()) icchey
+                sare(n ni maarchu[amsam]()) icchey
             DataChettu.PeddhaAnkam(_) aithe:
                 &naa.viluva ni peddha_amsam() batti:
                     undhi(x) aithe:

@@ -282,3 +282,44 @@ fn repl_replays_input_to_earlier_entries() {
     ));
     assert_eq!(text(&out.stdout), "undhi(Ravi)\ntharvatha\n", "stderr: {}", text(&out.stderr));
 }
+
+#[test]
+fn adugu_asks_until_the_answer_fits() {
+    use std::io::Write as _;
+    let dir = scratch("adugu");
+    let file = dir.join("adugu.ante");
+    fs::write(
+        &file,
+        concat!(
+            "modhalu() -> khali ante:\n",
+            "    peru ante \"Peru? \" ni adugu()\n",
+            "    vayasu ante \"Vayasu? \" ni ankam_adugu()\n",
+            "    ethu ante \"Ethu? \" ni amsam_adugu()\n",
+            "    f\"{peru} {vayasu + 1} {ethu}\" ni choopinchu()\n",
+        ),
+    )
+    .unwrap();
+    for interp in [true, false] {
+        let mut args = vec!["run"];
+        if interp {
+            args.push("--interp");
+        }
+        args.push(file.to_str().unwrap());
+        let mut child = Command::new(env!("CARGO_BIN_EXE_antec"))
+            .args(&args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        child.stdin.take().unwrap().write_all(b"Ravi\nirvai\n 20 \n1.5\n").unwrap();
+        let out = child.wait_with_output().unwrap();
+        assert_eq!(
+            text(&out.stdout),
+            "Peru? Vayasu? `irvai` number kaadhu, number ivvandi (ex: 42). Vayasu? Ethu? Ravi 21 1.5\n",
+            "interp {interp}, stderr: {}",
+            text(&out.stderr)
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
+}

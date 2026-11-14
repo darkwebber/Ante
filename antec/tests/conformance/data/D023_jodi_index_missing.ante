@@ -1,0 +1,8 @@
+# category: runtime-trap
+# expect-trap: T05 @ 8:5
+# level: core
+# `j[k]` on a key that isn't there stops the program, naming the fix (r22).
+modhalu() -> khali ante:
+    maare marks ante jodi.kotthadhi()
+    marks["Ravi"] lo 90 pettu
+    marks["Ramu"] ni choopinchu()

@@ -1731,10 +1731,14 @@ impl Machine<'_> {
                 Ok(v) => Value::some(Value::Str(Rc::from(v))),
                 Err(_) => Value::none(),
             }),
-            "system.line_chadhuvu" => Ok(match super::input::read_line() {
-                None => Value::none(),
-                Some(line) => Value::some(Value::Str(Rc::from(line))),
-            }),
+            "system.line_chadhuvu" | "prelude._line_chadhuvu" => {
+                // A question written with `cheppu` shows before the answer is typed.
+                self.flush();
+                Ok(match super::input::read_line() {
+                    None => Value::none(),
+                    Some(line) => Value::some(Value::Str(Rc::from(line))),
+                })
+            }
             "system.flush" => {
                 self.flush();
                 Ok(Value::Unit)
@@ -2033,6 +2037,8 @@ impl Machine<'_> {
     fn convert(&mut self, name: &str, from: &Ty, to: &Ty, v: Value, span: Span) -> R<Value> {
         let checked = name == "prelude.kudhirithe_maarchu";
         let lossy = name == "prelude.kolpothu_maarchu";
+        // `maarchu` rounds where `kudhirithe_maarchu` wants the exact value.
+        let plain = !checked && !lossy;
         let as_f64 = |v: &Value| match v {
             Value::F64(x) => *x,
             Value::F32(x) => f64::from(*x),
@@ -2064,6 +2070,9 @@ impl Machine<'_> {
                     } else {
                         x.trunc() as i128
                     }))
+                } else if plain {
+                    let t = x.trunc();
+                    (t >= lo as f64 && t <= hi as f64).then(|| Value::Int(t as i128))
                 } else if x.fract() == 0.0 && x >= lo as f64 && x <= hi as f64 {
                     Some(Value::Int(x as i128))
                 } else {
@@ -2074,16 +2083,16 @@ impl Machine<'_> {
                 let x = v.int();
                 if *bits == 32 {
                     let f = x as f32;
-                    (lossy || f as i128 == x).then_some(Value::F32(f))
+                    (!checked || f as i128 == x).then_some(Value::F32(f))
                 } else {
                     let f = x as f64;
-                    (lossy || f as i128 == x).then_some(Value::F64(f))
+                    (!checked || f as i128 == x).then_some(Value::F64(f))
                 }
             }
             (Ty::Float(_), Ty::Float(32)) => {
                 let x = as_f64(&v);
                 let f = x as f32;
-                (lossy || f64::from(f) == x || x.is_nan()).then_some(Value::F32(f))
+                (!checked || f64::from(f) == x || x.is_nan()).then_some(Value::F32(f))
             }
             (Ty::Float(_), Ty::Float(_)) => Some(Value::F64(as_f64(&v))),
             (Ty::Int(_), Ty::Char) => char::from_u32(v.int() as u32).map(Value::Char),
@@ -2092,7 +2101,11 @@ impl Machine<'_> {
         match (checked, result) {
             (true, r) => Ok(r.map_or_else(Value::none, Value::some)),
             (false, Some(r)) => Ok(r),
-            (false, None) => Err(self.trap("T01", format!("`{}` ki maarchalem", super::show_ty(to)), span)),
+            (false, None) => Err(self.trap(
+                "T01",
+                format!("ee value `{}` lo pattadhu, `maarchu` cheyyalem", super::show_ty(to)),
+                span,
+            )),
         }
     }
 }
