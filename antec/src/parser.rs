@@ -501,8 +501,8 @@ impl<'a> Parser<'a> {
     /// Index of the bracket matching the opener at `open`, within the line.
     fn matching_close(&self, open: usize) -> Option<usize> {
         let mut depth = 0usize;
-        for i in open..self.toks.len() {
-            match self.toks[i].kind {
+        for (i, tok) in self.toks.iter().enumerate().skip(open) {
+            match tok.kind {
                 TokenKind::LParen | TokenKind::LBracket | TokenKind::LBrace => depth += 1,
                 TokenKind::RParen | TokenKind::RBracket | TokenKind::RBrace => {
                     depth -= 1;
