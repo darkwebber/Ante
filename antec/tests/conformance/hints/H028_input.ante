@@ -1,6 +1,6 @@
 # category: compile-fail
 # expect-error: E0301 @ 6:12
-# expect-hint: system.line_chadhuvu
+# expect-hint: ni adugu()
 # level: core
 modhalu() -> khali ante:
     x ante input()

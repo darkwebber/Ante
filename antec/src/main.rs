@@ -348,7 +348,8 @@ fn fmt(path: &str, check_only: bool) -> ExitCode {
             }
         };
         if !diags.is_empty() {
-            report(&src, &diags);
+            // The errors are shown; the file counts as failed below.
+            let _ = report(&src, &diags);
             failed += 1;
             continue;
         }

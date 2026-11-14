@@ -425,7 +425,7 @@ impl BodyCx<'_, '_> {
         }
         let conv = if sig.origin == FnOrigin::Std && sig.module == 0 {
             match sig.name.as_str() {
-                "maarchu" => Some(Conv::Lossless),
+                "maarchu" => Some(Conv::Plain),
                 "kudhirithe_maarchu" => Some(Conv::Checked),
                 "kolpothu_maarchu" => Some(Conv::Lossy),
                 _ => None,

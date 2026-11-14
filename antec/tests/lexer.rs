@@ -240,3 +240,8 @@ fn invalid_utf8_is_reported() {
         .collect();
     assert_eq!(found, ["E0101 @ 2:1"]);
 }
+
+#[test]
+fn fstring_holds_text_literals() {
+    assert!(errs("f\"Hi {\"Mr. \" + peru}!\"\nf\"{\"}\" + x}\"\n").is_empty());
+}

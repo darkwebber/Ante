@@ -20,6 +20,7 @@
 | M13 Data and security: `baitlu`, `encoding`, `Raayochu`/`Chadhavochu`, `json`/`form`/`query`, `samayam` zones, `bhadram`, `Rahasyam`, `random`, `log`, `config` (§25–27, §29.1–29.2) | ✅ done |
 | Language server `antec lsp` ([docs/TOOLING.md](../docs/TOOLING.md#language-server-antec-lsp)) | ✅ done |
 | P1 Five minutes lo start: `install.sh`/`install.ps1`, `antec new`, `antec repl`, errors ki 💡 hints | 🚧 code ready, gate (nijamaina beginners tho test) inka |
+| P2 Roju vaade language: `j[k]` on `jodi`, okate `maarchu` (T01 if it doesn't fit), `adugu`/`ankam_adugu`/`amsam_adugu`, f-string `{…}` lo text literals | 🚧 ivi ready; `batti` expression, guards, labelled `aapey`, multi-line closures inka (syntax decide cheyyali) |
 | M14 first part: `net` (TCP), `http` (HTTP/1.1 server, router, client), `sql` (SQLite, `sql"…"`, migrations) (§28, §29.3). TLS, HTTP/2, WebSocket, SSE, SMTP, PostgreSQL inka raaledhu | 🚧 sagam |
 | M15–M24 | inka start avvaledhu (spec Appendix E) |
 

@@ -437,6 +437,13 @@ impl<'a, 'p> Builder<'a, 'p> {
             } if same_place(place, lhs) && self.ty_of(place) == Ty::Str => {
                 self.lower_compound(place, BinOp::Add, rhs)
             }
+            StmtKind::Assign { place: Expr { kind: ExprKind::Index { base, indices }, span, .. }, value }
+                if indices.len() == 1
+                    && self.tc.results.map_index.contains_key(&expr_id(self.file, *span)) =>
+            {
+                let plan = self.tc.results.map_index[&expr_id(self.file, *span)].clone();
+                self.map_insert(base, &indices[0], value, &plan, *span);
+            }
             StmtKind::Assign { place, value } => {
                 let pt = self.ty_of(place);
                 let p = self.place_of(place);
@@ -894,6 +901,10 @@ impl<'a, 'p> Builder<'a, 'p> {
                 Some(Self::apply_steps(b, &[step]))
             }
             ExprKind::Index { base, indices } if indices.len() == 1 => {
+                if let Some(plan) = self.tc.results.map_index.get(&id) {
+                    let plan = plan.clone();
+                    return Some(self.map_place(e, base, &indices[0], &plan));
+                }
                 if let ExprKind::Range { lo, hi, inclusive } = &indices[0].kind {
                     // `xs[a nunchi b lopu]` where a place is needed (a borrowed
                     // argument or a receiver): the `mukka` behind a shared slice.
@@ -931,6 +942,99 @@ impl<'a, 'p> Builder<'a, 'p> {
             ExprKind::Unary { op: UnOp::Deref, operand } => Some(self.place_of(operand).deref()),
             _ => None,
         }
+    }
+
+    /// The `jodi` behind an indexed base, with its automatic dereferences.
+    fn map_base(&mut self, index: &Expr, base: &'a Expr) -> (Place, Ty, Ty, Ty) {
+        let id = expr_id(self.file, index.span);
+        let derefs = self.tc.results.index_derefs.get(&id).copied().unwrap_or(0);
+        let mut b = self.place_of(base);
+        for _ in 0..derefs {
+            b = b.deref();
+        }
+        let mut bt = self.ty_of(base);
+        while let Ty::Ref(_, inner) = bt {
+            bt = *inner;
+        }
+        match &bt {
+            Ty::App(_, args) if args.len() == 2 => {
+                let (k, v) = (args[0].clone(), args[1].clone());
+                (b, bt, k, v)
+            }
+            _ => (b, bt, Ty::Error, Ty::Error),
+        }
+    }
+
+    /// Whether `e` can be changed: a `maare` name, or reached through `&maare`.
+    fn root_mutable(&self, e: &Expr) -> bool {
+        if let Ty::Ref(m, _) = self.ty_of(e) {
+            return m;
+        }
+        match &e.kind {
+            ExprKind::Path(_) => match self.tc.results.paths.get(&expr_id(self.file, e.span)) {
+                Some(PathRes::Local { decl, .. }) => {
+                    self.tc.results.local_ty.get(&(self.file, *decl)).is_some_and(|(_, m)| *m)
+                }
+                _ => false,
+            },
+            ExprKind::Field { base, .. }
+            | ExprKind::TupleIndex { base, .. }
+            | ExprKind::Index { base, .. } => self.root_mutable(base),
+            _ => false,
+        }
+    }
+
+    /// `j[k]` as a place: the value under `k`, through `thechu` (or
+    /// `maare_thechu` when `j` can change). A missing key traps.
+    fn map_place(&mut self, e: &'a Expr, base: &'a Expr, key: &'a Expr, plan: &MapIndex) -> Place {
+        let (b, mt, kt, vt) = self.map_base(e, base);
+        let mutable = plan.method("maare_thechu").is_some() && self.root_mutable(base);
+        let recv = self.new_local(Ty::reference(mutable, mt), None);
+        self.assign(Place::local(recv), Rvalue::Ref(mutable, b));
+        let kp = self.place_of(key);
+        let kref = self.new_local(Ty::reference(false, kt.clone()), None);
+        self.assign(Place::local(kref), Rvalue::Ref(false, kp));
+        let found_ty = Ty::App(Con::Undochu, vec![Ty::reference(mutable, vt.clone())]);
+        let found = self.temp(found_ty);
+        let (f, tys) =
+            plan.method(if mutable { "maare_thechu" } else { "thechu" }).unwrap_or((0, Vec::new()));
+        self.call(
+            Callee::Fn(f, tys),
+            vec![Operand::Move(Place::local(recv)), Operand::Move(Place::local(kref))],
+            Place::local(found),
+            e.span,
+        );
+        let d = self.new_local(Ty::ANKAM, None);
+        self.assign(Place::local(d), Rvalue::Discriminant(Place::local(found)));
+        let there = self.new_block();
+        let missing = self.new_block();
+        self.set_term(Term::Switch {
+            discr: Operand::Copy(Place::local(d)),
+            targets: vec![(0, there)],
+            otherwise: missing,
+        });
+        self.cur = missing;
+        let panic =
+            self.g.fns.iter().position(|f| f.name == "kompa_munigindhi" && f.module == 0).unwrap_or(0);
+        let msg = Operand::Const(Const::Str(Rc::from("ee key `jodi` lo ledhu. Mundhu `k ni j.undhaa()` tho check cheyyandi, leka `k ni, v tho j.cherchu()` tho pettandi")));
+        let sink = self.new_local(Ty::Never, None);
+        self.call(Callee::Fn(panic, Vec::new()), vec![msg], Place::local(sink), e.span);
+        self.terminate(Term::Unreachable);
+        self.cur = there;
+        Place::local(found).project(Proj::Variant(0)).field(0).deref()
+    }
+
+    /// `j[k] lo v pettu`: puts `v` under `k`, adding the key if it's new.
+    fn map_insert(&mut self, base: &'a Expr, key: &'a Expr, value: &'a Expr, plan: &MapIndex, span: Span) {
+        let index = Expr { kind: ExprKind::Hole, span };
+        let (b, mt, _, vt) = self.map_base(&index, base);
+        let recv = self.new_local(Ty::reference(true, mt), None);
+        self.assign(Place::local(recv), Rvalue::Ref(true, b));
+        let k = self.lower_operand(key);
+        let v = self.lower_operand(value);
+        let old = self.temp(Ty::App(Con::Undochu, vec![vt.clone()]));
+        let (f, tys) = plan.method("cherchu").unwrap_or((0, Vec::new()));
+        self.call(Callee::Fn(f, tys), vec![Operand::Move(Place::local(recv)), k, v], Place::local(old), span);
     }
 
     /// The place of `e`, evaluating it into a temporary when it isn'a one.

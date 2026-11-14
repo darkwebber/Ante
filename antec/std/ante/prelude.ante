@@ -424,3 +424,45 @@ mudi_raayi[K: Choopinchochu, V: Choopinchochu](
             &n.r ni, s ki mudi_raayi()
         ledhu aithe:
             icchey
+
+# ── adugu: ask a question, read the answer (P2) ─────────────────────────────
+
+# Shows `prashna` and gives the line typed after it (without the Enter);
+# "" when there's no more input.
+andhariki adugu(prashna: padham ni) -> padham ante:
+    prashna ni cheppu()
+    _line_chadhuvu() batti:
+        undhi(line) aithe:
+            line icchey
+        ledhu aithe:
+            "" icchey
+
+# Asks until a whole number is typed.
+andhariki ankam_adugu(prashna: padham ni) -> ankam ante:
+    maare adigindhi ante prashna.xerox()
+    avunu unnanthasepu:
+        adigindhi ni cheppu()
+        _line_chadhuvu() batti:
+            undhi(line) aithe:
+                line.kathirinchu().ankam_ga() batti:
+                    sare(n) aithe:
+                        n icchey
+                    thappu(_) aithe:
+                        adigindhi lo f"`{line.kathirinchu()}` number kaadhu, number ivvandi (ex: 42). {prashna}" pettu
+            ledhu aithe:
+                "input aipoyindhi, number raaledhu" ni kompa_munigindhi()
+
+# Asks until a number (with or without a fraction) is typed.
+andhariki amsam_adugu(prashna: padham ni) -> amsam ante:
+    maare adigindhi ante prashna.xerox()
+    avunu unnanthasepu:
+        adigindhi ni cheppu()
+        _line_chadhuvu() batti:
+            undhi(line) aithe:
+                line.kathirinchu().amsam_ga() batti:
+                    sare(x) aithe:
+                        x icchey
+                    thappu(_) aithe:
+                        adigindhi lo f"`{line.kathirinchu()}` number kaadhu, number ivvandi (ex: 2.5). {prashna}" pettu
+            ledhu aithe:
+                "input aipoyindhi, number raaledhu" ni kompa_munigindhi()

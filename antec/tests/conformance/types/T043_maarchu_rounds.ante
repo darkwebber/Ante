@@ -1,0 +1,22 @@
+# category: run-pass
+# expect-stdout: 7.5
+# expect-stdout: 2
+# expect-stdout: -2
+# expect-stdout: -128
+# expect-stdout: 9007199254740992.0
+# expect-stdout: inf
+# expect-stdout: 100
+# level: core
+# `maarchu` works between any two number types (r22): an integer becomes
+# the nearest float, a float drops its fraction, and a value that fits
+# stays as it is.
+modhalu() -> khali ante:
+    x ante 3
+    ((x ni maarchu[amsam]()) * 2.5) ni choopinchu()
+    (2.7 ni maarchu[ankam]()) ni choopinchu()
+    (-2.7 ni maarchu[ankam]()) ni choopinchu()
+    (-128.9 ni maarchu[ankam8]()) ni choopinchu()
+    (9007199254740993 ni maarchu[amsam]()) ni choopinchu()
+    (1.0e300 ni maarchu[amsam32]()) ni choopinchu()
+    a: ankam32 ante 100
+    (a ni maarchu[ankam8]()) ni choopinchu()

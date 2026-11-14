@@ -1,0 +1,7 @@
+# category: runtime-trap
+# expect-trap: T01 @ 7:5
+# level: core
+# NaN has no whole part, so `maarchu` to an integer traps (r22).
+modhalu() -> khali ante:
+    n ante 0.0 / 0.0
+    (n ni maarchu[ankam]()) ni choopinchu()

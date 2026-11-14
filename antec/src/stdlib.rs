@@ -118,6 +118,7 @@ pub const PRELUDE_VALUES: &[&str] = &[
     "kudhirithe_maarchu",
     "kolpothu_maarchu",
     "marpidi",
+    "_line_chadhuvu",
     "size_of",
     "rakam_peru",
     "align_of",

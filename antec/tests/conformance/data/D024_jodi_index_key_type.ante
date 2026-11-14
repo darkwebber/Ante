@@ -1,0 +1,7 @@
+# category: compile-fail
+# expect-error: E0401 @ 7:11
+# level: core
+# The key in `j[k]` must have the `jodi`'s key type (r22).
+modhalu() -> khali ante:
+    marks: jodi[padham, ankam] ante jodi.kotthadhi()
+    marks[1] ni choopinchu()

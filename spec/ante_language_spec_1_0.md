@@ -1,7 +1,7 @@
 # The "Ante" Programming Language — Specification, Edition 1.0
 
 **Status:** Final draft for implementation. Normative for the reference compiler `antec`.  
-**Revision:** Edition 1.0, draft r21. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
+**Revision:** Edition 1.0, draft r22. Vocabulary may still change before `antec` 1.0.0, under the rules in `docs/VERSIONING.md` (§23.5).  
 **Language:** "Ante" ("ante" = "means"). Source files use the extension `.ante`; the compiler is `antec`; the package manifest is `ante.toml`.  
 
 ---
@@ -145,7 +145,7 @@ ESCAPE     ::= '\\' | '\"' | "\'" | '\n' | '\t' | '\r' | '\0' | '\u{' HEX{1,6} '
 - A literal has no sign. `-5` is unary minus applied to `5`, folded per §10.4.
 - `\u{…}` must be a Unicode scalar value, so surrogates and values above U+10FFFF are E0108.
 - Strings may contain any Unicode except unescaped `"`, `\` or a newline (E0104 for an unterminated string). Adjacent strings are not concatenated.
-- In an `f"…"` string, `{ clause }` interpolates (§10.6) and `{{` / `}}` produce literal braces. A `{ … }` may not contain a string literal.
+- In an `f"…"` string, `{ clause }` interpolates (§10.6) and `{{` / `}}` produce literal braces. A `{ … }` may contain string literals (r22: `f"{"Mr. " + peru}"`); braces inside them don't count.
 - `CHAR` holds exactly one Unicode scalar value and has type `aksharam` (E0109 otherwise).
 - In an f-string, a lone `}`, an unclosed `{` or an empty `{}` is E0110.
 - `sql"…"` (Services, §29.3.1) is lexed exactly like an f-string, with the prefix `sql` instead of `f`. Its interpolations become bound query parameters, not text.
@@ -866,9 +866,9 @@ For every integer type and op ∈ {`kalupu` (+), `theesey` (−), `guninchu` (×
 
 | Function | Allowed source → target | Result |
 |---|---|---|
-| `v ni maarchu[T]()` | **lossless only**: integer → wider integer of the same signedness; unsigned → strictly wider signed; integer with ≤ 24 bits → `amsam32` and ≤ 53 bits → `amsam64`; `amsam32` → `amsam64`; `aksharam` → `aasajeevi ankam32` | `T`. A pair that isn't lossless is a **compile error** E0409 that suggests the two functions below |
-| `v ni kudhirithe_maarchu[T]()` | any numeric pair; `aasajeevi ankam32` → `aksharam` | `undochu[T]`: `ledhu` if the value isn't exactly representable (or isn't a valid scalar for `aksharam`) |
-| `v ni kolpothu_maarchu[T]()` | any numeric pair | always succeeds, losing information on purpose ("while losing"). Integer → integer truncates the two's complement. Float → integer rounds toward zero, saturates at min/max, and NaN → 0. Integer → float rounds to nearest. `amsam64` → `amsam32` rounds to nearest |
+| `v ni maarchu[T]()` | any numeric pair; `aksharam` → `aasajeevi ankam32` | `T`, the conversion a learner expects. Integer → float and `amsam64` → `amsam32` round to nearest (`amsam64` holds every integer up to 2⁵³ exactly). Float → integer drops the fraction (rounds toward zero: `2.7` → `2`, `-2.7` → `-2`). A value that doesn't fit, an integer out of the target's range or a float that is NaN or whose whole part is out of range, is **T01**, like overflow. This is the conversion to use; the two below are for programs that want something else |
+| `v ni kudhirithe_maarchu[T]()` | any numeric pair; `aasajeevi ankam32` → `aksharam` | `undochu[T]`: `ledhu` if the value isn't exactly representable (or isn't a valid scalar for `aksharam`); it never rounds, so `2.5` → `ledhu` |
+| `v ni kolpothu_maarchu[T]()` | any numeric pair | always succeeds, losing information on purpose ("while losing"), for bit-level code such as hashes and bytes. Integer → integer truncates the two's complement. Float → integer rounds toward zero, saturates at min/max, and NaN → 0. Integer → float rounds to nearest. `amsam64` → `amsam32` rounds to nearest |
 
 ## 19. Control flow and drop
 
@@ -919,7 +919,7 @@ For T08 and T09 the position may be left out (`kompa munigindhi! <reason>`) when
 | T02 | division by zero |
 | T03 | index out of bounds (index, length) |
 | T04 | invalid shift count |
-| T05 | explicit `kompa_munigindhi()` with its message |
+| T05 | explicit `kompa_munigindhi()` with its message; also `m[k]` on a missing key (§21.2) |
 | T06 | `kachithanga()` on `ledhu`/`thappu` |
 | T07 | `nijame()` assertion failed, with its message |
 | T08 | stack overflow |
@@ -953,6 +953,8 @@ Signatures are normative; the descriptions are summaries. Functions marked †in
 | `cheppu[T: Choopinchochu](vishayam: &T ni) -> khali` | the same, without a newline ("say") |
 | `gola_pettu[T: Choopinchochu](vishayam: &T ni) -> khali` | writes to stderr with a newline ("make a fuss") |
 | `nijame(sharathu: ato_ito, message: padham ni = "") -> khali` | trap T07 if `kaadhu` ("it's true!"). Always enabled. Usage: `(x > 0) nijame()` |
+| `adugu(prashna: padham ni) -> padham` | (r22) "ask": writes `prashna` without a newline and returns the next line of standard input without its line ending; `""` at the end of input. Usage: `peru ante "Mee peru? " ni adugu()` |
+| `ankam_adugu(prashna: padham ni) -> ankam`, `amsam_adugu(prashna: padham ni) -> amsam` | (r22) ask until the answer, without surrounding spaces, reads as a number of that type; a wrong answer is named and the question asked again. The end of input is T05 |
 | `kompa_munigindhi(message: padham ni = "") -> raadhu` | trap T05 ("the house has sunk") |
 | `marpidi[T](ekkada: &maare T, kotthadhi: T ni) -> T` | puts `kotthadhi` in the place and gives back what was there ("exchange"). Usage: `paatha ante &maare x, kotha ni marpidi()` |
 | `maarchu[T]`, `kudhirithe_maarchu[T]`, `kolpothu_maarchu[T]` | †intrinsic; §18.4 |
@@ -1002,6 +1004,7 @@ Signatures are normative; the descriptions are summaries. Functions marked †in
 - `k ni m.undhaa() -> ato_ito`: "is it there?"
 - `enni`
 - iteration yields `jatha[&K, &V]` in insertion order
+- **`m[k]`** (r22) is the value under key `k` (of type `K`), a place like `xs[i]`: it can be read (`m[k] ni choopinchu()`, copied when `V` is `CopyKottochu`), borrowed, changed in place (`m[k] += 1`, `x ni m[k].cherchu()`, when `m` can change), and `m[k] lo v pettu` adds the key or replaces its value, like `cherchu`. Reading or changing a key that isn't there is T05 with a message naming `undhaa` and `cherchu`. `gajibiji_jodi` supports the same, except changing in place
 
 **`gajibiji_jodi[K, V]`** ("jumbled map"): the same API without any order guarantee. **`gumpu[T]`** ("group"): a set, with `cherchu`, `undhaa`, `theesey` and `enni`.
 
@@ -2883,7 +2886,7 @@ Severity is error unless the code starts with W. The prose shown is the referenc
 | E0406 | no such method | |
 | E0407 | operator not implemented | |
 | E0408 | mixed signedness | |
-| E0409 | lossy `maarchu` | "`kolpothu_maarchu` / `kudhirithe_maarchu` vaadu" |
+| E0409 | (retired in r22: `maarchu` accepts every numeric pair and traps with T01 at run time instead) | |
 | E0410 | missing `icchey` on some path | |
 | E0411 | `?` outside a `sare_thappu` function | |
 | E0412 | `?` error type mismatch | |
@@ -3056,6 +3059,7 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | S019 | `s.enni(1)`: a method call in the constructor form (D10) | E0204 |
 | S020 | Indexed receivers before a verb: `x ni g[1].cherchu()`, `ps[i].xs`, `grid[0][0]` (D7) | expected stdout |
 | S021 | `@pariksha` on a function with a parameter | E1307 |
+| S022 | Text literals inside an f-string's `{…}`, one holding `}` | expected stdout |
 | B001 | `20 tho, 10 ni kalupu()` | `30` |
 | B002 | `3 ni c ga, 1 ni a ga, 2 ni b ga kalupu_moodu()` | a=1, b=2, c=3 |
 | B003 | `1 ni, 3 ni c ga, 2 ni kalupu_moodu()` | a=1, b=2, c=3; source-order effects |
@@ -3083,7 +3087,7 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | T008 | `0.0 / 0.0 == 0.0 / 0.0` | prints `kaadhu` |
 | T009 | `-128 : ankam8` literal | run-pass |
 | T010 | `ankam32` + `aasajeevi ankam32` | E0408 |
-| T011 | `x ni maarchu[ankam8]()` with `x : ankam32` | E0409 |
+| T011 | `x ni maarchu[ankam8]()` with `x : ankam32` holding 300 | T01 |
 | T012 | `300 ni kudhirithe_maarchu[ankam8]()` | `ledhu` |
 | T013 | `300 ni kolpothu_maarchu[ankam8]()` | `44` |
 | T014 | `(-1.5) ni kolpothu_maarchu[ankam32]()` | `-1` |
@@ -3115,6 +3119,8 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | T040 | Float display: shortest round-trip form, `.0` on whole numbers however big | stdout matches |
 | T041 | `aksharam` predicates follow Unicode | stdout matches |
 | T042 | `MIN % -1` with runtime operands | T01 |
+| T043 | `maarchu` integer → float, float → integer (fraction dropped), `amsam64` → `amsam32`, a narrowing that fits | rounded values |
+| T044 | `maarchu[ankam]` of NaN | T01 |
 | O001 | Use after move | E0601 |
 | O002 | Assign to a non-`maare` binding | E0602 |
 | O003 | Move out of `xs[0]` (non-Copy element) | E0603 |
@@ -3233,6 +3239,9 @@ A **package test** is a folder holding `ante.toml` and `src/`. Its expectations 
 | D019 | `sardina_jodi`: insert, replace, remove, `kanisam`, `minchakunda`, smallest and biggest keys, key-order display | stdout matches |
 | D020 | `marpidi` on a place and `varusa.marpidi` | stdout matches |
 | D021 | `varusa.marpidi` past the end | T03 |
+| D022 | `j[k]` read, `lo … pettu`, `+=`, a method on the value, through `&maare` | stdout matches |
+| D023 | `j[k]` on a missing key | T05 |
+| D024 | `j[k]` with a key of the wrong type | E0401 |
 | X001 | Program without `python`/`torch` imports | no CPython or LibTorch linkage |
 | X002 | `modhalu` returns `thappu(e)` | exit 1, stderr `thappu: …` |
 | X003 | `bayata` call outside `naa_risk` | E1001 |
@@ -3357,7 +3366,7 @@ Python-level seeds name the packages they need; the suite pins them in its own `
 | H025 | `ankam` times `amsam` | E0401; hint `kolpothu_maarchu[amsam]` |
 | H026 | `break` | E0301; hint `aapey` |
 | H027 | `len(xs)` | E0204; hint `xs.enni()` |
-| H028 | `input()` | E0301; hint `system.line_chadhuvu` |
+| H028 | `input()` | E0301; hint `ni adugu()` |
 | H029 | `let x = 5` | E0201; hint `x ante 5` |
 | H030 | `def main():` | E0209; hint `modhalu() -> khali ante:` |
 | WB001 | Annex W.2 counter: SSR HTML, then click twice in `web.pariksha` | "Lekka: 2" (web level) |
@@ -3597,7 +3606,7 @@ Core 1.0 is complete at M11, Services 1.0 at M14, Web 1.0 at M18. M20–M22 are 
 |---|---|---|
 | P0 Tidy | M14's first part merged. The rest of M14 (TLS, HTTP/2, WebSocket, SSE, SMTP, PostgreSQL) is parked until P6. The READMEs say what works today. | CI passes on Linux, macOS and Windows |
 | P1 Five-minute start | Prebuilt `antec` binaries and an install script for the three systems; `antec new`; `antec repl` (the terminal half of M24, on the interpreter); hints on the diagnostics for the twenty commonest beginner mistakes (`x = 6`, `if`, `print(…)`, adding text to a number, a moved value that should have been borrowed, …), each with a conformance case. | On a machine with no Rust toolchain: install, run a first program and fix a first error in under five minutes, checked with real beginners |
-| P2 Everyday language | The gaps that lesson code keeps meeting: indexing a `jodi` (`j[k]`), closures with a block body, `batti` as an expression, match guards, labelled `aapey`/`vadhiley`, string literals inside f-strings, and one prelude function that asks a question and reads the answer. Each goes through the vocabulary or RFC process and lands in the parser, the formatter, the language server and both backends together. | The existing lessons are rewritten with them, get shorter, and carry no workaround notes |
+| P2 Everyday language | The gaps that lesson code keeps meeting: indexing a `jodi` (`j[k]`), closures with a block body, `batti` as an expression, match guards, labelled `aapey`/`vadhiley`, one `maarchu` for every number conversion (rounding as learners expect, T01 when the value doesn't fit, so `kolpothu_maarchu` is only for bit-level code), string literals inside f-strings, and one prelude function that asks a question and reads the answer. Each goes through the vocabulary or RFC process and lands in the parser, the formatter, the language server and both backends together. | The existing lessons are rewritten with them, get shorter, and carry no workaround notes |
 | P3 Lessons L0–L3 | The learning track's first four stages, about 60 lessons. What a lesson finds awkward goes back to P2's list. A benchmark suite of ten programs runs in CI against C (`-O2`) and Python references. | Every lesson passes `antec pariksha` in CI; each benchmark is within 2× of C |
 | P4 Playground | The reference compiler's checker and interpreter built for `wasm32` (it is written in Rust, so this needs none of M15–M18), on a static website with the lessons. The website is rewritten in "Ante" later, as M19. | A lesson runs and can be edited in a phone's browser, with no server |
 | P5 Python and notebooks | M22 in slices: the environment and imports, calls and conversions, then numpy, pandas, matplotlib and one model API; then the Jupyter kernel (the rest of M24). | Five L6 lessons run in a notebook |
@@ -3661,6 +3670,7 @@ Edition 1.0 starts at draft r1, which is the first public revision. Every later 
 
 | Revision | Release | Change |
 |---|---|---|
+| r22 | `antec` 0.1.1 | `maarchu` converts between any two number types (§18.4): integer → float rounds to nearest, float → integer drops the fraction, and a value that doesn't fit is T01 instead of compile error E0409, which is retired. `kudhirithe_maarchu` and `kolpothu_maarchu` are unchanged. Appendix E's P2 lists it. `m[k]` reads, changes and adds the value under a key of a `jodi` (§21.2); a missing key is T05. `adugu`, `ankam_adugu` and `amsam_adugu` ask a question and read the answer (§21.1). An f-string's `{…}` may contain text literals (§4.5). Seed case S022. Seed cases T011 (now a trap), T043, T044, D022–D024. |
 | r21 | `antec` 0.1.1 | No change to programs. `antec new` (§23.1); diagnostics may end with a hint (§23.4); `antec repl` is implemented (§23.7.1); conformance tests may say `expect-hint` (C.1), and seed cases H001–H030 cover the commonest beginner mistakes. |
 | r20 | `antec` 0.1.1 | No change to programs. Appendix E gains an order of work: phases P0–P6, each with a gate, put what a beginner meets first (installing, `antec repl`, diagnostics with hints, everyday language gaps, lessons, a playground) ahead of the rest of M14 and the web track; Annexes T, P and W are drafts until their phase starts; the interpreter's scope is Core 1.0. |
 | r19 | `antec` 0.1.1 | M14, first part (TCP, the HTTP/1.1 server and client, SQLite), settled while implementing it: addresses are passed by value and a listener tells its port (§28.2); header names are passed by value, `anni` gives copies, `maarchu` and `theesey`, `Request.param`, the fields of `http.Limits` (§28.4); handlers run one at a time on the server's loop (§28.5); the client speaks `http` only until TLS lands (§28.6); `SqlPettochu`, `sql.Viluva`, `db.script`, `sqlite::memory:` (§29.3.2); migrations are read in name order and hidden files are skipped (§29.3.3); `memory.baitlu_nunchi` (§21.3); seed cases NW006–NW008. TLS, HTTP/2, WebSocket, SSE, SMTP and PostgreSQL are still to come. |

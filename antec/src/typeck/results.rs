@@ -135,6 +135,17 @@ pub struct CallPlan {
     pub conv: Option<(Conv, Ty, Ty)>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct MapIndex {
+    pub methods: Vec<(&'static str, FnId, Vec<Ty>)>,
+}
+
+impl MapIndex {
+    pub fn method(&self, name: &str) -> Option<(FnId, Vec<Ty>)> {
+        self.methods.iter().find(|(n, ..)| *n == name).map(|(_, f, t)| (*f, t.clone()))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BindMode {
     Move,
@@ -152,6 +163,10 @@ pub struct Results {
     pub fields: HashMap<ExprId, FieldStep>,
     /// Automatic dereferences of an indexed base.
     pub index_derefs: HashMap<ExprId, u8>,
+    /// `j[k]` on a `jodi` or `gajibiji_jodi`: a key lookup, not a position
+    /// (P2). The methods it becomes (`thechu`, `maare_thechu`, `cherchu`),
+    /// each with its type arguments.
+    pub map_index: HashMap<ExprId, MapIndex>,
     pub calls: HashMap<ExprId, CallPlan>,
     pub ctors: HashMap<ExprId, (AdtRef, u32)>,
     pub records: HashMap<ExprId, DefId>,
@@ -175,6 +190,7 @@ impl Results {
         self.paths.extend(other.paths);
         self.fields.extend(other.fields);
         self.index_derefs.extend(other.index_derefs);
+        self.map_index.extend(other.map_index);
         self.calls.extend(other.calls);
         self.ctors.extend(other.ctors);
         self.records.extend(other.records);
@@ -234,6 +250,12 @@ impl Results {
         }
         self.fields.extend(other.fields);
         self.index_derefs.extend(other.index_derefs);
+        for (k, mut v) in other.map_index {
+            for (_, _, tys) in &mut v.methods {
+                *tys = tys.iter().map(&mut r).collect();
+            }
+            self.map_index.insert(k, v);
+        }
         self.ctors.extend(other.ctors);
         self.records.extend(other.records);
         self.pat_ctors.extend(other.pat_ctors);

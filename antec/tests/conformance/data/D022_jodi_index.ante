@@ -1,0 +1,36 @@
+# category: run-pass
+# expect-stdout: 90
+# expect-stdout: 95
+# expect-stdout: {Ravi: 95, Sita: 99}
+# expect-stdout: {1: [a, b]}
+# expect-stdout: 194
+# expect-stdout: 1
+# level: core
+# `j[k]` reads the value under a key; `j[k] lo v pettu` adds or replaces it;
+# `+=` and methods change it in place, also through `&maare` (r22).
+rakam Lekka ante:
+    perlu: jodi[padham, ankam]
+
+Lekka panulu ante:
+    penchu(naa: &maare idhi, peru: padham ni) -> khali ante:
+        naa.perlu[peru] += 1
+
+modhalu() -> khali ante:
+    maare marks ante jodi.kotthadhi()
+    marks["Ravi"] lo 90 pettu
+    marks["Sita"] lo 85 pettu
+    marks["Ravi"] ni choopinchu()
+    marks["Ravi"] += 5
+    marks["Ravi"] ni choopinchu()
+    marks["Sita"] lo 99 pettu
+    marks ni choopinchu()
+    maare groups: jodi[ankam, varusa[padham]] ante jodi.kotthadhi()
+    groups[1] lo ["a"] pettu
+    "b" ni groups[1].cherchu()
+    groups ni choopinchu()
+    total ante marks["Ravi"] + marks["Sita"]
+    total ni choopinchu()
+    maare l ante Lekka { perlu: jodi.kotthadhi() }
+    l.perlu["x"] lo 0 pettu
+    "x" ni l.penchu()
+    l.perlu["x"] ni choopinchu()
